@@ -106,6 +106,7 @@ const Form: React.FC = () => {
 
       //initial call to openAI to write the article
       const firstResponse = await callOpenAI(inputData);
+      const step2Text = "Schmearin' the jam...";
       setLoadingFirstRequest(false); // Clear loading state after the first request
 
       
@@ -180,7 +181,7 @@ const Form: React.FC = () => {
             <br></br>
             Step 2:
             <br></br>
-            Schmearin' the jam...
+            `${step2Text}`
             </div>
         ) : isLoadingThirdRequest ? (
           <div style={{ textAlign: 'center', padding: 16, margin: 'auto', maxWidth: 750, background: 'rgb(250 250 250)' }}>
