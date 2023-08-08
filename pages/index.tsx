@@ -43,7 +43,7 @@ const Home: React.FC = () => {
         alt=""
       />
 
-        <h1>`${pageTitle}</h1>
+        <h1>{`${pageTitle}`}</h1>
       </div>
       
       <Form />
