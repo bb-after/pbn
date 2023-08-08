@@ -1,11 +1,16 @@
 // components/Form.tsx
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic'; // To load the RTE dynamically (client-side)
+import { EditorState, ContentState, convertFromHTML } from 'draft-js';
+import 'react-draft-wysiwyg/dist/react-draft-wysiwyg.css';
+
 import TextField from '@mui/material/TextField';
 import Image from 'next/image';
 import Button from '@mui/material/Button';
 import Checkbox from '@mui/material/Checkbox';
 // import BackIcon from '@mui/icons-material/Back';
+import { Send, ArrowBack, ContentCopy, Edit } from '@mui/icons-material';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import FormControl from '@mui/material/FormControl';
 import FormGroup from '@mui/material/FormGroup';
@@ -14,11 +19,17 @@ import TextareaAutosize from '@mui/material/TextareaAutosize';
 
 import { callOpenAI, callOpenAIRevised, insertBacklinks } from '../utils/openai';
 
+// Dynamically load the RTE component (client-side) to prevent server-side rendering issues
+const Editor = dynamic(
+  () => import('react-draft-wysiwyg').then((module) => module.Editor),
+  { ssr: false }
+);
+
 const Form: React.FC = () => {
   const [isLoadingFirstRequest, setLoadingFirstRequest] = useState(false);
   const [isLoadingSecondRequest, setLoadingSecondRequest] = useState(false);
   const [isLoadingThirdRequest, setLoadingThirdRequest] = useState(false);
-
+  const [isEditingState, setEditingState] = useState(false);
   const [response, setResponse] = useState<string>(''); // Initialize with an empty string
   const [title, setTitle] = useState('');
   const [keywords, setKeywords] = useState('');
@@ -32,6 +43,29 @@ const Form: React.FC = () => {
   const [tone, setTone] = useState<string[]>([]);
   const [otherInstructions, setOtherInstructions] = useState('');
 
+  const [editorState, setEditorState] = useState<EditorState>(
+    // Create an initial EditorState with an empty ContentState
+    EditorState.createEmpty()
+  );
+
+
+  // Handle RTE changes
+  const handleEditorStateChange = (newState: EditorState) => {
+    setEditorState(newState);
+  };
+
+  useEffect(() => {
+    // When the response changes, update the editorState with the new content
+    if (response !== '') {
+      const blocksFromHTML = convertFromHTML(response);
+      const contentState = ContentState.createFromBlockArray(
+        blocksFromHTML.contentBlocks,
+        blocksFromHTML.entityMap
+      );
+      setEditorState(EditorState.createWithContent(contentState));
+    }
+  }, [response]);
+
   const handleToneChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const { value } = event.target;
     setTone((prevTone) =>
@@ -43,6 +77,11 @@ const Form: React.FC = () => {
 
   const handleBackState = () => {
     setResponse('');
+    setEditingState(false);
+  }
+
+  const openEditor = () => {
+    setEditingState(true);
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -79,13 +118,19 @@ const Form: React.FC = () => {
       const maxBacklinks = 5;
       let hyperlinkedResponse = revisedResponse;
       debugger;
+      const backlinkArray = [];
       for (var x = 1; x <= maxBacklinks; x++ ) {
           if (typeof inputData['backlink'+x] !== 'undefined' &&
           inputData['backlink'+x].trim() !== '') { 
-          hyperlinkedResponse = await insertBacklinks(inputData['backlink'+x].trim(), hyperlinkedResponse);
-            console.log('updated hyperlinked response', hyperlinkedResponse);
+            backlinkArray.push(inputData['backlink'+x].trim());
           }
       }
+          // hyperlinkedResponse = await insertBacklinks(inputData['backlink'+x].trim(), hyperlinkedResponse);
+        hyperlinkedResponse = await insertBacklinks(backlinkArray.join(', '), hyperlinkedResponse);
+
+          console.log('updated hyperlinked response', hyperlinkedResponse);
+          // }
+      // }
       
       setResponse(hyperlinkedResponse);
       
@@ -119,7 +164,7 @@ const Form: React.FC = () => {
                 alt=""
               />
               <br></br>
-              Hold tight.
+              Step 1:
               <br></br>
               Churning the (peanut) butter...
             </div>
@@ -133,7 +178,7 @@ const Form: React.FC = () => {
               alt=""
             />  
             <br></br>
-            Still working on it.
+            Step 2:
             <br></br>
             Schmearin' the jam...
             </div>
@@ -147,16 +192,31 @@ const Form: React.FC = () => {
             alt=""
           />  
           <br></br>
-          Final touches.
+          Step 3:
           <br></br>
           Putting it together...
           </div>
       ) : response !== '' ? (
         <div>
-          <div dangerouslySetInnerHTML={{ __html: response }} className="pbnj-output">
-          </div>
-          <Button onClick={handleBackState}>Go Back</Button>
-          <Button type="submit">Post article to PBN</Button>
+          { isEditingState && 
+          ( 
+             <Editor
+              editorState={editorState}
+              onEditorStateChange={handleEditorStateChange}
+              wrapperClassName="rich-editor-wrapper"
+              editorClassName="rich-editor"
+            />
+          )}
+          { !isEditingState && 
+          (
+           <div dangerouslySetInnerHTML={{ __html: response }} className="pbnj-output">
+            </div>
+          )} 
+          <br />
+          <Button variant="outlined" startIcon={<ArrowBack />} onClick={handleBackState}>Go Back</Button>
+          <Button variant="outlined" startIcon={<Edit />} onClick={openEditor}>Edit Content</Button>
+          <Button variant="outlined" startIcon={<ContentCopy />}>Copy Content</Button>
+          <Button variant="outlined" startIcon={<Send />} type="submit">Post article to PBN</Button>
         </div>
         ) : (
           <form onSubmit={handleSubmit}>
