@@ -3,11 +3,11 @@
 import React from 'react';
 import Form from '../components/Form';
 import Image from 'next/image';
+const pageTitle = "PBN'J";
 
 const Home: React.FC = () => {
   return (
     
-
     <div style={{ padding: 16, margin: 'auto', maxWidth: 750, background: 'rgb(250 250 250)' }}>
       <div style={{ background: '#000', padding: 3 }}>
       <style jsx global>
@@ -43,7 +43,7 @@ const Home: React.FC = () => {
         alt=""
       />
 
-        <h1>PBN'J</h1>
+        <h1>`${pageTitle}</h1>
       </div>
       
       <Form />
