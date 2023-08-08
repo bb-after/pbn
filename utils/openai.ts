@@ -120,60 +120,6 @@ export const callOpenAIRevised = async (inputData: any, openAIResponse: object) 
 
 };
 
-// function bulkReplaceLinks(response: any, originalText: Text) {
-//     // Sample response from the OpenAI API
-//     // const response = `"'https://statuslabs.com': {'text': 'Darius Fisher', 'start_index': 83, 'end_index': 96},\n'https://www.linkedin.com/in/dariusfisher/': {'text': 'co-founded a company', 'start_index': 508, 'end_index': 529}"`
-//     // Convert single quotes to double quotes for valid JSON parsing
-//     let correctedResponse = response.replace(/'/g, '"');
-//     // Convert the response into a JavaScript object
-//     // Convert the corrected response into a JavaScript object
-//     correctedResponse = correctedResponse.replace(/\}./g, '},');
-//     correctedResponse = correctedResponse.replace(/,(\s)*$/, "");
-
-//     let parsedResponse: Record<string, {text: string, start_index: number, end_index: number}>;
-
-//     try {
-//         parsedResponse = JSON.parse(`{${correctedResponse}}`);
-//     } catch (error) {
-//         // if for whatever reason we can't parse the pseudo-json, return the original text.
-//         console.error("Error parsing the response:", error);
-//         return originalText;
-//     }
-
-//     // Sample content (for demonstration purposes)
-//     let content = originalText;
-
-//     // Convert the object to an array, sort by 'end_index' in descending order to start replacements from the end
-//     const sortedReplacements = Object.entries(parsedResponse).sort(([, a], [, b]) => b.end_index - a.end_index);
-
-//     for (const [url, {text, start_index, end_index}] of sortedReplacements) {
-//         const substringFromContent = content.substring(start_index, end_index);
-    
-//         // Check if the substring matches the provided text
-//         if (substringFromContent === text) {
-//             // Constructing the replacement with actual URL
-//             const hyperlink = `<a href="${url}">${text}</a>`;
-    
-//             // Replacing in the content
-//             content = content.slice(0, start_index) + hyperlink + content.slice(end_index);
-//         } else {
-
-//             console.error(`Mismatch at indices ${start_index}-${end_index}: expected "${text}", found "${substringFromContent}"`);
-//             // Fallback logic: Replace the first occurrence of the `text` in the content
-//             const position = content.indexOf(text);
-//             if (position !== -1) {
-//                 content = content.slice(0, position) + `<a href="${url}">${text}</a>` + content.slice(position + text.length);
-//             }
-
-//         }
-    
-//     }
-
-//     // Now 'content' has the hyperlinks embedded at the right places
-//     console.log('content!!! ', content);
-//     return content;
-// }
-
 function bulkReplaceLinks(response: any, originalText: string) {
     // Replace single quotes but not ones inside the actual content
     let correctedResponse = response.replace(/(?<!\w)'(?!w)/g, '"');
@@ -219,43 +165,8 @@ function bulkReplaceLinks(response: any, originalText: string) {
 }
 
 export const insertBacklinks = async (backlinkValues: any, openAIResponse: Text) => {
-    // const prompt = [
-    //     { "role": "user", "content": openAIResponse },
-    //     // { "role": "user", "content": "Given the following content, please identify three distinct and contextually relevant phrases or sections within the provided text where I should embed a clickable hyperlink to the following URL: "+backlinkValue+".  Encapsulate the specific words to be hyperlinked within square brackets.  Ensure that no single phrase or section is suggested more than once and and not already wrapped in an <a> HTML tag." },
-    //     // { "role": "user", "content": "Given the following content, please identify three distinct and contextually relevant phrases or sections within the provided text where I should embed a clickable hyperlink to the following URL: "+backlinkValue+".  Encapsulate the specific words to be hyperlinked within square brackets.  Ensure that no single phrase or section is suggested more than once and and not already wrapped in an <a> HTML tag." },
-    //     { "role": "user", "content": "From the provided text, identify distinct, contextually relevant phrases or sections for each of the following URLs.  Ensure each phrase is unique and non-repetitive.  Do not make any phrase more than 5 words.  Encapsulate the specific words to be hyperlinked within square brackets."},
-    //     { "role": "user", "content": "Additionally, provide the starting and ending character indices of each selected phrase within the original text.  Each selected phrase should have its unique start and end character indices in the original text. Avoid overlapping or repeating the same character indices for multiple URLs."},
-    //     { "role": "user", "content": "Format the response as follows: \n\n'URL_PLACEHOLDER_1': {'text': 'selected text', 'start_index': start_position, 'end_index': end_position},'URL_PLACEHOLDER_2': {'text': 'selected text', 'start_index': start_position, 'end_index': end_position},... and so on.  For each URL, replace the placeholder 'URL_PLACEHOLDER' with the actual URL in the response format."},
-    //     { "role": "user", "content": "the URLs are the following: "+ backlinkValue },
-    // ];
-
     const prompt2 = [
         { "role": "user", "content": `${openAIResponse}` },
-        // { "role": "user", "content": `Using the provided text, hyperlink distinct, contextually relevant phrases or sections for the following URLs: ${backlinkValue}. Each selected phrase should: 
-        
-        // - Be unique and non-repetitive.
-        // - Not exceed 5 words.
-        // - Have its unique start and end character indices in the original text, with no overlaps.
-        // - Please ensure the start_position and end_position are based on the exact content provided.
-        // Provide the response in this format: 
-        
-        // 'URL_PLACEHOLDER': {'text': 'selected text', 'start_index': start_position, 'end_index': end_position}.
-        
-        // Note: For each URL, replace the word 'URL_PLACEHOLDER' with the actual URL in the response format.`
-        // },
-        /*{ "role": "user", "content": `Given the exact text provided, identify distinct and contextually relevant phrases to hyperlink for the following URLs: ${backlinkValue}.
-        
-        Your selections should adhere to these strict criteria:
-    
-        - The phrase must be unique within the text and not repeat elsewhere.
-        - It should be concise, no more than 5 words in length.
-        - You must provide accurate start and end character indices for each selected phrase from the original text. No overlaps allowed. These indices should reflect the exact position within the provided content.
-        
-        Example Format: 
-        'https://example.com': {'text': 'relevant phrase', 'start_index': 10, 'end_index': 25}.
-        
-        Note: Please replace 'https://example.com' with the corresponding URL from the list provided. Ensure accuracy in the character indices.` 
-        },*/
         {
             "role": "user",
             "content": `Using the provided text, identify distinct, contextually relevant phrases or sections for the following URLs: ${backlinkValues}. For each URL:
