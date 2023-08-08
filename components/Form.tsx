@@ -4,20 +4,21 @@ import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic'; // To load the RTE dynamically (client-side)
 import { EditorState, ContentState, convertFromHTML } from 'draft-js';
 import 'react-draft-wysiwyg/dist/react-draft-wysiwyg.css';
-
 import TextField from '@mui/material/TextField';
 import Image from 'next/image';
 import Button from '@mui/material/Button';
 import Checkbox from '@mui/material/Checkbox';
 // import BackIcon from '@mui/icons-material/Back';
-import { Send, ArrowBack, ContentCopy, Edit } from '@mui/icons-material';
+import { Send, ArrowBack, ContentCopy, Edit, Snackbar } from '@mui/icons-material';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import FormControl from '@mui/material/FormControl';
 import FormGroup from '@mui/material/FormGroup';
 import FormLabel from '@mui/material/FormLabel';
 import TextareaAutosize from '@mui/material/TextareaAutosize';
+import CopyToClipboardButton from './CopyToClipboardButton'; // Replace with the correct path to your component
+import { stateToHTML } from 'draft-js-export-html';
 
-import { callOpenAI, callOpenAIRevised, insertBacklinks } from '../utils/openai';
+import { callOpenAI, callOpenAIRevised, insertBacklinks, getBacklinkArray } from '../utils/openai';
 
 // Dynamically load the RTE component (client-side) to prevent server-side rendering issues
 const Editor = dynamic(
@@ -42,6 +43,7 @@ const Form: React.FC = () => {
   const [backlink5, setBacklink5] = useState('');
   const [tone, setTone] = useState<string[]>([]);
   const [otherInstructions, setOtherInstructions] = useState('');
+  const step2Text = "Schmearin' the jam...";
 
   const [editorState, setEditorState] = useState<EditorState>(
     // Create an initial EditorState with an empty ContentState
@@ -84,6 +86,12 @@ const Form: React.FC = () => {
     setEditingState(true);
   }
 
+  const saveEditor = (newContent: string) => {
+    setEditingState(false);
+    setResponse(newContent); // Update the response state with the new content
+  };
+  
+  
   const handleSubmit = async (e: React.FormEvent) => {
 
     e.preventDefault();
@@ -106,7 +114,6 @@ const Form: React.FC = () => {
 
       //initial call to openAI to write the article
       const firstResponse = await callOpenAI(inputData);
-      const step2Text = "Schmearin' the jam...";
       setLoadingFirstRequest(false); // Clear loading state after the first request
 
       
@@ -118,27 +125,13 @@ const Form: React.FC = () => {
 
       const maxBacklinks = 5;
       let hyperlinkedResponse = revisedResponse;
-      debugger;
-      const backlinkArray = [];
-      for (var x = 1; x <= maxBacklinks; x++ ) {
-          if (typeof inputData['backlink'+x] !== 'undefined' &&
-          inputData['backlink'+x].trim() !== '') { 
-            backlinkArray.push(inputData['backlink'+x].trim());
-          }
-      }
-          // hyperlinkedResponse = await insertBacklinks(inputData['backlink'+x].trim(), hyperlinkedResponse);
-        hyperlinkedResponse = await insertBacklinks(backlinkArray.join(', '), hyperlinkedResponse);
+      const backlinkArray = getBacklinkArray(inputData);
 
-          console.log('updated hyperlinked response', hyperlinkedResponse);
-          // }
-      // }
+      hyperlinkedResponse = await insertBacklinks(backlinkArray.join(', '), hyperlinkedResponse);
+      console.log('updated hyperlinked response', hyperlinkedResponse);
       
       setResponse(hyperlinkedResponse);
       
-      // const response = await callOpenAI(inputData);
-      // console.log('OpenAI API Response:', response);
-      // const response = await addBacklinks(response);
-
       setLoadingFirstRequest(false);
       setLoadingSecondRequest(false);
       setLoadingThirdRequest(false);
@@ -181,7 +174,7 @@ const Form: React.FC = () => {
             <br></br>
             Step 2:
             <br></br>
-            `${step2Text}`
+            {`${step2Text}`}
             </div>
         ) : isLoadingThirdRequest ? (
           <div style={{ textAlign: 'center', padding: 16, margin: 'auto', maxWidth: 750, background: 'rgb(250 250 250)' }}>
@@ -215,9 +208,24 @@ const Form: React.FC = () => {
           )} 
           <br />
           <Button variant="outlined" startIcon={<ArrowBack />} onClick={handleBackState}>Go Back</Button>
-          <Button variant="outlined" startIcon={<Edit />} onClick={openEditor}>Edit Content</Button>
-          <Button variant="outlined" startIcon={<ContentCopy />}>Copy Content</Button>
-          <Button variant="outlined" startIcon={<Send />} type="submit">Post article to PBN</Button>
+          <br /><br />
+          { !isEditingState &&
+          (
+            <div>
+            <Button variant="outlined" startIcon={<Edit />} onClick={openEditor}>Edit Content</Button>
+            <br /><br />
+            <CopyToClipboardButton text={response} />  
+            <br />
+            <Button variant="contained" color="success" startIcon={<Send />} type="submit">Post article to PBN</Button>
+            </div>
+          )}
+          { isEditingState && (
+            
+    
+            <Button variant="outlined" startIcon={<Edit />} onClick={() => saveEditor(stateToHTML(editorState.getCurrentContent()))}>Save Content</Button>
+          )}
+
+
         </div>
         ) : (
           <form onSubmit={handleSubmit}>

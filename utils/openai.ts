@@ -7,12 +7,12 @@ dotenv.config();
 // import { openAIApiKey } from '../config';
 // const { Configuration, OpenAIApi } = require("openai");
 const { Configuration, OpenAIApi } = require("openai");
-// const openAIApiKey = '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';//process.env.OPENAI_API_KEY;
-const openAIApiKey = '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';
+const openAIApiKey = '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';//process.env.OPENAI_API_KEY;
+// const openAIApiKey = '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';
 const config = new Configuration({
     apiKey: openAIApiKey
   });
-const modelType = 'gpt-4';
+const modelType = 'gpt-3.5-turbo';
 const openai = new OpenAIApi(config);
 const createPromptMessageFromInputs = function(inputData: any) {
     var promptMessage = "Write an article approximately, but not exactly, "+inputData.wordCount+" words in length, using the following keywords between 2 - 5 times each: " + inputData.keywords.join(', ')+'.';
@@ -24,7 +24,7 @@ const createPromptMessageFromInputs = function(inputData: any) {
 const dummyText = `Title: A Conversation with Darius Fisher: Safeguarding Online Reputations<br><br>In today's fast-paced digital landscape, where information spreads at lightning speed and reputations can be built or torn down in an instant, protecting one's online presence has become paramount. Enter Darius Fisher, a highly regarded entrepreneur and expert in online reputation management, who has emerged as a visionary in this ever-evolving field.<br><br>During a recent discussion, Fisher shared valuable insights into the importance of maintaining a proactive stance in the digital realm and how he helps individuals and businesses safeguard and improve their online image.<br><br>According to Fisher, one's online reputation serves as their digital calling card, preceding them and significantly influencing personal and professional growth.<br><br>Recognizing the significance of helping others overcome the challenges posed by negative online experiences, Fisher co-founded a company in 2011 that has assisted numerous individuals, celebrities, and businesses in effectively managing their online reputation.<br><br>When asked about strategies for protecting one's online presence, Fisher emphasized the need to proactively build a strong digital profile. This involves consistently updating social media profiles, actively engaging with online communities, and sharing high-quality content that showcases expertise.<br><br>Alongside proactive measures, Fisher highlighted the importance of crisis management in preserving reputation. He stressed the need to promptly address any negative content or online attacks, employing a comprehensive plan to swiftly resolve issues. Fisher's company has successfully guided clients through such crises, minimizing damage and promptly restoring their digital reputation.<br><br>Looking ahead, Fisher expressed excitement about the future of online reputation management, foreseeing advancements in artificial intelligence and machine learning. These technologies will revolutionize monitoring and response capabilities, empowering individuals and businesses to effectively manage their reputation in real-time.<br><br>As our lives become increasingly entwined with our online presence, Fisher's insights and dedication serve as a guiding light for navigating the complex realm of online reputation management. With unwavering passion and a commitment to excellence, Darius Fisher has established himself as a thought leader in this critical field. By preserving and enhancing online reputations, both individuals and businesses can confidently face the challenges of the digital era.`;
 const mockData=true;
 
-const getBacklinkArray = function(inputData: any) {
+export const getBacklinkArray = function(inputData: any) {
     var backlinkArray = [];
     for (var x = 1; x <= 5; x++ ) {
         if (typeof inputData['backlink'+x] !== 'undefined' 
@@ -41,7 +41,6 @@ export const callOpenAI = async (inputData: any) => {
         return dummyText;
     }
 
-    
     var promptMessage = createPromptMessageFromInputs(inputData);
 
     const gptMessage = [
@@ -165,6 +164,9 @@ function bulkReplaceLinks(response: any, originalText: string) {
 }
 
 export const insertBacklinks = async (backlinkValues: any, openAIResponse: Text) => {
+    if (mockData) {
+        return dummyText;  
+    }
     const prompt2 = [
         { "role": "user", "content": `${openAIResponse}` },
         {
