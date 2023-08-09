@@ -9,7 +9,7 @@ import Image from 'next/image';
 import Button from '@mui/material/Button';
 import Checkbox from '@mui/material/Checkbox';
 // import BackIcon from '@mui/icons-material/Back';
-import { Send, ArrowBack, ContentCopy, Edit, Snackbar } from '@mui/icons-material';
+import { Send, ArrowBack, ContentCopy, Edit } from '@mui/icons-material';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import FormControl from '@mui/material/FormControl';
 import FormGroup from '@mui/material/FormGroup';
