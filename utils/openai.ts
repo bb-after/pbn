@@ -3,11 +3,11 @@
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { mock } from 'node:test';
-dotenv.config();
 // import { openAIApiKey } from '../config';
 // const { Configuration, OpenAIApi } = require("openai");
 const { Configuration, OpenAIApi } = require("openai");
-const openAIApiKey = process.env.OPENAI_API_KEY;
+const openAIApiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+console.log(process.env.NEXT_PUBLIC_OPENAI_API_KEY);
 //process.env.OPENAI_API_KEY;
 // const openAIApiKey = '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';
 const config = new Configuration({
