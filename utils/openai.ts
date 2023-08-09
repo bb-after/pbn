@@ -7,7 +7,8 @@ dotenv.config();
 // import { openAIApiKey } from '../config';
 // const { Configuration, OpenAIApi } = require("openai");
 const { Configuration, OpenAIApi } = require("openai");
-const openAIApiKey = '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';//process.env.OPENAI_API_KEY;
+const openAIApiKey = process.env.OPENAI_API_KEY;
+//process.env.OPENAI_API_KEY;
 // const openAIApiKey = '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';
 const config = new Configuration({
     apiKey: openAIApiKey
@@ -165,7 +166,7 @@ function bulkReplaceLinks(response: any, originalText: string) {
 
 export const insertBacklinks = async (backlinkValues: any, openAIResponse: Text) => {
     if (mockData) {
-        return dummyText;  
+        // return dummyText;
     }
     const prompt2 = [
         { "role": "user", "content": `${openAIResponse}` },
