@@ -73,7 +73,7 @@ export const callOpenAI = async (inputData: any) => {
 
 };
 
-export const callOpenAIRevised = async (inputData: any, openAIResponse: object) => {
+export const callOpenAIRevised = async (inputData: any, openAIResponse: any) => {
     if (mockData) {
         return dummyText;
     }
