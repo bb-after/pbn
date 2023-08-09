@@ -164,7 +164,7 @@ function bulkReplaceLinks(response: any, originalText: string) {
     return content;
 }
 
-export const insertBacklinks = async (backlinkValues: any, openAIResponse: Text) => {
+export const insertBacklinks = async (backlinkValues: any, openAIResponse: string) => {
     if (mockData) {
         // return dummyText;
     }
