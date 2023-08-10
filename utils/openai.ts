@@ -36,7 +36,7 @@ export const getBacklinkArray = function(inputData: any) {
 
 /*** openapi code start */
 export const callOpenAI = async (inputData: any) => {
-    if (mockData) {
+    if (mockData === '1') {
         console.log('mockData = '+mockData+'.  Returning dummyText');
         return dummyText;
     }
@@ -77,7 +77,7 @@ export const callOpenAIRevised = async (inputData: any, openAIResponse: any) => 
         console.log('skipping revision!', openAIResponse);
         return openAIResponse;
     }
-    if (mockData) {
+    if (mockData === '1') {
         console.log('mockData = '+mockData+'.  Returning dummyText for openAiRevised');
         return dummyText;
     }
@@ -279,7 +279,7 @@ export const insertBacklinks = async (backlinkValues: any, openAIResponse: strin
 
         };
 
-        if (mockData) {
+        if (mockData === '1') {
             const response = `"https://zillow.com": {"text": "[protecting one\'s online presence]", "sentence": "In today\'s fast-paced digital landscape, where information spreads at lightning speed and reputations can be built or torn down in an instant, protecting one\'s online presence has become paramount."}`;
             return bulkReplaceLinks(response, dummyText);
         }
