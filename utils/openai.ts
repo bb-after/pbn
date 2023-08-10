@@ -204,6 +204,7 @@ function parseResponse(response: string, originalText: string | undefined)
 
 function bulkReplaceLinks(response: any, originalText: string) {
 
+    // @TODO - make these unit test scenarios.
     // const response1 = `"https://zillow.com": {"text": "[online reputation management]", "sentence": "Enter Darius Fisher, a highly regarded entrepreneur and expert in online reputation management, who has emerged as a visionary in this ever-evolving field."};`
     // const response2 = "'https://zillow.com': {'text': '[protecting one\'s online presence]', 'sentence': 'In today\'s fast-paced digital landscape, where information spreads at lightning speed and reputations can be built or torn down in an instant, protecting one\'s online presence has become paramount.'}";    
     // const response3 = "\"https://zillow.com\": {'text': '[protecting one's online presence]', 'sentence': 'In today's fast-paced digital landscape, where information spreads at lightning speed and reputations can be built or torn down in an instant, protecting one's online presence has become paramount.'}";    
@@ -219,7 +220,6 @@ function bulkReplaceLinks(response: any, originalText: string) {
     for (const [url, {text, sentence}] of Object.entries(parsedObject)) {
         // Remove square brackets from the text
         const cleanedText = text.replace(/^\[|\]$/g, "");
-        
         const hyperlink = `<a href="${url}">${cleanedText}</a>`;
         
         // Adjust the sentence to account for the removed brackets
