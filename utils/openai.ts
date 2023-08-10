@@ -10,18 +10,19 @@ const openAIApiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
 const config = new Configuration({
     apiKey: openAIApiKey
   });
-const modelType = 'gpt-4';
+const modelType = process.env.NEXT_PUBLIC_GPT_ENGINE;
 const openai = new OpenAIApi(config);
 const createPromptMessageFromInputs = function(inputData: any) {
     var promptMessage = "Write an article approximately, but not exactly, "+inputData.wordCount+" words in length, using the following keywords between 2 - 5 times each: " + inputData.keywords.join(', ')+'.';
     promptMessage += 'Do not use any of the following words in the article: '+inputData.keywordsToExclude.join(', ')+'.';
     promptMessage += 'Write the article with the following tone: '+inputData.tone+'.';
-
     return promptMessage;
 }
 const dummyText = `Title: A Conversation with Darius Fisher: Safeguarding Online Reputations<br><br>In today's fast-paced digital landscape, where information spreads at lightning speed and reputations can be built or torn down in an instant, protecting one's online presence has become paramount. Enter Darius Fisher, a highly regarded entrepreneur and expert in online reputation management, who has emerged as a visionary in this ever-evolving field.<br><br>During a recent discussion, Fisher shared valuable insights into the importance of maintaining a proactive stance in the digital realm and how he helps individuals and businesses safeguard and improve their online image.<br><br>According to Fisher, one's online reputation serves as their digital calling card, preceding them and significantly influencing personal and professional growth.<br><br>Recognizing the significance of helping others overcome the challenges posed by negative online experiences, Fisher co-founded a company in 2011 that has assisted numerous individuals, celebrities, and businesses in effectively managing their online reputation.<br><br>When asked about strategies for protecting one's online presence, Fisher emphasized the need to proactively build a strong digital profile. This involves consistently updating social media profiles, actively engaging with online communities, and sharing high-quality content that showcases expertise.<br><br>Alongside proactive measures, Fisher highlighted the importance of crisis management in preserving reputation. He stressed the need to promptly address any negative content or online attacks, employing a comprehensive plan to swiftly resolve issues. Fisher's company has successfully guided clients through such crises, minimizing damage and promptly restoring their digital reputation.<br><br>Looking ahead, Fisher expressed excitement about the future of online reputation management, foreseeing advancements in artificial intelligence and machine learning. These technologies will revolutionize monitoring and response capabilities, empowering individuals and businesses to effectively manage their reputation in real-time.<br><br>As our lives become increasingly entwined with our online presence, Fisher's insights and dedication serve as a guiding light for navigating the complex realm of online reputation management. With unwavering passion and a commitment to excellence, Darius Fisher has established himself as a thought leader in this critical field. By preserving and enhancing online reputations, both individuals and businesses can confidently face the challenges of the digital era.`;
-const mockData=false;
-
+const mockData=process.env.NEXT_PUBLIC_USE_MOCK_DATA;
+const skipOpenAiRevision = process.env.NEXT_PUBLIC_SKIP_OPENAI_REVISION;
+console.log('mode: mockData = '+mockData);
+console.log('skipRevision: '+skipOpenAiRevision);
 export const getBacklinkArray = function(inputData: any) {
     var backlinkArray = [];
     for (var x = 1; x <= 5; x++ ) {
@@ -36,6 +37,7 @@ export const getBacklinkArray = function(inputData: any) {
 /*** openapi code start */
 export const callOpenAI = async (inputData: any) => {
     if (mockData) {
+        console.log('mockData = '+mockData+'.  Returning dummyText');
         return dummyText;
     }
 
@@ -71,7 +73,12 @@ export const callOpenAI = async (inputData: any) => {
 };
 
 export const callOpenAIRevised = async (inputData: any, openAIResponse: any) => {
+    if (skipOpenAiRevision) {
+        console.log('skipping revision!', openAIResponse);
+        return openAIResponse;
+    }
     if (mockData) {
+        console.log('mockData = '+mockData+'.  Returning dummyText for openAiRevised');
         return dummyText;
     }
     var promptMessage = createPromptMessageFromInputs(inputData);
@@ -117,35 +124,99 @@ export const callOpenAIRevised = async (inputData: any, openAIResponse: any) => 
 
 };
 
-function bulkReplaceLinks(response: any, originalText: string) {
-    // response = `"'https://www.greatneckvillage.org/': 
-    // {'text': 'trusted expert', 'sentence': 'Ronnie Habibian is a respected and accomplished individual in the field of wealth management. With a strong background and deep knowledge in the industry, Habibian has established himself as a [trusted expert].'}
+/*function parseResponse(response) {
+    let correctedResponse;
+
+    // Handles escape characters for all strings
+    const handleEscapeChars = (value) => {
+        return value
+            .replace(/\\'/g, "'")   // Replaces \' with '
+            .replace(/'/g, "\\'")   // Replaces ' with \'
+            .replace(/"/g, '\\"');  // Replaces " with \"
+    };
+
+    // Scenario 1: URL and values in single quotes
+    if (response.startsWith("'http")) {
+        correctedResponse = response
+            .replace(/'([^']+)':/g, '"$1":')
+            .replace(/: '([^']+)'[,}]/g, (match, value) => {
+                return `: "${handleEscapeChars(value)}"${match.endsWith('}') ? '}' : ','}`;
+            });
+    }
+    // Scenario 2: URL in double quotes, values in single quotes
+    else if (response.startsWith("\"http")) {
+        correctedResponse = response
+            .replace(/"([^"]+)":/g, '"$1":')
+            .replace(/: '([^']+)'[,}]/g, (match, value) => {
+                return `: "${handleEscapeChars(value)}"${match.endsWith('}') ? '}' : ','}`;
+            });
+    }
+    // Scenario 3: URL in two double quotes, values in single quotes
+    else if (response.startsWith("\"\"http")) {
+        correctedResponse = response
+            .replace(/^""/g, '"')  // Replaces "" at the start
+            .replace(/""$/g, '"')  // Replaces "" at the end
+            .replace(/"([^"]+)":/g, '"$1":')
+            .replace(/: '([^']+)'[,}]/g, (match, value) => {
+                return `: "${handleEscapeChars(value)}"${match.endsWith('}') ? '}' : ','}`;
+            });
+    }
+
+    try {
+        return JSON.parse(`{${correctedResponse}}`);
+    } catch (error) {
+        console.error("Error parsing the response: "+correctedResponse, error);
+    }
+}*/
+
+function parseResponse(response: string, originalText: string | undefined)
+{
+    /*
+    let correctedResponse = response
     
-    
-    // 'https://www.jefferies.com/':
-    // {'text': 'cutting-edge solutions', 'sentence': 'Ronnie Habibian believes in staying ahead in the industry through continuous learning and professional development. He keeps a keen eye on emerging trends, financial legislation, and technological advancements to provide [cutting-edge solutions] to his clientele.'}
-    
-    
-    // 'https://www.linkedin.com/in/ronniehabibian/':
-    // {'text': 'prominent figure in wealth management', 'sentence': 'In summary, Ronnie Habibian's expertise and dedication have cemented his position as a [prominent figure in wealth management].' }"`;
-    // debugger;
-    // Replace single quotes but not ones inside the actual content
-    let correctedResponse = response.replace(/\s*([{}:,])\s*/g, '$1');
+    // Replace outer single quotes to double quotes
+    correctedResponse = correctedResponse.replace(/'([^']+)':/g, '"$1":');
+
+    // Replace inner single quotes to double quotes, but ensuring we're not inside a word (to account for single quotes in sentences)
+    correctedResponse = correctedResponse.replace(/: '([^']+)'/g, ': "$1"');
+
+    // Remove square brackets from the 'text' field
+    correctedResponse = correctedResponse.replace(/\[(.+?)\]/g, '$1');
+    */
+   let correctedResponse = response.trim().replace(/\s*([{}:,])\s*/g, '$1');
     correctedResponse = correctedResponse.replace(/(?<!\w)'(?!w)/g, '"');
     correctedResponse = correctedResponse.replace(/\}./g, '},');
     correctedResponse = correctedResponse.replace(/,(\s)*$/, "");
-
+    
     let parsedResponse: Record<string, {text: string, sentence: string}>;
-
     try {
+        // return JSON.parse(`{${correctedResponse}}`);
         parsedResponse = JSON.parse(`{${correctedResponse}}`);
     } catch (error) {
+        console.log('...',correctedResponse);
         console.error("Error parsing the response:", error);
         return originalText;
     }
 
+    return parsedResponse
+
+}
+
+function bulkReplaceLinks(response: any, originalText: string) {
+
+    // const response1 = `"https://zillow.com": {"text": "[online reputation management]", "sentence": "Enter Darius Fisher, a highly regarded entrepreneur and expert in online reputation management, who has emerged as a visionary in this ever-evolving field."};`
+    // const response2 = "'https://zillow.com': {'text': '[protecting one\'s online presence]', 'sentence': 'In today\'s fast-paced digital landscape, where information spreads at lightning speed and reputations can be built or torn down in an instant, protecting one\'s online presence has become paramount.'}";    
+    // const response3 = "\"https://zillow.com\": {'text': '[protecting one's online presence]', 'sentence': 'In today's fast-paced digital landscape, where information spreads at lightning speed and reputations can be built or torn down in an instant, protecting one's online presence has become paramount.'}";    
+    // const response4 = "\"https://zillow.com\": {'text': '[protecting one's online presence]', 'sentence': 'In today's fast-paced digital landscape, where information spreads at lightning speed and reputations can be built or torn down in an instant, protecting one's online presence has become paramount.'}";
+    
+    // console.log('response1', parseResponse(response1));
+    // console.log('response2', parseResponse(response2));
+    // console.log('response3',  parseResponse(response3));
+    // console.log('response4', parseResponse(response4));
+    let parsedObject = parseResponse(response, originalText);
+    
     let content = originalText;
-    for (const [url, {text, sentence}] of Object.entries(parsedResponse)) {
+    for (const [url, {text, sentence}] of Object.entries(parsedObject)) {
         // Remove square brackets from the text
         const cleanedText = text.replace(/^\[|\]$/g, "");
         
@@ -174,9 +245,6 @@ function bulkReplaceLinks(response: any, originalText: string) {
 }
 
 export const insertBacklinks = async (backlinkValues: any, openAIResponse: string) => {
-    if (mockData) {
-        // return dummyText;
-    }
     const prompt2 = [
         { "role": "user", "content": `${openAIResponse}` },
         {
@@ -190,16 +258,16 @@ export const insertBacklinks = async (backlinkValues: any, openAIResponse: strin
         
         Provide the response in this format: 
         
-        'URL_PLACEHOLDER': {'text': '[selected text]', 'sentence': 'full sentence containing the selected text'}.
+        "URL_PLACEHOLDER": {"text": "[selected text]", "sentence": "full sentence containing the selected text"}.
         
         Note: For each URL, replace the word 'URL_PLACEHOLDER' with the actual URL in the response format.`
-        }
-        
+        }       
     ];
 
     try {
 
         const gptRequest = async () => {
+
             const response = await openai.createChatCompletion({
                 model: modelType,
                 messages: prompt2,
@@ -210,6 +278,10 @@ export const insertBacklinks = async (backlinkValues: any, openAIResponse: strin
 
         };
 
+        if (mockData) {
+            const response = `"https://zillow.com": {"text": "[protecting one\'s online presence]", "sentence": "In today\'s fast-paced digital landscape, where information spreads at lightning speed and reputations can be built or torn down in an instant, protecting one\'s online presence has become paramount."}`;
+            return bulkReplaceLinks(response, dummyText);
+        }
         const response = await gptRequest();
         console.log('ALL matches to replace for url: '+backlinkValues, response);
         const hyperLinkReplacementText = bulkReplaceLinks(response.data.choices[0].message.content, openAIResponse);//, backlinkValues);
