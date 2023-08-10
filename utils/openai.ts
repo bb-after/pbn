@@ -217,7 +217,17 @@ function bulkReplaceLinks(response: any, originalText: string) {
     let parsedObject = parseResponse(response, originalText);
     let content = originalText;
     if (parsedObject && typeof parsedObject === 'object') {
-        console.log("i made it here? ", parsedObject);
+        debugger;
+        console.log('bulkReplaceLinks - response', response);
+        console.log('bulkReplaceLinks - originalText', originalText);
+        console.log("bulkReplaceLinks - i made it here? ", parsedObject);
+        parsedObject = {
+            "URL_PLACEHOLDER": {
+                "text": "[https://statuslabs.com]",
+                "sentence": "Learn more about online reputation management and digital marketing services on [https://statuslabs.com]."
+            }
+        };
+
         for (const [url, {text, sentence}] of Object.entries(parsedObject)) {
             if (typeof text !== 'undefined') {
                 // Remove square brackets from the text
@@ -226,7 +236,9 @@ function bulkReplaceLinks(response: any, originalText: string) {
                 
                 // Adjust the sentence to account for the removed brackets
                 const modifiedSentence = sentence.replace(cleanedText, hyperlink); // Note the change here
+                if (typeof content !== 'string') {
 
+                }
                 // Attempt to replace the entire sentence with the modifiedSentence
                 if (content.includes(sentence)) {
                     content = content.replace(sentence, modifiedSentence);
