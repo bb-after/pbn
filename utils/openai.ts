@@ -195,10 +195,10 @@ function parseResponse(response: string, originalText: string | undefined)
     } catch (error) {
         console.log('...',correctedResponse);
         console.error("Error parsing the response:", error);
-        return originalText;
+        return response;
     }
 
-    return parsedResponse
+    return parsedResponse;
 
 }
 
@@ -217,25 +217,28 @@ function bulkReplaceLinks(response: any, originalText: string) {
     let parsedObject = parseResponse(response, originalText);
     let content = originalText;
     if (parsedObject && typeof parsedObject === 'object') {
+        console.log("i made it here? ", parsedObject);
         for (const [url, {text, sentence}] of Object.entries(parsedObject)) {
-            // Remove square brackets from the text
-            const cleanedText = text.replace(/^\[|\]$/g, "");
-            const hyperlink = `<a href="${url}">${cleanedText}</a>`;
-            
-            // Adjust the sentence to account for the removed brackets
-            const modifiedSentence = sentence.replace(cleanedText, hyperlink); // Note the change here
+            if (typeof text !== 'undefined') {
+                // Remove square brackets from the text
+                const cleanedText = text.replace(/^\[|\]$/g, "");
+                const hyperlink = `<a href="${url}">${cleanedText}</a>`;
+                
+                // Adjust the sentence to account for the removed brackets
+                const modifiedSentence = sentence.replace(cleanedText, hyperlink); // Note the change here
 
-            // Attempt to replace the entire sentence with the modifiedSentence
-            if (content.includes(sentence)) {
-                content = content.replace(sentence, modifiedSentence);
-            } else {
-                // Fallback approach: Find an occurrence of the `cleanedText` which isn't wrapped in an <a> tag and replace it
-                const regex = new RegExp(`(?<!<a [^>]+>)${cleanedText}(?!</a>)`, "i");
-                const match = content.match(regex);
-                if (match) {
-                    content = content.replace(match[0], hyperlink);
+                // Attempt to replace the entire sentence with the modifiedSentence
+                if (content.includes(sentence)) {
+                    content = content.replace(sentence, modifiedSentence);
                 } else {
-                    console.error(`Failed to hyperlink '${cleanedText}' as it was not found unwrapped in the content.`);
+                    // Fallback approach: Find an occurrence of the `cleanedText` which isn't wrapped in an <a> tag and replace it
+                    const regex = new RegExp(`(?<!<a [^>]+>)${cleanedText}(?!</a>)`, "i");
+                    const match = content.match(regex);
+                    if (match) {
+                        content = content.replace(match[0], hyperlink);
+                    } else {
+                        console.error(`Failed to hyperlink '${cleanedText}' as it was not found unwrapped in the content.`);
+                    }
                 }
             }
         }
@@ -279,13 +282,14 @@ export const insertBacklinks = async (backlinkValues: any, openAIResponse: strin
 
         };
 
-        if (mockData === '1') {
-            const response = `"https://zillow.com": {"text": "[protecting one\'s online presence]", "sentence": "In today\'s fast-paced digital landscape, where information spreads at lightning speed and reputations can be built or torn down in an instant, protecting one\'s online presence has become paramount."}`;
-            return bulkReplaceLinks(response, dummyText);
-        }
+        // if (mockData === '1') {
+            const mockResponse = "\"URL_PLACEHOLDER\": {\"text\": \"[https://www.linkedin.com/in/jesseboskoff/]\", \"sentence\": \"Visit Jesse Boskoff's profile on [https://www.linkedin.com/in/jesseboskoff/] for more information about his professional experience and skills.\"},\n\n\"URL_PLACEHOLDER\": {\"text\": \"[https://statuslabs.com]\", \"sentence\": \"Learn more about online reputation management and digital marketing services on [https://statuslabs.com].\"}";
+            // const response = `"https://zillow.com": {"text": "[protecting one\'s online presence]", "sentence": "In today\'s fast-paced digital landscape, where information spreads at lightning speed and reputations can be built or torn down in an instant, protecting one\'s online presence has become paramount."}`;
+            // return bulkReplaceLinks(mockResponse, dummyText);
+        // }
         const response = await gptRequest();
         console.log('ALL matches to replace for url: '+backlinkValues, response);
-        const hyperLinkReplacementText = bulkReplaceLinks(response.data.choices[0].message.content, openAIResponse);//, backlinkValues);
+        const hyperLinkReplacementText = bulkReplaceLinks(mockResponse, openAIResponse);//, backlinkValues);
         //now add the hyperlinks
         return hyperLinkReplacementText;
     } catch (error) {
