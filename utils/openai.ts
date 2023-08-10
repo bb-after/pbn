@@ -215,27 +215,28 @@ function bulkReplaceLinks(response: any, originalText: string) {
     // console.log('response3',  parseResponse(response3));
     // console.log('response4', parseResponse(response4));
     let parsedObject = parseResponse(response, originalText);
-    
     let content = originalText;
-    for (const [url, {text, sentence}] of Object.entries(parsedObject)) {
-        // Remove square brackets from the text
-        const cleanedText = text.replace(/^\[|\]$/g, "");
-        const hyperlink = `<a href="${url}">${cleanedText}</a>`;
-        
-        // Adjust the sentence to account for the removed brackets
-        const modifiedSentence = sentence.replace(cleanedText, hyperlink); // Note the change here
+    if (parsedObject && typeof parsedObject === 'object') {
+        for (const [url, {text, sentence}] of Object.entries(parsedObject)) {
+            // Remove square brackets from the text
+            const cleanedText = text.replace(/^\[|\]$/g, "");
+            const hyperlink = `<a href="${url}">${cleanedText}</a>`;
+            
+            // Adjust the sentence to account for the removed brackets
+            const modifiedSentence = sentence.replace(cleanedText, hyperlink); // Note the change here
 
-        // Attempt to replace the entire sentence with the modifiedSentence
-        if (content.includes(sentence)) {
-            content = content.replace(sentence, modifiedSentence);
-        } else {
-            // Fallback approach: Find an occurrence of the `cleanedText` which isn't wrapped in an <a> tag and replace it
-            const regex = new RegExp(`(?<!<a [^>]+>)${cleanedText}(?!</a>)`, "i");
-            const match = content.match(regex);
-            if (match) {
-                content = content.replace(match[0], hyperlink);
+            // Attempt to replace the entire sentence with the modifiedSentence
+            if (content.includes(sentence)) {
+                content = content.replace(sentence, modifiedSentence);
             } else {
-                console.error(`Failed to hyperlink '${cleanedText}' as it was not found unwrapped in the content.`);
+                // Fallback approach: Find an occurrence of the `cleanedText` which isn't wrapped in an <a> tag and replace it
+                const regex = new RegExp(`(?<!<a [^>]+>)${cleanedText}(?!</a>)`, "i");
+                const match = content.match(regex);
+                if (match) {
+                    content = content.replace(match[0], hyperlink);
+                } else {
+                    console.error(`Failed to hyperlink '${cleanedText}' as it was not found unwrapped in the content.`);
+                }
             }
         }
     }
