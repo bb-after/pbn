@@ -220,6 +220,9 @@ function bulkReplaceLinks(response: any, originalText: string) {
     // console.log('response2', parseResponse(response2));
     // console.log('response3',  parseResponse(response3));
     // console.log('response4', parseResponse(response4));
+    if (typeof response === 'object') {
+        response = response.data.choices[0].message.content;
+    }
     let parsedObject = parseResponse(response, originalText);
     let content = originalText;
     if (parsedObject && typeof parsedObject === 'object') {
@@ -227,12 +230,12 @@ function bulkReplaceLinks(response: any, originalText: string) {
         console.log('bulkReplaceLinks - response', response);
         console.log('bulkReplaceLinks - originalText', originalText);
         console.log("bulkReplaceLinks - i made it here? ", parsedObject);
-        parsedObject = {
-            "URL_PLACEHOLDER": {
-                "text": "[https://statuslabs.com]",
-                "sentence": "Learn more about online reputation management and digital marketing services on [https://statuslabs.com]."
-            }
-        };
+        // parsedObject = {
+        //     "URL_PLACEHOLDER": {
+        //         "text": "[https://statuslabs.com]",
+        //         "sentence": "Learn more about online reputation management and digital marketing services on [https://statuslabs.com]."
+        //     }
+        // };
 
         for (const [url, {text, sentence}] of Object.entries(parsedObject)) {
             if (typeof text !== 'undefined') {
