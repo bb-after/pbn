@@ -81,7 +81,7 @@ export const callOpenAI = async (inputData: any) => {
 export const callOpenAIRevised = async (inputData: any, openAIResponse: any) => {
     if (skipOpenAiRevision) {
         console.log('skipping revision!', openAIResponse);
-        return openAIResponse.data.choices[0].message.content;
+        return openAIResponse.data.choices[0].message.content.replace(/\n/g, '<br>');
     }
     if (mockData === '1') {
         console.log('mockData = '+mockData+'.  Returning dummyText for openAiRevised');
