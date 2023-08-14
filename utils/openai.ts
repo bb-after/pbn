@@ -75,7 +75,7 @@ export const callOpenAI = async (inputData: any) => {
 export const callOpenAIRevised = async (inputData: any, openAIResponse: any) => {
     if (skipOpenAiRevision) {
         console.log('skipping revision!', openAIResponse);
-        return openAIResponse;
+        return openAIResponse.data.choices[0].message.content;
     }
     if (mockData === '1') {
         console.log('mockData = '+mockData+'.  Returning dummyText for openAiRevised');
@@ -295,13 +295,13 @@ export const insertBacklinks = async (backlinkValues: any, openAIResponse: strin
         };
 
         // if (mockData === '1') {
-            const mockResponse = "\"URL_PLACEHOLDER\": {\"text\": \"[https://www.linkedin.com/in/jesseboskoff/]\", \"sentence\": \"Visit Jesse Boskoff's profile on [https://www.linkedin.com/in/jesseboskoff/] for more information about his professional experience and skills.\"},\n\n\"URL_PLACEHOLDER\": {\"text\": \"[https://statuslabs.com]\", \"sentence\": \"Learn more about online reputation management and digital marketing services on [https://statuslabs.com].\"}";
+            // const mockResponse = "\"URL_PLACEHOLDER\": {\"text\": \"[https://www.linkedin.com/in/jesseboskoff/]\", \"sentence\": \"Visit Jesse Boskoff's profile on [https://www.linkedin.com/in/jesseboskoff/] for more information about his professional experience and skills.\"},\n\n\"URL_PLACEHOLDER\": {\"text\": \"[https://statuslabs.com]\", \"sentence\": \"Learn more about online reputation management and digital marketing services on [https://statuslabs.com].\"}";
             // const response = `"https://zillow.com": {"text": "[protecting one\'s online presence]", "sentence": "In today\'s fast-paced digital landscape, where information spreads at lightning speed and reputations can be built or torn down in an instant, protecting one\'s online presence has become paramount."}`;
             // return bulkReplaceLinks(mockResponse, dummyText);
         // }
         const response = await gptRequest();
         console.log('ALL matches to replace for url: '+backlinkValues, response);
-        const hyperLinkReplacementText = bulkReplaceLinks(mockResponse, openAIResponse);//, backlinkValues);
+        const hyperLinkReplacementText = bulkReplaceLinks(response, openAIResponse);//, backlinkValues);
         //now add the hyperlinks
         return hyperLinkReplacementText;
     } catch (error) {
