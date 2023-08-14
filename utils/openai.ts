@@ -189,7 +189,7 @@ function parseResponse(response: string, originalText: string | undefined)
     // Remove square brackets from the 'text' field
     correctedResponse = correctedResponse.replace(/\[(.+?)\]/g, '$1');
     */
-   let correctedResponse = response.trim().replace(/\s*([{}:,])\s*/g, '$1');
+    let correctedResponse = response.trim().replace(/\s*([{}:])\s*/g, '$1');
     correctedResponse = correctedResponse.replace(/(?<!\w)'(?!w)/g, '"');
     correctedResponse = correctedResponse.replace(/\}./g, '},');
     correctedResponse = correctedResponse.replace(/,(\s)*$/, "");
