@@ -12,9 +12,15 @@ const config = new Configuration({
   });
 const modelType = process.env.NEXT_PUBLIC_GPT_ENGINE;
 const openai = new OpenAIApi(config);
+
+function trimKeywords(keywords: string[]): string[] {
+    return keywords.map(keyword => keyword.trim());
+}
+
 const createPromptMessageFromInputs = function(inputData: any) {
-    var promptMessage = "Write an article approximately, but not exactly, "+inputData.wordCount+" words in length, using the following keywords between 2 - 5 times each: " + inputData.keywords.join(', ')+'.';
-    promptMessage += 'Do not use any of the following words in the article: '+inputData.keywordsToExclude.join(', ')+'.';
+
+    var promptMessage = "Write an article approximately, but not exactly, "+inputData.wordCount+" words in length, using the following keywords between 2 - 5 times each: " + trimKeywords(inputData.keywords).join(', ')+'.';
+    promptMessage += 'Do not use any of the following words in the article: '+trimKeywords(inputData.keywordsToExclude).join(', ')+'.';
     promptMessage += 'Write the article with the following tone: '+inputData.tone+'.';
     return promptMessage;
 }
