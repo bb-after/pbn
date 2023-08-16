@@ -308,7 +308,7 @@ const Form: React.FC = () => {
               <TextField
                 label="Word Count"
                 value={wordCount}
-                onChange={(e) => setWordCount(e.target.value)}
+                onChange={(e) => setWordCount(Number(e.target.value))}
                 margin="normal"
                 type="number"
                 defaultValue={520}
@@ -320,7 +320,7 @@ const Form: React.FC = () => {
               <TextField
                 label="Article Count"
                 value={articleCount}
-                onChange={(e) => setArticleCount(e.target.value)}
+                onChange={(e) => setArticleCount(Number(e.target.value))}
                 margin="normal"
                 type="number"
                 defaultValue={3}
