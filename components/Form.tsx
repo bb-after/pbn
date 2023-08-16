@@ -24,7 +24,7 @@ import { stateToHTML } from 'draft-js-export-html';
 import { callOpenAI, callOpenAIRevised, insertBacklinks, getBacklinkArray } from '../utils/openai';
 import PeanutButterFactComponent from './PeanutButterFact';
 import BacklinkInputs from './BacklinkInputs';
-import PreviousResponseComponent from './previousResponse';
+import PreviousResponseComponent from './PreviousResponseComponent';
 // Dynamically load the RTE component (client-side) to prevent server-side rendering issues
 const Editor = dynamic(
   () => import('react-draft-wysiwyg').then((module) => module.Editor),
