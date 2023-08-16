@@ -35,7 +35,7 @@ const skipOpenAiRevision = process.env.NEXT_PUBLIC_SKIP_OPENAI_REVISION;
 const Form: React.FC = () => {
   const [backlinks, setBacklinks] = useState(['']); // Initial state with one input
   const [responses, setResponses] = useState<string[]>([]); // Store responses for each iteration
-  const [previousResponses, setPreviousResponses] = useState([]);
+  const [previousResponses, setPreviousResponses] = React.useState<string[]>([]);
   const [loadingStates, setLoadingStates] = useState<boolean[]>([]); // Loading state
   const [isLoadingFirstRequest, setLoadingFirstRequest] = useState(false);
   const [isLoadingSecondRequest, setLoadingSecondRequest] = useState(false);
@@ -86,7 +86,7 @@ const Form: React.FC = () => {
 
   const handleBackState = () => {
     if (response !== '') {
-      setPreviousResponses([...previousResponses, response]); // Save the current response before clearing
+      setPreviousResponses(prevResponses => [...prevResponses, response]);
     }
     setResponse('');
     setEditingState(false);
