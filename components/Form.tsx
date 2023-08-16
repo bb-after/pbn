@@ -45,6 +45,7 @@ const Form: React.FC = () => {
   const [title, setTitle] = useState('');
   const [keywords, setKeywords] = useState('');
   const [gptVersion, setGptVersion] = useState("gpt-3.5-turbo");
+  const [language, setLanguage] = useState("English");
   const [wordCount, setWordCount] = useState(300);
   const [keywordsToExclude, setKeywordsToExclude] = useState('');
   const [articleCount, setArticleCount] = useState(1);
@@ -124,6 +125,10 @@ const Form: React.FC = () => {
     setGptVersion(event.target.value as string);
   };
 
+  const handleLanguage = (event: SelectChangeEvent) => {
+    setLanguage(event.target.value as string);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
 
     e.preventDefault();
@@ -136,6 +141,7 @@ const Form: React.FC = () => {
       gptVersion: gptVersion,
       articleCount: articleCount,
       otherInstructions: otherInstructions,
+      language: language,
       // Dynamically generate backlinks properties
       ...backlinks.reduce<Record<string, string>>((acc, _, index) => {
         acc[`backlink${index + 1}`] = backlinks[index];
@@ -282,11 +288,12 @@ const Form: React.FC = () => {
    
           <br /><br />
 
-          <Button variant="outlined" startIcon={<ArrowBack />} onClick={handleBackState}>Go Back</Button>
-          <br /><br />
+
           { !isEditingState &&
           (
             <div>
+            <Button variant="outlined" startIcon={<ArrowBack />} onClick={handleBackState}>Go Back</Button>
+            <br /><br />
             <Button variant="outlined" startIcon={<Edit />} onClick={openEditor}>Edit Content</Button>
             <br /><br />
             <CopyToClipboardButton text={response} />  
@@ -295,8 +302,6 @@ const Form: React.FC = () => {
             </div>
           )}
           { isEditingState && (
-            
-    
             <Button variant="outlined" startIcon={<Edit />} onClick={() => saveEditor(stateToHTML(editorState.getCurrentContent()))}>Save Content</Button>
           )}
 
@@ -345,7 +350,7 @@ const Form: React.FC = () => {
               />
 
               <TextField
-                label="Keywords to Exclude"
+                label="Keywords to Exclude (Optional)"
                 value={keywordsToExclude}
                 onChange={(e) => setKeywordsToExclude(e.target.value)}
                 fullWidth
@@ -365,6 +370,22 @@ const Form: React.FC = () => {
                   >
                   <MenuItem value={"gpt-3.5-turbo"}>GPT 3.5 Turbo (faster)</MenuItem>
                   <MenuItem value={"gpt-4"}>GPT 4 (more advanced)</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+              <br /> <br />
+              <Box>
+                <FormControl>
+                  <InputLabel>Language</InputLabel>
+                  <Select
+                    autoWidth
+                    value={language}
+                    label="Language"
+                    onChange={handleLanguage}
+                  >
+                  <MenuItem value={"English"}>English</MenuItem>
+                  <MenuItem value={"German"}>German</MenuItem>
+                  <MenuItem value={"Spanish"}>Spanish</MenuItem>
                   </Select>
                 </FormControl>
               </Box>
@@ -457,7 +478,7 @@ const Form: React.FC = () => {
 
               <TextareaAutosize
                 minRows={4}
-                placeholder="Other Instructions"
+                placeholder="Other Instructions (optional)"
                 value={otherInstructions}
                 onChange={(e) => setOtherInstructions(e.target.value)}
                 style={{ width: '100%', marginTop: 20, fontFamily: 'Roboto', fontWeight: 400, fontSize: '1rem', padding: '0.5rem' }}
