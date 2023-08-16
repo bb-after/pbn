@@ -30,6 +30,7 @@ const Editor = dynamic(
   () => import('react-draft-wysiwyg').then((module) => module.Editor),
   { ssr: false }
 );
+const skipOpenAiRevision = process.env.NEXT_PUBLIC_SKIP_OPENAI_REVISION;
 
 const Form: React.FC = () => {
   const [backlinks, setBacklinks] = useState(['']); // Initial state with one input
@@ -248,7 +249,7 @@ const Form: React.FC = () => {
             alt=""
           />  
           <br></br>
-          Step 3:
+          Step {skipOpenAiRevision ? '2' : '3' }
           <br></br>
           Putting it together...
           </div>
@@ -289,7 +290,7 @@ const Form: React.FC = () => {
             <br /><br />
             <CopyToClipboardButton text={response} />  
             <br />
-            <Button variant="contained" color="success" startIcon={<Send />} type="submit">Post article to PBN</Button>
+            <Button variant="contained" disabled color="success" startIcon={<Send />} type="submit">Post article to PBN (coming soon)</Button>
             </div>
           )}
           { isEditingState && (
