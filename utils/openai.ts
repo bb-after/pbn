@@ -18,9 +18,10 @@ function trimKeywords(keywords: string[]): string[] {
 }
 
 const createPromptMessageFromInputs = function(inputData: any) {
-    var promptMessage = `Write an article approximately, but not exactly, "+inputData.wordCount+" words in length, using the following keywords: + ${trimKeywords(inputData.keywords).join(', ')}.
+    var promptMessage = `Write an article approximately, but not exactly, ${inputData.wordCount} words in length, using the following keywords: + ${trimKeywords(inputData.keywords).join(', ')}.
 
     - **Important**: The keywords should only be used between 2 - 5 times each.  Do not exceed this limit.
+    - Write the article in the following language: ${inputData.language}.
     - Do not use any of the following words in the articles: '+trimKeywords(inputData.keywordsToExclude).join(', ')+'.';
     - Write the article with the following tone: ${inputData.tone}.'`;
     return promptMessage;
@@ -48,11 +49,11 @@ export const callOpenAI = async (inputData: any) => {
         console.log('mockData = '+mockData+'.  Returning dummyText');
         return dummyText;
     }
-
+    debugger;
     var promptMessage = createPromptMessageFromInputs(inputData);
 
     const gptMessage = [
-        { "role": "system", "content": "I want you to act as a very proficient SEO and high-end copy writer that speaks and writes fluent English." },
+        { "role": "system", "content": `I want you to act as a very proficient SEO and high-end copy writer that speaks and writes fluent ${inputData.language}.` },
         { "role": "user", "content": "Assume the reader is already somewhat familiar with the keyword as a subject matter. Do not spend too much time defining or introducing the keyword as a concept or entity"},
         { "role": "user", "content": promptMessage },
     ];
@@ -91,7 +92,7 @@ export const callOpenAIRevised = async (inputData: any, openAIResponse: any) => 
 
     var promptMessage = createPromptMessageFromInputs(inputData);
     const gptMessageRevised = [
-        { "role": "system", "content": "I want you to act as a very proficient SEO and high-end copy writer that speaks and writes fluent English." },
+        { "role": "system", "content": `I want you to act as a very proficient SEO and high-end copy writer that speaks and writes fluent ${inputData.language}.` },
         // { "role": "user", "content": "Randomly choose one of the following bloggers and emulate that person's writing style.  Here is your list of authors to reference for all your articles: Arianna Huffington, Neil Patel, Rand Fishkin, Brian Clarke, Christene Barberich, Pete Cashmore, Stephen Totilo, Peter Rojas, Vani Hari, Leon Ho, Johnathan Van Ness, and Mitch Ratcliffe." },
         { "role": "user", "content": "Assume the reader is already somewhat familiar with the keyword as a subject matter. Do not spend too much time defining or introducing the keyword as a concept or entity"},
         { "role": "user", "content": promptMessage },
@@ -128,7 +129,45 @@ export const callOpenAIRevised = async (inputData: any, openAIResponse: any) => 
 
 };
 
-function parseResponse(response: string, originalText: string | undefined)
+export const transformAndParsePayload= function(payload: string): Record<string, { text: string; sentence: string }> | null {
+    try {
+      // Remove leading and trailing spaces and line breaks
+      const trimmedPayload = payload.trim();
+  
+      // Check if the payload is enclosed in curly braces
+      if (trimmedPayload.startsWith('{') && trimmedPayload.endsWith('}')) {
+        // Transform the payload: replace single quotes with double quotes
+        const transformedPayload = trimmedPayload
+          .replace(/'([^']+)'/g, '"$1"')
+          .replace(/'/g, '"');
+  
+        // Parse the transformed payload as JSON
+        const parsedPayload = JSON.parse(transformedPayload);
+  
+        // Ensure the parsed payload has the expected structure
+        if (typeof parsedPayload === 'object' && parsedPayload !== null) {
+          for (const key of Object.keys(parsedPayload)) {
+            if (
+              typeof parsedPayload[key] !== 'object' ||
+              parsedPayload[key] === null ||
+              !('text' in parsedPayload[key]) ||
+              !('sentence' in parsedPayload[key])
+            ) {
+              return null; // Return null if the structure is not as expected
+            }
+          }
+          return parsedPayload;
+        }
+      }
+  
+      return null; // Return null if the payload couldn't be parsed or the format is not supported
+    } catch (error) {
+      console.error('Error transforming and parsing payload:', error);
+      return null; // Return null in case of errors
+    }
+  }
+
+export const parseResponse = function(response: string)
 {
     /*
     // amongst other things:
@@ -136,11 +175,12 @@ function parseResponse(response: string, originalText: string | undefined)
     // Replace inner single quotes to double quotes, but ensuring we're not inside a word (to account for single quotes in sentences)
     // Remove square brackets from the 'text' field
     */
+   ;
     let correctedResponse = response.trim().replace(/\s*([{}:])\s*/g, '$1');
     correctedResponse = correctedResponse.replace(/(?<!\w)'(?!w)/g, '"');
     correctedResponse = correctedResponse.replace(/\}./g, '},');
     correctedResponse = correctedResponse.replace(/,(\s)*$/, "");
-    
+
     // let correctedResponse = response.replace(/(\w+:\/\/\S+)(?=\s*:)/g, '"$1"');
     // Ensure there's a comma between the objects
     // correctedResponse = correctedResponse.replace(/\}\s*"/g, '}, "');
@@ -173,7 +213,7 @@ function bulkReplaceLinks(response: any, originalText: string) {
     if (typeof response === 'object') {
         response = response.data.choices[0].message.content;
     }
-    let parsedObject = parseResponse(response, originalText);
+    let parsedObject = parseResponse(response);
     let content = originalText;
     if (parsedObject && typeof parsedObject === 'object') {
         // console.log('bulkReplaceLinks - response', response);
