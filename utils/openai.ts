@@ -141,6 +141,14 @@ function parseResponse(response: string, originalText: string | undefined)
     correctedResponse = correctedResponse.replace(/\}./g, '},');
     correctedResponse = correctedResponse.replace(/,(\s)*$/, "");
     
+    // let correctedResponse = response.replace(/(\w+:\/\/\S+)(?=\s*:)/g, '"$1"');
+    // Ensure there's a comma between the objects
+    // correctedResponse = correctedResponse.replace(/\}\s*"/g, '}, "');
+    
+    // Remove trailing commas if any (though this might not be necessary in this context)
+    // correctedResponse = correctedResponse.replace(/,(\s*)$/, "");
+
+
     let parsedResponse: Record<string, {text: string, sentence: string}>;
     try {
         parsedResponse = JSON.parse(`{${correctedResponse}}`);
