@@ -4,7 +4,13 @@ import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import DeleteIcon from '@mui/icons-material/Delete';
 
-const BacklinkInputs = ({ backlinks, setBacklinks }): React.JSX.Element => {
+interface BacklinkInputsProps {
+    backlinks: string[];  // Replace `YourBacklinksType` with the actual type of `backlinks`
+    setBacklinks: (newBacklinks: string[]) => void;  // Assuming `setBacklinks` is a state setter function
+  }
+  
+const BacklinkInputs: React.FC<BacklinkInputsProps> = ({ backlinks, setBacklinks }) => {    
+    // const BacklinkInputs = ({ backlinks, setBacklinks }): React.JSX.Element => {
 const addBacklink = () => {
     if (backlinks.length < 20) {
     setBacklinks([...backlinks, '']);
@@ -17,7 +23,7 @@ const removeBacklink = (index: number) => {
     setBacklinks(updatedBacklinks);
 };
 
-const updateBacklink = (index: string | number, value: string) => {
+const updateBacklink = (index: number, value: string) => {
     const updatedBacklinks = [...backlinks];
     updatedBacklinks[index] = value;
     setBacklinks(updatedBacklinks);
