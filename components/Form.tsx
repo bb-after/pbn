@@ -137,10 +137,11 @@ const Form: React.FC = () => {
       articleCount: articleCount,
       otherInstructions: otherInstructions,
       // Dynamically generate backlinks properties
-      ...backlinks.reduce((acc, _, index) => {
+      ...backlinks.reduce<Record<string, string>>((acc, _, index) => {
         acc[`backlink${index + 1}`] = backlinks[index];
         return acc;
-      }, {}),
+    }, {}),
+    
     };
 
       // setLoading(true);
