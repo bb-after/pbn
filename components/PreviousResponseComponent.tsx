@@ -1,6 +1,9 @@
 import React from 'react';
-
-const PreviousResponseComponent = ({ response }) => {
+interface PreviousResponseProps {
+    response: string;
+  }
+  
+const PreviousResponseComponent: React.FC<PreviousResponseProps> = ({ response }) => {
   return (
     <div>
       <h3>Previous Response</h3>
