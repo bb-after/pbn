@@ -5,11 +5,15 @@ import dynamic from 'next/dynamic'; // To load the RTE dynamically (client-side)
 import { EditorState, ContentState, convertFromHTML } from 'draft-js';
 import 'react-draft-wysiwyg/dist/react-draft-wysiwyg.css';
 import TextField from '@mui/material/TextField';
+import Select, { SelectChangeEvent } from '@mui/material/Select';
+import Box from '@mui/material/Box';
+import InputLabel from '@mui/material/InputLabel';
+import MenuItem from '@mui/material/MenuItem';
 import Image from 'next/image';
 import Button from '@mui/material/Button';
 import Checkbox from '@mui/material/Checkbox';
 // import BackIcon from '@mui/icons-material/Back';
-import { Send, ArrowBack, ContentCopy, Edit } from '@mui/icons-material';
+import { Send, ArrowBack, Edit, Download } from '@mui/icons-material';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import FormControl from '@mui/material/FormControl';
 import FormGroup from '@mui/material/FormGroup';
@@ -17,8 +21,9 @@ import FormLabel from '@mui/material/FormLabel';
 import TextareaAutosize from '@mui/material/TextareaAutosize';
 import CopyToClipboardButton from './CopyToClipboardButton'; // Replace with the correct path to your component
 import { stateToHTML } from 'draft-js-export-html';
-
 import { callOpenAI, callOpenAIRevised, insertBacklinks, getBacklinkArray } from '../utils/openai';
+import PeanutButterFactComponent from './PeanutButterFact';
+import BacklinkInputs from './BacklinkInputs';
 
 // Dynamically load the RTE component (client-side) to prevent server-side rendering issues
 const Editor = dynamic(
@@ -27,6 +32,9 @@ const Editor = dynamic(
 );
 
 const Form: React.FC = () => {
+  const [backlinks, setBacklinks] = useState(['']); // Initial state with one input
+  const [responses, setResponses] = useState<string[]>([]); // Store responses for each iteration
+  const [loadingStates, setLoadingStates] = useState<boolean[]>([]); // Loading state
   const [isLoadingFirstRequest, setLoadingFirstRequest] = useState(false);
   const [isLoadingSecondRequest, setLoadingSecondRequest] = useState(false);
   const [isLoadingThirdRequest, setLoadingThirdRequest] = useState(false);
@@ -34,13 +42,10 @@ const Form: React.FC = () => {
   const [response, setResponse] = useState<string>(''); // Initialize with an empty string
   const [title, setTitle] = useState('');
   const [keywords, setKeywords] = useState('');
-  const [wordCount, setWordCount] = useState('');
+  const [gptVersion, setGptVersion] = useState("gpt-3.5-turbo");
+  const [wordCount, setWordCount] = useState(300);
   const [keywordsToExclude, setKeywordsToExclude] = useState('');
-  const [backlink1, setBacklink1] = useState('');
-  const [backlink2, setBacklink2] = useState('');
-  const [backlink3, setBacklink3] = useState('');
-  const [backlink4, setBacklink4] = useState('');
-  const [backlink5, setBacklink5] = useState('');
+  const [articleCount, setArticleCount] = useState(1);
   const [tone, setTone] = useState<string[]>([]);
   const [otherInstructions, setOtherInstructions] = useState('');
   const step2Text = "Schmearin' the jam...";
@@ -90,64 +95,117 @@ const Form: React.FC = () => {
     setEditingState(false);
     setResponse(newContent); // Update the response state with the new content
   };
+
+  // const createDownloadLink = () => {
+  //   const blob = new Blob([response], { type: 'text/html' });
+  //   const url = URL.createObjectURL(blob);
+  //   return url;
+  // };
+  
+  function downloadContent(filename: string, content: string) {
+    const blob = new Blob([content], { type: 'text/html' }); // Create a blob with the content
+    const url = URL.createObjectURL(blob);
+  
+    const a = document.createElement('a'); // Create an anchor tag to trigger the download
+    a.href = url;
+    a.download = filename;
+    a.click();
+  
+    URL.revokeObjectURL(url); // Clean up the object URL
+  }
   
   
+  const handleGptVersionChange = (event: SelectChangeEvent) => {
+    setGptVersion(event.target.value as string);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
 
     e.preventDefault();
     setLoadingFirstRequest(true); // Set loading state to true before the API call
+    const inputData = {
+      keywords: keywords.split(','),
+      keywordsToExclude: keywordsToExclude.split(','),
+      tone: tone.join(', '),
+      wordCount: wordCount,
+      gptVersion: gptVersion,
+      articleCount: articleCount,
+      otherInstructions: otherInstructions,
+      // Dynamically generate backlinks properties
+      ...backlinks.reduce((acc, _, index) => {
+        acc[`backlink${index + 1}`] = backlinks[index];
+        return acc;
+      }, {}),
+    };
 
-    try {
-      const inputData = {
-        keywords: keywords.split(','),
-        keywordsToExclude: keywordsToExclude.split(','),
-        backlink1: backlink1,
-        backlink2: backlink2,
-        backlink3: backlink3,
-        backlink4: backlink4,
-        backlink5: backlink5,
-        tone: tone.join(', '),
-        wordCount: 400,
-        otherInstructions: otherInstructions,
+      // setLoading(true);
+      const numberOfIterations = 1;//inputData.articleCount; // Set the desired number of iterations
 
-      };
+      const newResponses = [];
+      const newLoadingStates = [];
 
-      //initial call to openAI to write the article
-      const firstResponse = await callOpenAI(inputData);
-      setLoadingFirstRequest(false); // Clear loading state after the first request
-
+      for (let i = 0; i < numberOfIterations; i++) {
       
-      setLoadingSecondRequest(true); // Set loading state for the second request
-      //second call to openAI, this time to re-write it as if not written by AI.  
-      const revisedResponse = await callOpenAIRevised(inputData, firstResponse);
-      setLoadingSecondRequest(false); // Clear loading state after the second request
-      setLoadingThirdRequest(true); // Set loading state for the second request
+        newLoadingStates.push(true); // Set loading state for this iteration
+        console.log('LOOPING THROUGH, ON ARTICLE '+i);
+        try {
+          //initial call to openAI to write the article
+          const firstResponse = await callOpenAI(inputData);
+          setLoadingFirstRequest(false); // Clear loading state after the first request
+          setLoadingSecondRequest(true); // Set loading state for the second request
+          //second call to openAI, this time to re-write it as if not written by AI.  
+          const revisedResponse = await callOpenAIRevised(inputData, firstResponse);
+          setLoadingSecondRequest(false); // Clear loading state after the second request
+          setLoadingThirdRequest(true); // Set loading state for the second request
 
-      const maxBacklinks = 5;
-      let hyperlinkedResponse = revisedResponse;
-      const backlinkArray = getBacklinkArray(inputData);
+          const maxBacklinks = 5;
+          let hyperlinkedResponse = revisedResponse;
+          const backlinkArray = getBacklinkArray(inputData);
 
-      hyperlinkedResponse = await insertBacklinks(backlinkArray.join(', '), hyperlinkedResponse);
-      console.log('updated hyperlinked response', hyperlinkedResponse);
-      
-      setResponse(hyperlinkedResponse);
-      
-      setLoadingFirstRequest(false);
-      setLoadingSecondRequest(false);
-      setLoadingThirdRequest(false);
-      // setResponse(response);
+          hyperlinkedResponse = await insertBacklinks(backlinkArray.join(', '), hyperlinkedResponse);
+          console.log('updated hyperlinked response', hyperlinkedResponse);
+          // setLoadingStates(newLoadingStates);
 
-    } catch (error) {
-      setLoadingFirstRequest(false); // Clear loading state on error
-      setLoadingSecondRequest(false); // Clear loading state on error
-      setLoadingThirdRequest(false);
-      console.error('Error submitting form:', error);
-      // Handle error here, e.g., display an error message.
-    }
+          // setResponses(prevResponses => [...prevResponses, hyperlinkedResponse]);
+          newResponses.push(hyperlinkedResponse);
+
+          setResponse(hyperlinkedResponse);
+          
+          setLoadingFirstRequest(false);
+          setLoadingSecondRequest(false);
+          setLoadingThirdRequest(false);
+          // setResponse(response);
+        }
+        catch (error) {
+          setLoadingFirstRequest(false); // Clear loading state on error
+          setLoadingSecondRequest(false); // Clear loading state on error
+          setLoadingThirdRequest(false);
+          console.error('Error submitting form:', error);
+          newResponses.push('Error occurred'); // Push an error message to responses if needed
+
+          // Handle error here, e.g., display an error message.
+        } finally {
+          newLoadingStates[i] = false; // Clear loading state after processing
+        }
+      }
+
+      setResponses(newResponses);
+      setLoadingStates(newLoadingStates);
+
   }
 
   return (
       <div>
+
+   {responses.map((response, index) => (
+          <div key={index}>
+            <h2>Iteration {index + 1}:</h2>
+            <div dangerouslySetInnerHTML={{ __html: response }} className="pbnj-output" />
+            {loadingStates[index] && <p>Loading...</p>}
+          </div>
+        ))
+    }
+  
         { isLoadingFirstRequest ? (
             <div style={{ textAlign: 'center', padding: 16, margin: 'auto', maxWidth: 750, background: 'rgb(250 250 250)' }}>
               <Image
@@ -158,9 +216,10 @@ const Form: React.FC = () => {
                 alt=""
               />
               <br></br>
-              Step 1:
+              <b>Step 1:</b>
               <br></br>
               Churning the (peanut) butter...
+              <PeanutButterFactComponent />
             </div>
         ) : isLoadingSecondRequest ? (
             <div style={{ textAlign: 'center', padding: 16, margin: 'auto', maxWidth: 750, background: 'rgb(250 250 250)' }}>
@@ -207,6 +266,17 @@ const Form: React.FC = () => {
             </div>
           )} 
           <br />
+
+          <Button 
+            variant="outlined" 
+            startIcon={<Download />}
+            onClick={() => downloadContent("response.html", response)}
+          >
+            Download Content
+          </Button>
+   
+          <br /><br />
+
           <Button variant="outlined" startIcon={<ArrowBack />} onClick={handleBackState}>Go Back</Button>
           <br /><br />
           { !isEditingState &&
@@ -236,11 +306,28 @@ const Form: React.FC = () => {
                 onChange={(e) => setWordCount(e.target.value)}
                 margin="normal"
                 type="number"
-                defaultValue="520"
+                defaultValue={520}
                 style={{width: 250}}
                 placeholder='Approximate count'
                 required
               />
+              &nbsp;&nbsp;
+              <TextField
+                label="Article Count"
+                value={articleCount}
+                onChange={(e) => setArticleCount(e.target.value)}
+                margin="normal"
+                type="number"
+                defaultValue={3}
+                InputProps={{
+                  inputProps: { 
+                      max: 8, min: 1 
+                  }
+              }}          
+                style={{width: 250}}
+                placeholder='Number of Articles to be generated'
+                required
+              />              
 
               <TextField
                 label="Keywords"
@@ -260,30 +347,42 @@ const Form: React.FC = () => {
                 margin="normal"
                 placeholder='Comma separated'
               />
+              <br /><br />
+              
+              <Box>
+                <FormControl>
+                  <InputLabel>GPT Version</InputLabel>
+                  <Select
+                    autoWidth
+                    value={gptVersion}
+                    label="GPT Version"
+                    onChange={handleGptVersionChange}
+                  >
+                  <MenuItem value={"gpt-3.5-turbo"}>GPT 3.5 Turbo (faster)</MenuItem>
+                  <MenuItem value={"gpt-4"}>GPT 4 (more advanced)</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
 
-              <TextField
-                label="Backlink URL 1"
-                value={backlink1}
-                type={"url"}
-                onChange={(e) => setBacklink1(e.target.value)}
-                margin="normal"
-              />
-
-              <TextField
-                label="Backlink URL 2"
-                value={backlink2}
-                type={"url"}
-                onChange={(e) => setBacklink2(e.target.value)}
-                margin="normal"
-              />
-
-              <TextField
-                label="Backlink URL 3"
-                value={backlink3}
-                type={"url"}
-                onChange={(e) => setBacklink3(e.target.value)}
-                margin="normal"
-              />
+              
+              {/* <FormControl>
+                <FormLabel>GPT Version</FormLabel>
+                <br />
+                  
+                
+                <Select
+                  // labelId="demo-simple-select-label"
+                  // id="demo-simple-select"
+                  onChange={handleGptVersionChange}
+                  value={"gpt-4"}
+                  label="GPT Version"
+                >
+                  <MenuItem value={"gpt-3.5-turbo"}>GPT 3.5 Turbo (faster)</MenuItem>
+                  <MenuItem value={"gpt-4"}>GPT 4 (more advanced)</MenuItem>
+                </Select>
+              </FormControl> */}
+              <br />
+              <BacklinkInputs backlinks={backlinks} setBacklinks={setBacklinks} />
               <br></br>
               <br></br>
               <FormControl component="fieldset">
