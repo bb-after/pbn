@@ -24,7 +24,7 @@ import { stateToHTML } from 'draft-js-export-html';
 import { callOpenAI, callOpenAIRevised, insertBacklinks, getBacklinkArray } from '../utils/openai';
 import PeanutButterFactComponent from './PeanutButterFact';
 import BacklinkInputs from './BacklinkInputs';
-
+import PreviousResponseComponent from './previousResponse';
 // Dynamically load the RTE component (client-side) to prevent server-side rendering issues
 const Editor = dynamic(
   () => import('react-draft-wysiwyg').then((module) => module.Editor),
@@ -34,6 +34,7 @@ const Editor = dynamic(
 const Form: React.FC = () => {
   const [backlinks, setBacklinks] = useState(['']); // Initial state with one input
   const [responses, setResponses] = useState<string[]>([]); // Store responses for each iteration
+  const [previousResponses, setPreviousResponses] = useState([]);
   const [loadingStates, setLoadingStates] = useState<boolean[]>([]); // Loading state
   const [isLoadingFirstRequest, setLoadingFirstRequest] = useState(false);
   const [isLoadingSecondRequest, setLoadingSecondRequest] = useState(false);
@@ -83,6 +84,9 @@ const Form: React.FC = () => {
   };
 
   const handleBackState = () => {
+    if (response !== '') {
+      setPreviousResponses([...previousResponses, response]); // Save the current response before clearing
+    }
     setResponse('');
     setEditingState(false);
   }
@@ -158,7 +162,6 @@ const Form: React.FC = () => {
           setLoadingSecondRequest(false); // Clear loading state after the second request
           setLoadingThirdRequest(true); // Set loading state for the second request
 
-          const maxBacklinks = 5;
           let hyperlinkedResponse = revisedResponse;
           const backlinkArray = getBacklinkArray(inputData);
 
@@ -197,14 +200,14 @@ const Form: React.FC = () => {
   return (
       <div>
 
-   {responses.map((response, index) => (
+   {/* {responses.map((response, index) => (
           <div key={index}>
             <h2>Iteration {index + 1}:</h2>
             <div dangerouslySetInnerHTML={{ __html: response }} className="pbnj-output" />
             {loadingStates[index] && <p>Loading...</p>}
           </div>
         ))
-    }
+    } */}
   
         { isLoadingFirstRequest ? (
             <div style={{ textAlign: 'center', padding: 16, margin: 'auto', maxWidth: 750, background: 'rgb(250 250 250)' }}>
@@ -321,7 +324,7 @@ const Form: React.FC = () => {
                 defaultValue={3}
                 InputProps={{
                   inputProps: { 
-                      max: 8, min: 1 
+                      max: 4, min: 1 
                   }
               }}          
                 style={{width: 250}}
@@ -364,23 +367,6 @@ const Form: React.FC = () => {
                 </FormControl>
               </Box>
 
-              
-              {/* <FormControl>
-                <FormLabel>GPT Version</FormLabel>
-                <br />
-                  
-                
-                <Select
-                  // labelId="demo-simple-select-label"
-                  // id="demo-simple-select"
-                  onChange={handleGptVersionChange}
-                  value={"gpt-4"}
-                  label="GPT Version"
-                >
-                  <MenuItem value={"gpt-3.5-turbo"}>GPT 3.5 Turbo (faster)</MenuItem>
-                  <MenuItem value={"gpt-4"}>GPT 4 (more advanced)</MenuItem>
-                </Select>
-              </FormControl> */}
               <br />
               <BacklinkInputs backlinks={backlinks} setBacklinks={setBacklinks} />
               <br></br>
@@ -476,6 +462,17 @@ const Form: React.FC = () => {
               />
 
               <Button variant="contained" type="submit">Give me the PB and the J</Button>
+
+              {response !== '' ? (
+                <div>
+                  <Button variant="contained">Go forward</Button>
+                </div>
+              ) : null}
+
+              {/* Show previous responses */}
+              {previousResponses.map((prevResponse, index) => (
+             <PreviousResponseComponent key={index} response={prevResponse} />
+              ))}
 
             </form>
         )

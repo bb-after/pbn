@@ -145,8 +145,9 @@ function parseResponse(response: string, originalText: string | undefined)
     try {
         parsedResponse = JSON.parse(`{${correctedResponse}}`);
     } catch (error) {
-        console.log('...',correctedResponse);
         console.error("Error parsing the response:", error);
+        console.log('initial response:',response);
+        console.log('corrected response:',correctedResponse);
         return response;
     }
 
