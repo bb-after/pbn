@@ -1,4 +1,4 @@
-import { getRandomPeanutFact } from '../utils/peanutfacts';
+import { getRandomPeanutFact } from '../utils/peanutFacts';
 
 function PeanutButterFactComponent() {
     const peanutButterFact = getRandomPeanutFact();
