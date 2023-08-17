@@ -296,6 +296,7 @@ const Form: React.FC = () => {
             <br /><br />
             <Button variant="outlined" startIcon={<Edit />} onClick={openEditor}>Edit Content</Button>
             <br /><br />
+            
             <CopyToClipboardButton text={response} />  
             <br />
             <Button variant="contained" disabled color="success" startIcon={<Send />} type="submit">Post article to PBN (coming soon)</Button>
@@ -346,7 +347,7 @@ const Form: React.FC = () => {
                 fullWidth
                 margin="normal"
                 required
-                placeholder='Comma separated'
+                placeholder='Comma separated - eg. name, company, location, hobbies & interests, other business ventures, etc.'
               />
 
               <TextField
