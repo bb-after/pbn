@@ -18,7 +18,6 @@ const peanutFacts: string[] = [
     "One acre of peanuts will make about 30,000 peanut butter sandwiches.",
     "Peanut shells are often used in the manufacture of kitty litter, wallboard, fireplace logs, paper, and animal feed.",
     "It's estimated that 10% of the U.S. population are allergic to peanuts.",
-    "\"Goober\" is a term commonly used in the Southern U.S. to refer to peanuts. It originates from the Congo word \"nguba\"."
 ];
 
 export function getRandomPeanutFact(): string {
