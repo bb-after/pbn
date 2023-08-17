@@ -129,43 +129,37 @@ export const callOpenAIRevised = async (inputData: any, openAIResponse: any) => 
 
 };
 
-export const transformAndParsePayload= function(payload: string): Record<string, { text: string; sentence: string }> | null {
-    try {
-      // Remove leading and trailing spaces and line breaks
-      const trimmedPayload = payload.trim();
-  
-      // Check if the payload is enclosed in curly braces
-      if (trimmedPayload.startsWith('{') && trimmedPayload.endsWith('}')) {
-        // Transform the payload: replace single quotes with double quotes
-        const transformedPayload = trimmedPayload
-          .replace(/'([^']+)'/g, '"$1"')
-          .replace(/'/g, '"');
-  
-        // Parse the transformed payload as JSON
-        const parsedPayload = JSON.parse(transformedPayload);
-  
-        // Ensure the parsed payload has the expected structure
-        if (typeof parsedPayload === 'object' && parsedPayload !== null) {
-          for (const key of Object.keys(parsedPayload)) {
-            if (
-              typeof parsedPayload[key] !== 'object' ||
-              parsedPayload[key] === null ||
-              !('text' in parsedPayload[key]) ||
-              !('sentence' in parsedPayload[key])
-            ) {
-              return null; // Return null if the structure is not as expected
-            }
-          }
-          return parsedPayload;
-        }
-      }
-  
-      return null; // Return null if the payload couldn't be parsed or the format is not supported
-    } catch (error) {
-      console.error('Error transforming and parsing payload:', error);
-      return null; // Return null in case of errors
-    }
-  }
+// export const transformAndParsePayload= function(payload: string): Record<string, { text: string; sentence: string }> | null {
+//     try {
+//         // Replace single quotes within double quotes
+//         const transformedPayload = payload.replace(/"([^"]+)"/g, (match, contents) => {
+//           return `"${contents.replace(/'/g, '"')}"`;
+//         });
+    
+//         // Parse the transformed payload as JSON
+//         const parsedPayload = JSON.parse(transformedPayload);
+    
+//         // Ensure the parsed payload has the expected structure
+//         if (typeof parsedPayload === 'object' && parsedPayload !== null) {
+//           for (const key of Object.keys(parsedPayload)) {
+//             if (
+//               typeof parsedPayload[key] !== 'object' ||
+//               parsedPayload[key] === null ||
+//               !('text' in parsedPayload[key]) ||
+//               !('sentence' in parsedPayload[key])
+//             ) {
+//               return null; // Return null if the structure is not as expected
+//             }
+//           }
+//           return parsedPayload;
+//         } else {
+//           return null; // Return null if the payload couldn't be parsed
+//         }
+//       } catch (error) {
+//         console.error('Error transforming and parsing payload:', error);
+//         return null; // Return null in case of errors
+//       }
+//   }
 
 export const parseResponse = function(response: string)
 {
@@ -176,22 +170,24 @@ export const parseResponse = function(response: string)
     // Remove square brackets from the 'text' field
     */
    ;
-    let correctedResponse = response.trim().replace(/\s*([{}:])\s*/g, '$1');
-    correctedResponse = correctedResponse.replace(/(?<!\w)'(?!w)/g, '"');
-    correctedResponse = correctedResponse.replace(/\}./g, '},');
-    correctedResponse = correctedResponse.replace(/,(\s)*$/, "");
+    // let correctedResponse = response.trim().replace(/\s*([{}:])\s*/g, '$1');
+    // correctedResponse = correctedResponse.replace(/(?<!\w)'(?!w)/g, '"');
+    // correctedResponse = correctedResponse.replace(/\}./g, '},');
+    // correctedResponse = correctedResponse.replace(/,(\s)*$/, "");
 
-    // let correctedResponse = response.replace(/(\w+:\/\/\S+)(?=\s*:)/g, '"$1"');
-    // Ensure there's a comma between the objects
-    // correctedResponse = correctedResponse.replace(/\}\s*"/g, '}, "');
-    
-    // Remove trailing commas if any (though this might not be necessary in this context)
-    // correctedResponse = correctedResponse.replace(/,(\s*)$/, "");
+    // Replace outer single quotes to double quotes
+    let correctedResponse = response.trim().replace(/'([^']+)':/g, '"$1":');
+
+    // Replace inner single quotes to double quotes, but ensuring we're not inside a word (to account for single quotes in sentences)
+    correctedResponse = correctedResponse.replace(/: '([^']+)'/g, ': "$1"');
+
+    // Remove square brackets from the 'text' field
+    correctedResponse = correctedResponse.replace(/\[(.+?)\]/g, '$1');
 
 
     let parsedResponse: Record<string, {text: string, sentence: string}>;
     try {
-        parsedResponse = JSON.parse(`{${correctedResponse}}`);
+        parsedResponse = JSON.parse(correctedResponse);
     } catch (error) {
         console.error("Error parsing the response:", error);
         console.log('initial response:',response);
