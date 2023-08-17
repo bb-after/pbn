@@ -129,52 +129,8 @@ export const callOpenAIRevised = async (inputData: any, openAIResponse: any) => 
 
 };
 
-// export const transformAndParsePayload= function(payload: string): Record<string, { text: string; sentence: string }> | null {
-//     try {
-//         // Replace single quotes within double quotes
-//         const transformedPayload = payload.replace(/"([^"]+)"/g, (match, contents) => {
-//           return `"${contents.replace(/'/g, '"')}"`;
-//         });
-    
-//         // Parse the transformed payload as JSON
-//         const parsedPayload = JSON.parse(transformedPayload);
-    
-//         // Ensure the parsed payload has the expected structure
-//         if (typeof parsedPayload === 'object' && parsedPayload !== null) {
-//           for (const key of Object.keys(parsedPayload)) {
-//             if (
-//               typeof parsedPayload[key] !== 'object' ||
-//               parsedPayload[key] === null ||
-//               !('text' in parsedPayload[key]) ||
-//               !('sentence' in parsedPayload[key])
-//             ) {
-//               return null; // Return null if the structure is not as expected
-//             }
-//           }
-//           return parsedPayload;
-//         } else {
-//           return null; // Return null if the payload couldn't be parsed
-//         }
-//       } catch (error) {
-//         console.error('Error transforming and parsing payload:', error);
-//         return null; // Return null in case of errors
-//       }
-//   }
-
 export const parseResponse = function(response: string)
 {
-    /*
-    // amongst other things:
-    // Replace outer single quotes to double quotes
-    // Replace inner single quotes to double quotes, but ensuring we're not inside a word (to account for single quotes in sentences)
-    // Remove square brackets from the 'text' field
-    */
-   ;
-    // let correctedResponse = response.trim().replace(/\s*([{}:])\s*/g, '$1');
-    // correctedResponse = correctedResponse.replace(/(?<!\w)'(?!w)/g, '"');
-    // correctedResponse = correctedResponse.replace(/\}./g, '},');
-    // correctedResponse = correctedResponse.replace(/,(\s)*$/, "");
-
     // Replace outer single quotes to double quotes
     let correctedResponse = response.trim().replace(/'([^']+)':/g, '"$1":');
 

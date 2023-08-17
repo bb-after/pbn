@@ -8,7 +8,7 @@ const pageTitle = "PBN'J";
 const Home: React.FC = () => {
   return (
     
-    <div style={{ padding: 16, margin: 'auto', maxWidth: 750, background: 'rgb(250 250 250)' }}>
+    <div style={{ padding: 16, margin: 'auto', maxWidth: 750, background: '#ffffff' }}>
       <div style={{ background: '#000', padding: 3 }}>
       <style jsx global>
         {`
@@ -17,6 +17,9 @@ const Home: React.FC = () => {
             font-weight: 400;
             font-size: 60px;
             margin-top: 20px;
+          }
+          body {
+            background: #eee;
           }
         `}
       </style>
