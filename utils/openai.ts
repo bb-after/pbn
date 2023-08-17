@@ -199,8 +199,7 @@ export const parseResponse = function(response: string)
 
 }
 
-function bulkReplaceLinks(response: any, originalText: string) {
-
+export const bulkReplaceLinks= function(response: any, originalText: string) {
     // @TODO - make these unit test scenarios.
     // const response1 = `"https://zillow.com": {"text": "[online reputation management]", "sentence": "Enter Darius Fisher, a highly regarded entrepreneur and expert in online reputation management, who has emerged as a visionary in this ever-evolving field."};`
     // const response2 = "'https://zillow.com': {'text': '[protecting one\'s online presence]', 'sentence': 'In today\'s fast-paced digital landscape, where information spreads at lightning speed and reputations can be built or torn down in an instant, protecting one\'s online presence has become paramount.'}";    
@@ -212,9 +211,6 @@ function bulkReplaceLinks(response: any, originalText: string) {
     let parsedObject = parseResponse(response);
     let content = originalText;
     if (parsedObject && typeof parsedObject === 'object') {
-        // console.log('bulkReplaceLinks - response', response);
-        // console.log('bulkReplaceLinks - originalText', originalText);
-        // console.log("bulkReplaceLinks - i made it here? ", parsedObject);
         for (const [url, {text, sentence}] of Object.entries(parsedObject)) {
             if (typeof text !== 'undefined') {
                 // Remove square brackets from the text
