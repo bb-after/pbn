@@ -181,9 +181,17 @@ export const parseResponse = function(response: string)
     // Replace inner single quotes to double quotes, but ensuring we're not inside a word (to account for single quotes in sentences)
     correctedResponse = correctedResponse.replace(/: '([^']+)'/g, ': "$1"');
 
+    // Replace line breaks with commas to create a valid JSON format
+    correctedResponse = correctedResponse.replace(/\n\n"/g, ',"');
+
     // Remove square brackets from the 'text' field
     correctedResponse = correctedResponse.replace(/\[(.+?)\]/g, '$1');
 
+    // Check if correctedResponse starts with a curly brace
+    if (!correctedResponse.startsWith('{')) {
+        // Add curly braces to the start and end of the value
+        correctedResponse = `{${correctedResponse}}`;
+    } 
 
     let parsedResponse: Record<string, {text: string, sentence: string}>;
     try {
