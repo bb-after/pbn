@@ -29,8 +29,9 @@ const Editor = dynamic(
 const skipOpenAiRevision = process.env.NEXT_PUBLIC_SKIP_OPENAI_REVISION;
 const Form: React.FC = () => {
   const [backlinks, setBacklinks] = useState(['']); // Initial state with one input
-  const [responses, setResponses] = useState<string[]>([]); // Store responses for each iteration
   const [previousResponses, setPreviousResponses] = React.useState<string[]>([]);
+  const [iterationCount, setIterationCount] = useState(0);
+  const [iterationTotal, setIterationTotal] = useState(0);
   // const [isLoading, setIsLoading] = useState(false);
   const [isLoadingFirstRequest, setLoadingFirstRequest] = useState(false);
   const [isLoadingSecondRequest, setLoadingSecondRequest] = useState(false);
@@ -59,14 +60,15 @@ const Form: React.FC = () => {
   
     // setLoadingFirstRequest(true); // Set loading state to true before the API call
     const inputData = getInputData();
-    
-    for(let i = 0; i < iterations; i++) {
+    setIterationTotal(iterations);
+    for(let i = 1; i <= iterations; i++) {
       try {
+        setIterationCount(i);
         setShowForm(false);
         setLoadingFirstRequest(true);      
         // Initial call to openAI to write the article
         const firstResponse = await callOpenAI(inputData);
-        // ...
+
         setLoadingFirstRequest(false);      
         
         // Second call to openAI, this time to re-write it as if not written by AI.
@@ -268,6 +270,11 @@ const Form: React.FC = () => {
         ) : (
         // Response zone 
         <div className="response">
+              { (isLoadingFirstRequest || isLoadingThirdRequest) && iterationCount > 0 ? (
+                  <div className={styles.iterationCount}>
+                    Remixing {iterationCount} / {iterationTotal}
+                  </div>
+              ) : '' }
               { isLoadingFirstRequest ? (
                   <Step1LoadingStateComponent />
               ) : isLoadingThirdRequest ? (
