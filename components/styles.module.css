@@ -19,3 +19,9 @@
   max-width: 750px;
   background: #ffffff;
 }
+
+.loadingState {
+    padding-left: 3rem;
+    padding-right: 3rem;
+    text-align: center;
+}
