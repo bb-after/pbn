@@ -61,11 +61,46 @@ const Form: React.FC = () => {
 
   const handleRemixModalSubmit = async (iterations: number) => {
 
-    debugger;
     setRemixModalOpen(false); // Close the modal
   
-    // Your API calls logic
-    // ...
+    // setLoadingFirstRequest(true); // Set loading state to true before the API call
+    const inputData = getInputData();
+    const numberOfIterations = iterations; // Set the desired number of iterations
+    
+    for(let i = 0; i < iterations; i++) {
+      try {
+        if (response !== '') {
+          setPreviousResponses(prevResponses => [...prevResponses, response]);
+        }
+        debugger;
+        setShowForm(false);
+        setLoadingFirstRequest(true);      
+        // Initial call to openAI to write the article
+        const firstResponse = await callOpenAI(inputData);
+        // ...
+        setLoadingFirstRequest(false);      
+        
+        // Second call to openAI, this time to re-write it as if not written by AI.
+        const revisedResponse = await callOpenAIRevised(inputData, firstResponse);
+
+        // Modify hyperlinkedResponse as needed
+        setLoadingThirdRequest(true);            
+        let hyperlinkedResponse = revisedResponse;
+        const backlinkArray = getBacklinkArray(inputData);
+        hyperlinkedResponse = await insertBacklinks(backlinkArray.join(', '), hyperlinkedResponse);
+        // ...
+        setResponse(hyperlinkedResponse);
+        setLoadingThirdRequest(false);
+
+      } catch (error) {
+        setLoadingFirstRequest(true);      
+        setLoadingThirdRequest(false);      
+      }
+    };
+    
+
+
+
   };
   
 
@@ -102,7 +137,7 @@ const Form: React.FC = () => {
   };
 
   const handleBackState = () => {
-    if (response !== '') {
+    if (response !== '' && !previousResponses.includes(response)) {
       setPreviousResponses(prevResponses => [...prevResponses, response]);
     }
     setShowForm(true);
@@ -171,19 +206,20 @@ const Form: React.FC = () => {
     const numberOfIterations = 1; // Set the desired number of iterations
     
     try {
+      debugger;
       setShowForm(false);
       setLoadingFirstRequest(true);      
       // Initial call to openAI to write the article
-      let openAIResponse = await callOpenAI(inputData);
+      const firstResponse = await callOpenAI(inputData);
       // ...
       setLoadingFirstRequest(false);      
       
       // Second call to openAI, this time to re-write it as if not written by AI.
-      openAIResponse = await callOpenAIRevised(inputData, response);
+      const revisedResponse = await callOpenAIRevised(inputData, firstResponse);
 
       // Modify hyperlinkedResponse as needed
       setLoadingThirdRequest(true);            
-      let hyperlinkedResponse = openAIResponse;
+      let hyperlinkedResponse = revisedResponse;
       const backlinkArray = getBacklinkArray(inputData);
       hyperlinkedResponse = await insertBacklinks(backlinkArray.join(', '), hyperlinkedResponse);
       // ...
@@ -230,13 +266,9 @@ const Form: React.FC = () => {
            <div>
              <br />
              <Button size="small" variant="outlined" startIcon={<ArrowBack />} onClick={handleGoBackToLastResponse}>Back to Results</Button>
-     
-             {/* Show previous responses */}
-             {previousResponses.map((prevResponse, index) => (
-               <PreviousResponseComponent key={index} response={prevResponse} />
-             ))}
-           </div> 
-         )}
+          </div>
+        )}
+
        </div>
         ) : (
         // Response zone 
@@ -301,6 +333,28 @@ const Form: React.FC = () => {
         </div>  
       //end of loading check + response and response components
         )}
+
+        {/* Show previous responses */}
+        {previousResponses.map((prevResponse, index) => (
+          <div>
+            <PreviousResponseComponent key={index} version={index+1} response={prevResponse} />
+            <div className={styles.actionBar}>
+              <Button 
+                size="small" 
+                variant="contained" 
+                startIcon={<Download />}
+                onClick={() => downloadContent("response.html", prevResponse)}
+              >
+                Download Content
+              </Button>
+
+              <CopyToClipboardButton text={response} />  
+
+              <Button size="small" variant="contained" disabled color="success" startIcon={<Send />} type="submit">Post article to PBN (coming soon)</Button> 
+            </div>
+          </div>
+        ))}
+
       </div>
   );
 };
