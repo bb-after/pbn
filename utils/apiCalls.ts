@@ -7,6 +7,7 @@ import {
   getBacklinkArray,
 } from './openai';
 
+
 export const processIterations = async (inputData: any, numberOfIterations: number) => {
   const newResponses = [];
   const newLoadingStates = [];
@@ -38,5 +39,7 @@ export const processIterations = async (inputData: any, numberOfIterations: numb
     }
   }
 
-  return { responses: newResponses, loadingStates: newLoadingStates };
+  return { responses: newResponses };
+  
+//   return { responses: newResponses, loadingStates: newLoadingStates };
 };

@@ -20,6 +20,12 @@ import Step1LoadingStateComponent from './Step1LoadingState';
 import Step2LoadingStateComponent from './Step2LoadingState';
 import FinalLoadingStateComponent from './FinalLoadingState';
 import ArticleForm from './ArticleForm'; // Adjust the path as needed
+import {
+  callOpenAI,
+  callOpenAIRevised,
+  insertBacklinks,
+  getBacklinkArray,
+} from '../utils/openai';
 
 // Dynamically load the RTE component (client-side) to prevent server-side rendering issues
 const Editor = dynamic(
@@ -31,10 +37,11 @@ const Form: React.FC = () => {
   const [backlinks, setBacklinks] = useState(['']); // Initial state with one input
   const [responses, setResponses] = useState<string[]>([]); // Store responses for each iteration
   const [previousResponses, setPreviousResponses] = React.useState<string[]>([]);
-  const [loadingStates, setLoadingStates] = useState<boolean[]>([]); // Loading state
+  // const [isLoading, setIsLoading] = useState(false);
   const [isLoadingFirstRequest, setLoadingFirstRequest] = useState(false);
   const [isLoadingSecondRequest, setLoadingSecondRequest] = useState(false);
   const [isLoadingThirdRequest, setLoadingThirdRequest] = useState(false);
+  const [showForm, setShowForm] = useState(true);
   const [isEditingState, setEditingState] = useState(false);
   const [response, setResponse] = useState<string>(''); // Initialize with an empty string
   const [keywords, setKeywords] = useState('');
@@ -47,11 +54,13 @@ const Form: React.FC = () => {
   const [otherInstructions, setOtherInstructions] = useState('');
   const [isRemixModalOpen, setRemixModalOpen] = useState(false);
 
+  
   const handleRemixModalOpen = () => {
     setRemixModalOpen(true);
   };
 
   const handleRemixModalSubmit = async (iterations: number) => {
+
     debugger;
     setRemixModalOpen(false); // Close the modal
   
@@ -96,13 +105,14 @@ const Form: React.FC = () => {
     if (response !== '') {
       setPreviousResponses(prevResponses => [...prevResponses, response]);
     }
-    setResponse('');
+    setShowForm(true);
     setEditingState(false);
   }
 
   const handleGoBackToLastResponse = () => {
     const lastResponse = previousResponses[previousResponses.length - 1];
     setResponse(lastResponse);
+    setShowForm(false);
   }
 
   const openEditor = () => {
@@ -136,11 +146,8 @@ const Form: React.FC = () => {
     setLanguage(event.target.value as string);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-
-    e.preventDefault();
-    // setLoadingFirstRequest(true); // Set loading state to true before the API call
-    const inputData = {
+  const getInputData = function() {
+    return {
       keywords: keywords.split(','),
       keywordsToExclude: keywordsToExclude.split(','),
       tone: tone.join(', '),
@@ -155,16 +162,37 @@ const Form: React.FC = () => {
         return acc;
         }, {}),
     };
+  }
+  const handleSubmit = async (e: React.FormEvent) => {
 
+    e.preventDefault();
+    // setLoadingFirstRequest(true); // Set loading state to true before the API call
+    const inputData = getInputData();
     const numberOfIterations = 1; // Set the desired number of iterations
-
+    
     try {
-      const { responses, loadingStates } = await processIterations(inputData, numberOfIterations);
-      setResponses(responses);
-      setLoadingStates(loadingStates);
+      setShowForm(false);
+      setLoadingFirstRequest(true);      
+      // Initial call to openAI to write the article
+      let openAIResponse = await callOpenAI(inputData);
+      // ...
+      setLoadingFirstRequest(false);      
+      
+      // Second call to openAI, this time to re-write it as if not written by AI.
+      openAIResponse = await callOpenAIRevised(inputData, response);
+
+      // Modify hyperlinkedResponse as needed
+      setLoadingThirdRequest(true);            
+      let hyperlinkedResponse = openAIResponse;
+      const backlinkArray = getBacklinkArray(inputData);
+      hyperlinkedResponse = await insertBacklinks(backlinkArray.join(', '), hyperlinkedResponse);
+      // ...
+      setResponse(hyperlinkedResponse);
+      setLoadingThirdRequest(false);
+
     } catch (error) {
-      console.error('Error submitting form:', error);
-      // Handle error here
+      setLoadingFirstRequest(true);      
+      setLoadingThirdRequest(false);      
     }
   };
   
@@ -172,21 +200,54 @@ const Form: React.FC = () => {
   return (
       <div className={styles.formWrapper}>
       {
-        response !== '' ? (
-        <div className="inny">
-          // Display response content and related components
-          {loadingStates.map((isLoading, index) => (
-              isLoading ? (
-              <div key={index}>
-                {index === 0 ? (
+        showForm ? (
+           // ArticleForm component and previous responses
+           <div className="formBobby">
+           <ArticleForm
+           handleSubmit={handleSubmit}
+           wordCount={wordCount}
+           setWordCount={setWordCount}
+           articleCount={articleCount}
+           setArticleCount={setArticleCount}
+           keywords={keywords}
+           setKeywords={setKeywords}
+           keywordsToExclude={keywordsToExclude}
+           setKeywordsToExclude={setKeywordsToExclude}
+           gptVersion={gptVersion}
+           handleGptVersionChange={handleGptVersionChange}
+           language={language}
+           handleLanguage={handleLanguage}
+           backlinks={backlinks}
+           setBacklinks={setBacklinks}
+           tone={tone}
+           handleToneChange={handleToneChange}
+           otherInstructions={otherInstructions}
+           setOtherInstructions={setOtherInstructions}
+         />
+
+         { /* Check for Previous Responses and display back button + the responses */ }
+         {previousResponses.length > 0 && (
+           <div>
+             <br />
+             <Button size="small" variant="outlined" startIcon={<ArrowBack />} onClick={handleGoBackToLastResponse}>Back to Results</Button>
+     
+             {/* Show previous responses */}
+             {previousResponses.map((prevResponse, index) => (
+               <PreviousResponseComponent key={index} response={prevResponse} />
+             ))}
+           </div> 
+         )}
+       </div>
+        ) : (
+        // Response zone 
+        <div className="response">
+              { isLoadingFirstRequest ? (
                   <Step1LoadingStateComponent />
-                ) : (
+              ) : isLoadingThirdRequest ? (
                   <FinalLoadingStateComponent />
-                )}
-              </div>
-              ) : (
-                //start display response and response components if not loading
-                <div className='allEditing'>
+              ) : (                  
+                <div className="allEditing">
+                {/* //start display response and response components if not loading */}
                   { isEditingState ? (
                     <div>  
                       <Editor
@@ -236,49 +297,10 @@ const Form: React.FC = () => {
                     </div>
                   )}
                 </div>
-              )
-        ))} {/*end loading map loop */}
+              )}
         </div>  
       //end of loading check + response and response components
-        ) : (
-            // ArticleForm component and previous responses
-            <div className="formBobby">
-                <ArticleForm
-                handleSubmit={handleSubmit}
-                wordCount={wordCount}
-                setWordCount={setWordCount}
-                articleCount={articleCount}
-                setArticleCount={setArticleCount}
-                keywords={keywords}
-                setKeywords={setKeywords}
-                keywordsToExclude={keywordsToExclude}
-                setKeywordsToExclude={setKeywordsToExclude}
-                gptVersion={gptVersion}
-                handleGptVersionChange={handleGptVersionChange}
-                language={language}
-                handleLanguage={handleLanguage}
-                backlinks={backlinks}
-                setBacklinks={setBacklinks}
-                tone={tone}
-                handleToneChange={handleToneChange}
-                otherInstructions={otherInstructions}
-                setOtherInstructions={setOtherInstructions}
-              />
-
-              { /* Check for Previous Responses and display back button + the responses */ }
-              {previousResponses.length > 0 && (
-                <div>
-                  <br />
-                  <Button size="small" variant="outlined" startIcon={<ArrowBack />} onClick={handleGoBackToLastResponse}>Back to Results</Button>
-          
-                  {/* Show previous responses */}
-                  {previousResponses.map((prevResponse, index) => (
-                    <PreviousResponseComponent key={index} response={prevResponse} />
-                  ))}
-                </div> 
-              )}
-            </div>
-        )} 
+        )}
       </div>
   );
 };
