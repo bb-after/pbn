@@ -1,9 +1,10 @@
 import Image from 'next/image';
 import PeanutButterFactComponent from './PeanutButterFact';
+import styles from './styles.module.css'; // Make sure the correct path is used
 
 function Step1LoadingStateComponent() {
     return (
-        <div>
+        <div className={styles.loadingState}>
             <Image
                 priority
                 src="/images/pb-animated.gif"

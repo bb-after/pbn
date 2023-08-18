@@ -3,19 +3,13 @@ import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic'; // To load the RTE dynamically (client-side)
 import { EditorState, ContentState, convertFromHTML } from 'draft-js';
 import 'react-draft-wysiwyg/dist/react-draft-wysiwyg.css';
-import TextField from '@mui/material/TextField';
-import Box from '@mui/material/Box';
-import { Button, Checkbox, FormControl, FormControlLabel, FormLabel, FormGroup, InputLabel, MenuItem, Select, SelectChangeEvent, TextareaAutosize } from '@mui/material';
-import Image from 'next/image';
+import { Button, SelectChangeEvent } from '@mui/material';
 import styles from './styles.module.css'; // Make sure the correct path is used
-// import BackIcon from '@mui/icons-material/Back';
 import { Send, ArrowBack, Edit, Download, Blender, Undo } from '@mui/icons-material';
 import CopyToClipboardButton from './CopyToClipboardButton'; // Replace with the correct path to your component
 import { stateToHTML } from 'draft-js-export-html';
-import BacklinkInputs from './BacklinkInputs';
 import PreviousResponseComponent from './PreviousResponseComponent';
 import RemixModal from './RemixModal';
-import { processIterations } from '../utils/apiCalls';
 import Step1LoadingStateComponent from './Step1LoadingState';
 import Step2LoadingStateComponent from './Step2LoadingState';
 import FinalLoadingStateComponent from './FinalLoadingState';
@@ -65,14 +59,9 @@ const Form: React.FC = () => {
   
     // setLoadingFirstRequest(true); // Set loading state to true before the API call
     const inputData = getInputData();
-    const numberOfIterations = iterations; // Set the desired number of iterations
     
     for(let i = 0; i < iterations; i++) {
       try {
-        if (response !== '') {
-          setPreviousResponses(prevResponses => [...prevResponses, response]);
-        }
-        debugger;
         setShowForm(false);
         setLoadingFirstRequest(true);      
         // Initial call to openAI to write the article
@@ -90,6 +79,8 @@ const Form: React.FC = () => {
         hyperlinkedResponse = await insertBacklinks(backlinkArray.join(', '), hyperlinkedResponse);
         // ...
         setResponse(hyperlinkedResponse);
+        addResponseToPreviousResponses(hyperlinkedResponse);
+
         setLoadingThirdRequest(false);
 
       } catch (error) {
@@ -136,10 +127,14 @@ const Form: React.FC = () => {
     );
   };
 
-  const handleBackState = () => {
+  const addResponseToPreviousResponses = function(response: string) {
     if (response !== '' && !previousResponses.includes(response)) {
       setPreviousResponses(prevResponses => [...prevResponses, response]);
     }
+  }
+
+  const handleBackState = () => {
+    addResponseToPreviousResponses(response);
     setShowForm(true);
     setEditingState(false);
   }
@@ -206,7 +201,6 @@ const Form: React.FC = () => {
     const numberOfIterations = 1; // Set the desired number of iterations
     
     try {
-      debugger;
       setShowForm(false);
       setLoadingFirstRequest(true);      
       // Initial call to openAI to write the article
@@ -224,10 +218,11 @@ const Form: React.FC = () => {
       hyperlinkedResponse = await insertBacklinks(backlinkArray.join(', '), hyperlinkedResponse);
       // ...
       setResponse(hyperlinkedResponse);
+      addResponseToPreviousResponses(hyperlinkedResponse);
       setLoadingThirdRequest(false);
 
     } catch (error) {
-      setLoadingFirstRequest(true);      
+      setLoadingFirstRequest(false);      
       setLoadingThirdRequest(false);      
     }
   };
@@ -311,7 +306,7 @@ const Form: React.FC = () => {
                           onClick={() => downloadContent("response.html", response)}
                         >
                           Download Content
-                        </Button>
+                        </Button>&nbsp;
                         <Button size="small" variant="contained" startIcon={<Edit />} onClick={openEditor}>Edit Content</Button>
 
                         <Button size="small" variant="contained" startIcon={<Blender />} onClick={handleRemixModalOpen}>Remix</Button>
@@ -347,7 +342,7 @@ const Form: React.FC = () => {
               >
                 Download Content
               </Button>
-
+              &nbsp;
               <CopyToClipboardButton text={response} />  
 
               <Button size="small" variant="contained" disabled color="success" startIcon={<Send />} type="submit">Post article to PBN (coming soon)</Button> 
