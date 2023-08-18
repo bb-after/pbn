@@ -170,117 +170,116 @@ const Form: React.FC = () => {
   
 
   return (
-    /****
-     *****
-     1.  If isLoading is true for a specific index, it shows a loading state component (Step1LoadingStateComponent, Step2LoadingStateComponent, or FinalLoadingStateComponent) based on the index.
-    2.  If isLoading is false and response is not empty, it renders the editing components if isEditingState is true, and renders the response display components if isEditingState is false.
-    3.  If isLoading is false and response is empty, it renders the ArticleForm component along with the previous responses, if any.
-     ****/
-
       <div className={styles.formWrapper}>
-        {loadingStates.map((isLoading, index) => (
-        isLoading ? (
-          <div key={index}>
-            {index === 0 ? (
-              <Step1LoadingStateComponent />
-            ) : index === 1 ? (
-              <Step2LoadingStateComponent />
-            ) : (
-              <FinalLoadingStateComponent />
-            )}
-          </div>
-        ) : response !== '' ? (
-        <div>
-          { isEditingState ? (
-            <div>  
-              <Editor
-                editorState={editorState}
-                onEditorStateChange={handleEditorStateChange}
-                wrapperClassName="rich-editor-wrapper"
-                editorClassName="rich-editor"
+      {
+        response !== '' ? (
+        <div className="inny">
+          // Display response content and related components
+          {loadingStates.map((isLoading, index) => (
+              isLoading ? (
+              <div key={index}>
+                {index === 0 ? (
+                  <Step1LoadingStateComponent />
+                ) : (
+                  <FinalLoadingStateComponent />
+                )}
+              </div>
+              ) : (
+                //start display response and response components if not loading
+                <div className='allEditing'>
+                  { isEditingState ? (
+                    <div>  
+                      <Editor
+                        editorState={editorState}
+                        onEditorStateChange={handleEditorStateChange}
+                        wrapperClassName="rich-editor-wrapper"
+                        editorClassName="rich-editor"
+                      />
+
+                      <Button size="small" variant="contained" startIcon={<Undo />} color="error" onClick={closeRTE}>Cancel</Button>
+                      &nbsp;
+                      <Button size="small" variant="contained" startIcon={<Edit />} onClick={() => saveEditor(stateToHTML(editorState.getCurrentContent()))}>Save Content</Button>
+                    </div>
+                  ) : (
+                    // display Response and action bar components
+                    <div className='responseAndActions'>
+                      <Button size="small" variant="outlined" startIcon={<ArrowBack />} onClick={handleBackState}>Back</Button>
+                       {/* Response Start */}
+                      <div className={styles.pbnjResults} dangerouslySetInnerHTML={{ __html: response }}>
+                      </div>
+                      {/* Response End */}
+
+                      {/* Action Bar Start */}
+                      <div className={styles.actionBar}>
+                        <Button 
+                          size="small" 
+                          variant="contained" 
+                          startIcon={<Download />}
+                          onClick={() => downloadContent("response.html", response)}
+                        >
+                          Download Content
+                        </Button>
+                        <Button size="small" variant="contained" startIcon={<Edit />} onClick={openEditor}>Edit Content</Button>
+
+                        <Button size="small" variant="contained" startIcon={<Blender />} onClick={handleRemixModalOpen}>Remix</Button>
+                        <RemixModal
+                          isOpen={isRemixModalOpen}
+                          onClose={() => setRemixModalOpen(false)}
+                          onSubmit={handleRemixModalSubmit}
+                        />  
+
+                        <CopyToClipboardButton text={response} />  
+
+                        <Button size="small" variant="contained" disabled color="success" startIcon={<Send />} type="submit">Post article to PBN (coming soon)</Button> 
+                      </div>
+                       {/* Action Bar End */}
+                    </div>
+                  )}
+                </div>
+              )
+        ))} {/*end loading map loop */}
+        </div>  
+      //end of loading check + response and response components
+        ) : (
+            // ArticleForm component and previous responses
+            <div className="formBobby">
+                <ArticleForm
+                handleSubmit={handleSubmit}
+                wordCount={wordCount}
+                setWordCount={setWordCount}
+                articleCount={articleCount}
+                setArticleCount={setArticleCount}
+                keywords={keywords}
+                setKeywords={setKeywords}
+                keywordsToExclude={keywordsToExclude}
+                setKeywordsToExclude={setKeywordsToExclude}
+                gptVersion={gptVersion}
+                handleGptVersionChange={handleGptVersionChange}
+                language={language}
+                handleLanguage={handleLanguage}
+                backlinks={backlinks}
+                setBacklinks={setBacklinks}
+                tone={tone}
+                handleToneChange={handleToneChange}
+                otherInstructions={otherInstructions}
+                setOtherInstructions={setOtherInstructions}
               />
 
-              <Button size="small" variant="contained" startIcon={<Undo />} color="error" onClick={closeRTE}>Cancel</Button>
-              &nbsp;
-              <Button size="small" variant="contained" startIcon={<Edit />} onClick={() => saveEditor(stateToHTML(editorState.getCurrentContent()))}>Save Content</Button>
+              { /* Check for Previous Responses and display back button + the responses */ }
+              {previousResponses.length > 0 && (
+                <div>
+                  <br />
+                  <Button size="small" variant="outlined" startIcon={<ArrowBack />} onClick={handleGoBackToLastResponse}>Back to Results</Button>
+          
+                  {/* Show previous responses */}
+                  {previousResponses.map((prevResponse, index) => (
+                    <PreviousResponseComponent key={index} response={prevResponse} />
+                  ))}
+                </div> 
+              )}
             </div>
-          ) : (
-            // display Response and action bar components
-            <div>
-              <Button size="small" variant="outlined" startIcon={<ArrowBack />} onClick={handleBackState}>Back</Button>
-              {/* Response Start */}
-              <div className={styles.pbnjResults} dangerouslySetInnerHTML={{ __html: response }}>
-              </div>
-              {/* Response End */}
-
-              {/* Action Bar Start */}
-              <div className={styles.actionBar}>
-                  <Button 
-                    size="small" 
-                    variant="contained" 
-                    startIcon={<Download />}
-                    onClick={() => downloadContent("response.html", response)}
-                  >
-                    Download Content
-                  </Button>
-                  <Button size="small" variant="contained" startIcon={<Edit />} onClick={openEditor}>Edit Content</Button>
-
-                  <Button size="small" variant="contained" startIcon={<Blender />} onClick={handleRemixModalOpen}>Remix</Button>
-                  <RemixModal
-                    isOpen={isRemixModalOpen}
-                    onClose={() => setRemixModalOpen(false)}
-                    onSubmit={handleRemixModalSubmit}
-                  />  
-
-                  <CopyToClipboardButton text={response} />  
-
-                  <Button size="small" variant="contained" disabled color="success" startIcon={<Send />} type="submit">Post article to PBN (coming soon)</Button> 
-                </div>
-              {/* Action Bar End */}
-            </div>
-        )}
-        </div> 
-      ) : (
-          // ArticleForm component and previous responses
-          <div>
-            <ArticleForm
-            handleSubmit={handleSubmit}
-            wordCount={wordCount}
-            setWordCount={setWordCount}
-            articleCount={articleCount}
-            setArticleCount={setArticleCount}
-            keywords={keywords}
-            setKeywords={setKeywords}
-            keywordsToExclude={keywordsToExclude}
-            setKeywordsToExclude={setKeywordsToExclude}
-            gptVersion={gptVersion}
-            handleGptVersionChange={handleGptVersionChange}
-            language={language}
-            handleLanguage={handleLanguage}
-            backlinks={backlinks}
-            setBacklinks={setBacklinks}
-            tone={tone}
-            handleToneChange={handleToneChange}
-            otherInstructions={otherInstructions}
-            setOtherInstructions={setOtherInstructions}
-          />
-
-          { /* Check for Previous Responses and display back button + the responses */ }
-          {previousResponses.length > 0 && (
-            <div>
-              <br />
-              <Button size="small" variant="outlined" startIcon={<ArrowBack />} onClick={handleGoBackToLastResponse}>Back to Results</Button>
-      
-              {/* Show previous responses */}
-              {previousResponses.map((prevResponse, index) => (
-                <PreviousResponseComponent key={index} response={prevResponse} />
-              ))}
-            </div> 
-          )}
-          </div>
-      )
-  ))}
-  </div>
+        )} 
+      </div>
   );
 };
 
