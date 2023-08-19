@@ -19,7 +19,7 @@ import {
 interface RemixModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSubmit: (iterations: number) => void;
+    onSubmit: (iterations: number, remixMode: string) => void;
 }
   
 const RemixModal: React.FC<RemixModalProps> = ({ isOpen, onClose, onSubmit }) => {
@@ -31,13 +31,12 @@ const RemixModal: React.FC<RemixModalProps> = ({ isOpen, onClose, onSubmit }) =>
     setIterations(value);
   };
 
-  const handleSubmit = () => {
-    onSubmit(iterations);
-  };
-
-
   const handleModeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setMode(event.target.value);
+  };
+
+  const handleSubmit = () => {
+    onSubmit(iterations, mode);
   };
 
   return (
