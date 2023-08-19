@@ -63,16 +63,17 @@ const RemixModal: React.FC<RemixModalProps> = ({ isOpen, onClose, onSubmit }) =>
           <h2>Remix Article</h2>
           <FormControl component="fieldset">
             <RadioGroup value={mode} onChange={handleModeChange}>
-              <FormControlLabel
-                value="generate"
-                control={<Radio />}
-                label="Generate New Content"
-              />
-              <FormControlLabel
+            <FormControlLabel
                 value="rewrite"
                 control={<Radio />}
                 label="Rewrite Existing Article"
               />
+              <FormControlLabel
+                value="generate"
+                control={<Radio />}
+                label="Generate New Seed Content"
+              />
+
             </RadioGroup>
           </FormControl>
           <br /> <br />
