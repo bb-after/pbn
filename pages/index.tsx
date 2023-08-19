@@ -3,7 +3,7 @@
 import React from 'react';
 import Form from '../components/Form';
 import Image from 'next/image';
-const pageTitle = "STATUS.AI";
+const pageTitle = "PBN'J";
 
 const Home: React.FC = () => {
   return (
