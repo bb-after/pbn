@@ -348,8 +348,8 @@ const Form: React.FC = () => {
 
         {/* Show previous responses */}
         {previousResponses.slice().reverse().map((prevResponse, index) => (
-          <div>
-            <PreviousResponseComponent version={previousResponses.length - index} response={prevResponse} />
+          <div key={`response-${index}`}>
+            <PreviousResponseComponent key={`component-${index}`}  version={previousResponses.length - index} response={prevResponse} />
             <div className={styles.actionBar}>
               <Button 
                 size="small" 
