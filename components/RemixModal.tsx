@@ -88,7 +88,7 @@ const RemixModal: React.FC<RemixModalProps> = ({ isOpen, onClose, onSubmit }) =>
           </FormControl>
           <br /><br />
           <Button onClick={handleSubmit} variant="contained" color="primary">
-            Let's Go
+            Submit
           </Button>
           &nbsp;
           <Button onClick={onClose} variant="outlined" color="secondary">
