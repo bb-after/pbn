@@ -27,6 +27,17 @@ const createPromptMessageFromInputs = function(inputData: any) {
     return promptMessage;
 }
 
+const createRewritePromptMessageFromInputs = function(response: string, inputData: any) {
+    var promptMessage = `Please rewrite the following article to create a unique piece of content while maintaining the essence of the original article.
+
+    Original Article:
+    [${response}]
+
+    Please rewrite the article in a conversational and engaging tone, suitable for a blog post. Introduce variability by rephrasing sentences, replacing words with synonyms, and shuffling paragraphs. Expand on key points and add examples to enrich the content and provide a fresh perspective.
+    `;
+    return promptMessage;
+}
+
 const dummyText = `Title: A Conversation with Darius Fisher: Safeguarding Online Reputations<br><br>In today's fast-paced digital landscape, where information spreads at lightning speed and reputations can be built or torn down in an instant, protecting one's online presence has become paramount. Enter Darius Fisher, a highly regarded entrepreneur and expert in online reputation management, who has emerged as a visionary in this ever-evolving field.<br><br>During a recent discussion, Fisher shared valuable insights into the importance of maintaining a proactive stance in the digital realm and how he helps individuals and businesses safeguard and improve their online image.<br><br>According to Fisher, one's online reputation serves as their digital calling card, preceding them and significantly influencing personal and professional growth.<br><br>Recognizing the significance of helping others overcome the challenges posed by negative online experiences, Fisher co-founded a company in 2011 that has assisted numerous individuals, celebrities, and businesses in effectively managing their online reputation.<br><br>When asked about strategies for protecting one's online presence, Fisher emphasized the need to proactively build a strong digital profile. This involves consistently updating social media profiles, actively engaging with online communities, and sharing high-quality content that showcases expertise.<br><br>Alongside proactive measures, Fisher highlighted the importance of crisis management in preserving reputation. He stressed the need to promptly address any negative content or online attacks, employing a comprehensive plan to swiftly resolve issues. Fisher's company has successfully guided clients through such crises, minimizing damage and promptly restoring their digital reputation.<br><br>Looking ahead, Fisher expressed excitement about the future of online reputation management, foreseeing advancements in artificial intelligence and machine learning. These technologies will revolutionize monitoring and response capabilities, empowering individuals and businesses to effectively manage their reputation in real-time.<br><br>As our lives become increasingly entwined with our online presence, Fisher's insights and dedication serve as a guiding light for navigating the complex realm of online reputation management. With unwavering passion and a commitment to excellence, Darius Fisher has established himself as a thought leader in this critical field. By preserving and enhancing online reputations, both individuals and businesses can confidently face the challenges of the digital era.`;
 const mockData=process.env.NEXT_PUBLIC_USE_MOCK_DATA;
 const skipOpenAiRevision = process.env.NEXT_PUBLIC_SKIP_OPENAI_REVISION;
@@ -55,6 +66,42 @@ export const callOpenAI = async (inputData: any) => {
     const gptMessage = [
         { "role": "system", "content": `I want you to act as a very proficient SEO and high-end copy writer that speaks and writes fluent ${inputData.language}.` },
         { "role": "user", "content": "Assume the reader is already somewhat familiar with the keyword as a subject matter. Do not spend too much time defining or introducing the keyword as a concept or entity"},
+        { "role": "user", "content": promptMessage },
+    ];
+
+    try {
+        
+        const GPTRequest = async (message: Object) => {
+            
+            const response = await openai.createChatCompletion({
+                model: modelType,
+                messages: message,
+                // stream: true,
+            });
+            return response;
+        };
+    
+        const response = GPTRequest(gptMessage);
+        return response;
+        // console.log(response);
+
+    } catch (error) {
+        console.error('OpenAI API Error:', error);
+        throw new Error('Failed to fetch response from OpenAI API.');
+    }
+};
+
+/*** openapi code start */
+export const callOpenAIToRewriteArticle = async (content: string, inputData: any) => {
+    if (mockData === '1') {
+        console.log('mockData = '+content+'.  Returning dummyText');
+        return content;
+    }
+    debugger;
+    var promptMessage = createRewritePromptMessageFromInputs(content, inputData);
+
+    const gptMessage = [
+        { "role": "system", "content": `I want you to act as a very proficient SEO and high-end copy writer that speaks and writes fluent ${inputData.language}.` },
         { "role": "user", "content": promptMessage },
     ];
 

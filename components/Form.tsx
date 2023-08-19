@@ -16,6 +16,7 @@ import FinalLoadingStateComponent from './FinalLoadingState';
 import ArticleForm from './ArticleForm'; // Adjust the path as needed
 import {
   callOpenAI,
+  callOpenAIToRewriteArticle,
   callOpenAIRevised,
   insertBacklinks,
   getBacklinkArray,
@@ -48,51 +49,60 @@ const Form: React.FC = () => {
   const [tone, setTone] = useState<string[]>([]);
   const [otherInstructions, setOtherInstructions] = useState('');
   const [isRemixModalOpen, setRemixModalOpen] = useState(false);
-
   
   const handleRemixModalOpen = () => {
     setRemixModalOpen(true);
   };
 
-  const handleRemixModalSubmit = async (iterations: number) => {
+  const handleRemixModalSubmit = async (iterations: number, remixMode: string) => {
 
     setRemixModalOpen(false); // Close the modal
   
     // setLoadingFirstRequest(true); // Set loading state to true before the API call
     const inputData = getInputData();
     setIterationTotal(iterations);
-    for(let i = 1; i <= iterations; i++) {
-      try {
-        setIterationCount(i);
-        setShowForm(false);
-        setLoadingFirstRequest(true);      
-        // Initial call to openAI to write the article
-        const firstResponse = await callOpenAI(inputData);
+    const mode = remixMode;
+    try {
+      for(let i = 1; i <= iterations; i++) {
+          setIterationCount(i);
+          setShowForm(false);
+          setLoadingFirstRequest(true);    
+          
+          // if (mode !== 'generate') {
+            // Initial call to openAI to write the article
+          const firstResponse = (mode !== 'generate') 
+            ? await callOpenAIToRewriteArticle(response, inputData)
+            : await callOpenAI(inputData);
 
-        setLoadingFirstRequest(false);      
-        
-        // Second call to openAI, this time to re-write it as if not written by AI.
-        const revisedResponse = await callOpenAIRevised(inputData, firstResponse);
+            // } else {
+          //   // Initial call to openAI to write the article
+          //   const firstResponse = await callOpenAI(inputData);            
+          // } 
 
-        // Modify hyperlinkedResponse as needed
-        setLoadingThirdRequest(true);            
-        let hyperlinkedResponse = revisedResponse;
-        const backlinkArray = getBacklinkArray(inputData);
-        hyperlinkedResponse = await insertBacklinks(backlinkArray.join(', '), hyperlinkedResponse);
-        // ...
-        setResponse(hyperlinkedResponse);
-        addResponseToPreviousResponses(hyperlinkedResponse);
+          setLoadingFirstRequest(false);      
+          
+          // Second call to openAI, this time to re-write it as if not written by AI.
+          const revisedResponse = await callOpenAIRevised(inputData, firstResponse);
 
-        setLoadingThirdRequest(false);
+          // Modify hyperlinkedResponse as needed
+          setLoadingThirdRequest(true);            
+          let hyperlinkedResponse = revisedResponse;
+          const backlinkArray = getBacklinkArray(inputData);
+          hyperlinkedResponse = await insertBacklinks(backlinkArray.join(', '), hyperlinkedResponse);
+          // ...
+          setResponse(hyperlinkedResponse);
+          addResponseToPreviousResponses(hyperlinkedResponse);
 
-      } catch (error) {
+          setLoadingThirdRequest(false);
+      }
+    } 
+    catch (error) {
         setLoadingFirstRequest(true);      
         setLoadingThirdRequest(false);      
-      }
-    };
-    
-
-
+    } finally {
+      setIterationCount(0);
+      setIterationTotal(0);      
+    }
 
   };
   
@@ -337,9 +347,9 @@ const Form: React.FC = () => {
         )}
 
         {/* Show previous responses */}
-        {previousResponses.map((prevResponse, index) => (
+        {previousResponses.slice().reverse().map((prevResponse, index) => (
           <div>
-            <PreviousResponseComponent key={index} version={index+1} response={prevResponse} />
+            <PreviousResponseComponent key={index} version={previousResponses.length - index} response={prevResponse} />
             <div className={styles.actionBar}>
               <Button 
                 size="small" 
