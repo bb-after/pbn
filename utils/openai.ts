@@ -185,13 +185,20 @@ export const parseResponse = function(response: string)
     correctedResponse = correctedResponse.replace(/: '([^']+)'/g, ': "$1"');
 
     // Replace line breaks with commas to create a valid JSON format
-    correctedResponse = correctedResponse.replace(/\n\n"/g, ',"');
+    correctedResponse = correctedResponse.replace(/\s{4,}/g, ',');
 
+    // Replace double line breaks with commas.
+    correctedResponse = correctedResponse.replace(/\n\n"/g, ',"');
     // Remove square brackets from the 'text' field
     correctedResponse = correctedResponse.replace(/\[(.+?)\]/g, '$1');
 
+    //strip out trailing single quotes or double quotes at the end of the payload.  
+    // sometimes OpenAI returns the response this way.
+    correctedResponse = correctedResponse.replace(/['"]$/, '');
+
     // Check if correctedResponse starts with a curly brace
     if (!correctedResponse.startsWith('{')) {
+        
         // Add curly braces to the start and end of the value
         correctedResponse = `{${correctedResponse}}`;
     } 

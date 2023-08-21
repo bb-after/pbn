@@ -98,7 +98,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({
     
     <Box>
       <FormControl>
-        <InputLabel>GPT Version</InputLabel>
+        <InputLabel>GPT Engine</InputLabel>
         <Select
           autoWidth
           value={gptVersion}
