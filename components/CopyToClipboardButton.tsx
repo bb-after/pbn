@@ -23,8 +23,9 @@ const CopyToClipboardButton: React.FC<{ text: string }> = ({ text }) => {
     <div>
         <Button
         startIcon={<ContentCopyIcon />}
-        variant="outlined"
+        variant="contained"
         color="primary"
+        size="small"
         onClick={handleCopyToClipboard}
         >
         Copy to Clipboard

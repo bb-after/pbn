@@ -1,49 +1,111 @@
 // components/Form.tsx
-
 import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic'; // To load the RTE dynamically (client-side)
 import { EditorState, ContentState, convertFromHTML } from 'draft-js';
 import 'react-draft-wysiwyg/dist/react-draft-wysiwyg.css';
-import TextField from '@mui/material/TextField';
-import Image from 'next/image';
-import Button from '@mui/material/Button';
-import Checkbox from '@mui/material/Checkbox';
-// import BackIcon from '@mui/icons-material/Back';
-import { Send, ArrowBack, ContentCopy, Edit } from '@mui/icons-material';
-import FormControlLabel from '@mui/material/FormControlLabel';
-import FormControl from '@mui/material/FormControl';
-import FormGroup from '@mui/material/FormGroup';
-import FormLabel from '@mui/material/FormLabel';
-import TextareaAutosize from '@mui/material/TextareaAutosize';
+import { Button, SelectChangeEvent } from '@mui/material';
+import styles from './styles.module.css'; // Make sure the correct path is used
+import { Send, ArrowBack, Edit, Download, Blender, Undo } from '@mui/icons-material';
 import CopyToClipboardButton from './CopyToClipboardButton'; // Replace with the correct path to your component
 import { stateToHTML } from 'draft-js-export-html';
-
-import { callOpenAI, callOpenAIRevised, insertBacklinks, getBacklinkArray } from '../utils/openai';
+import PreviousResponseComponent from './PreviousResponseComponent';
+import RemixModal from './RemixModal';
+import Step1LoadingStateComponent from './Step1LoadingState';
+import Step2LoadingStateComponent from './Step2LoadingState';
+import FinalLoadingStateComponent from './FinalLoadingState';
+import ArticleForm from './ArticleForm'; // Adjust the path as needed
+import {
+  callOpenAI,
+  callOpenAIToRewriteArticle,
+  callOpenAIRevised,
+  insertBacklinks,
+  getBacklinkArray,
+} from '../utils/openai';
 
 // Dynamically load the RTE component (client-side) to prevent server-side rendering issues
 const Editor = dynamic(
   () => import('react-draft-wysiwyg').then((module) => module.Editor),
   { ssr: false }
 );
-
+const skipOpenAiRevision = process.env.NEXT_PUBLIC_SKIP_OPENAI_REVISION;
 const Form: React.FC = () => {
+  const [backlinks, setBacklinks] = useState(['']); // Initial state with one input
+  const [previousResponses, setPreviousResponses] = React.useState<string[]>([]);
+  const [iterationCount, setIterationCount] = useState(0);
+  const [iterationTotal, setIterationTotal] = useState(0);
+  // const [isLoading, setIsLoading] = useState(false);
   const [isLoadingFirstRequest, setLoadingFirstRequest] = useState(false);
   const [isLoadingSecondRequest, setLoadingSecondRequest] = useState(false);
   const [isLoadingThirdRequest, setLoadingThirdRequest] = useState(false);
+  const [showForm, setShowForm] = useState(true);
   const [isEditingState, setEditingState] = useState(false);
   const [response, setResponse] = useState<string>(''); // Initialize with an empty string
-  const [title, setTitle] = useState('');
   const [keywords, setKeywords] = useState('');
-  const [wordCount, setWordCount] = useState('');
+  const [gptVersion, setGptVersion] = useState("gpt-3.5-turbo");
+  const [language, setLanguage] = useState("English");
+  const [wordCount, setWordCount] = useState(300);
   const [keywordsToExclude, setKeywordsToExclude] = useState('');
-  const [backlink1, setBacklink1] = useState('');
-  const [backlink2, setBacklink2] = useState('');
-  const [backlink3, setBacklink3] = useState('');
-  const [backlink4, setBacklink4] = useState('');
-  const [backlink5, setBacklink5] = useState('');
+  const [articleCount, setArticleCount] = useState(1);
   const [tone, setTone] = useState<string[]>([]);
   const [otherInstructions, setOtherInstructions] = useState('');
-  const step2Text = "Schmearin' the jam...";
+  const [isRemixModalOpen, setRemixModalOpen] = useState(false);
+  
+  const handleRemixModalOpen = () => {
+    setRemixModalOpen(true);
+  };
+
+  const handleRemixModalSubmit = async (iterations: number, remixMode: string) => {
+
+    setRemixModalOpen(false); // Close the modal
+  
+    // setLoadingFirstRequest(true); // Set loading state to true before the API call
+    const inputData = getInputData();
+    setIterationTotal(iterations);
+    const mode = remixMode;
+    try {
+      for(let i = 1; i <= iterations; i++) {
+          setIterationCount(i);
+          setShowForm(false);
+          setLoadingFirstRequest(true);    
+          
+          // if (mode !== 'generate') {
+            // Initial call to openAI to write the article
+          const firstResponse = (mode !== 'generate') 
+            ? await callOpenAIToRewriteArticle(response, inputData)
+            : await callOpenAI(inputData);
+
+            // } else {
+          //   // Initial call to openAI to write the article
+          //   const firstResponse = await callOpenAI(inputData);            
+          // } 
+
+          setLoadingFirstRequest(false);      
+          
+          // Second call to openAI, this time to re-write it as if not written by AI.
+          const revisedResponse = await callOpenAIRevised(inputData, firstResponse);
+
+          // Modify hyperlinkedResponse as needed
+          setLoadingThirdRequest(true);            
+          let hyperlinkedResponse = revisedResponse;
+          const backlinkArray = getBacklinkArray(inputData);
+          hyperlinkedResponse = await insertBacklinks(backlinkArray.join(', '), hyperlinkedResponse);
+          // ...
+          setResponse(hyperlinkedResponse);
+          addResponseToPreviousResponses(hyperlinkedResponse);
+
+          setLoadingThirdRequest(false);
+      }
+    } 
+    catch (error) {
+        setLoadingFirstRequest(true);      
+        setLoadingThirdRequest(false);      
+    } finally {
+      setIterationCount(0);
+      setIterationTotal(0);      
+    }
+
+  };
+  
 
   const [editorState, setEditorState] = useState<EditorState>(
     // Create an initial EditorState with an empty ContentState
@@ -77,13 +139,29 @@ const Form: React.FC = () => {
     );
   };
 
+  const addResponseToPreviousResponses = function(response: string) {
+    if (response !== '' && !previousResponses.includes(response)) {
+      setPreviousResponses(prevResponses => [...prevResponses, response]);
+    }
+  }
+
   const handleBackState = () => {
-    setResponse('');
+    addResponseToPreviousResponses(response);
+    setShowForm(true);
     setEditingState(false);
+  }
+
+  const handleGoBackToLastResponse = () => {
+    const lastResponse = previousResponses[previousResponses.length - 1];
+    setResponse(lastResponse);
+    setShowForm(false);
   }
 
   const openEditor = () => {
     setEditingState(true);
+  }
+  const closeRTE = () => {
+    setEditingState(false);
   }
 
   const saveEditor = (newContent: string) => {
@@ -91,297 +169,205 @@ const Form: React.FC = () => {
     setResponse(newContent); // Update the response state with the new content
   };
   
+  function downloadContent(filename: string, content: string) {
+    const blob = new Blob([content], { type: 'text/html' }); // Create a blob with the content
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); // Create an anchor tag to trigger the download
+    a.href = url;
+    a.download = filename;
+    a.click();
   
+    URL.revokeObjectURL(url); // Clean up the object URL
+  }
+  
+  const handleGptVersionChange = (event: SelectChangeEvent) => {
+    setGptVersion(event.target.value as string);
+  };
+
+  const handleLanguage = (event: SelectChangeEvent) => {
+    setLanguage(event.target.value as string);
+  };
+
+  const getInputData = function() {
+    return {
+      keywords: keywords.split(','),
+      keywordsToExclude: keywordsToExclude.split(','),
+      tone: tone.join(', '),
+      wordCount: wordCount,
+      gptVersion: gptVersion,
+      articleCount: articleCount,
+      otherInstructions: otherInstructions,
+      language: language,
+      // Dynamically generate backlinks properties
+      ...backlinks.reduce<Record<string, string>>((acc, _, index) => {
+        acc[`backlink${index + 1}`] = backlinks[index];
+        return acc;
+        }, {}),
+    };
+  }
   const handleSubmit = async (e: React.FormEvent) => {
 
     e.preventDefault();
-    setLoadingFirstRequest(true); // Set loading state to true before the API call
-
+    // setLoadingFirstRequest(true); // Set loading state to true before the API call
+    const inputData = getInputData();
+    const numberOfIterations = 1; // Set the desired number of iterations
+    
     try {
-      const inputData = {
-        keywords: keywords.split(','),
-        keywordsToExclude: keywordsToExclude.split(','),
-        backlink1: backlink1,
-        backlink2: backlink2,
-        backlink3: backlink3,
-        backlink4: backlink4,
-        backlink5: backlink5,
-        tone: tone.join(', '),
-        wordCount: 400,
-        otherInstructions: otherInstructions,
-
-      };
-
-      //initial call to openAI to write the article
+      setShowForm(false);
+      setLoadingFirstRequest(true);      
+      // Initial call to openAI to write the article
       const firstResponse = await callOpenAI(inputData);
-      setLoadingFirstRequest(false); // Clear loading state after the first request
-
+      // ...
+      setLoadingFirstRequest(false);      
       
-      setLoadingSecondRequest(true); // Set loading state for the second request
-      //second call to openAI, this time to re-write it as if not written by AI.  
+      // Second call to openAI, this time to re-write it as if not written by AI.
       const revisedResponse = await callOpenAIRevised(inputData, firstResponse);
-      setLoadingSecondRequest(false); // Clear loading state after the second request
-      setLoadingThirdRequest(true); // Set loading state for the second request
 
-      const maxBacklinks = 5;
+      // Modify hyperlinkedResponse as needed
+      setLoadingThirdRequest(true);            
       let hyperlinkedResponse = revisedResponse;
       const backlinkArray = getBacklinkArray(inputData);
-
       hyperlinkedResponse = await insertBacklinks(backlinkArray.join(', '), hyperlinkedResponse);
-      console.log('updated hyperlinked response', hyperlinkedResponse);
-      
+      // ...
       setResponse(hyperlinkedResponse);
-      
-      setLoadingFirstRequest(false);
-      setLoadingSecondRequest(false);
+      addResponseToPreviousResponses(hyperlinkedResponse);
       setLoadingThirdRequest(false);
-      // setResponse(response);
 
     } catch (error) {
-      setLoadingFirstRequest(false); // Clear loading state on error
-      setLoadingSecondRequest(false); // Clear loading state on error
-      setLoadingThirdRequest(false);
-      console.error('Error submitting form:', error);
-      // Handle error here, e.g., display an error message.
+      setLoadingFirstRequest(false);      
+      setLoadingThirdRequest(false);      
     }
-  }
+  };
+  
 
   return (
-      <div>
-        { isLoadingFirstRequest ? (
-            <div style={{ textAlign: 'center', padding: 16, margin: 'auto', maxWidth: 750, background: 'rgb(250 250 250)' }}>
-              <Image
-                priority
-                src="/images/pb-animated.gif"
-                height={144}
-                width={144}
-                alt=""
-              />
-              <br></br>
-              Step 1:
-              <br></br>
-              Churning the (peanut) butter...
-            </div>
-        ) : isLoadingSecondRequest ? (
-            <div style={{ textAlign: 'center', padding: 16, margin: 'auto', maxWidth: 750, background: 'rgb(250 250 250)' }}>
-              <Image
-              priority
-              src="/images/jam.gif"
-              height={144}
-              width={144}
-              alt=""
-            />  
-            <br></br>
-            Step 2:
-            <br></br>
-            {`${step2Text}`}
-            </div>
-        ) : isLoadingThirdRequest ? (
-          <div style={{ textAlign: 'center', padding: 16, margin: 'auto', maxWidth: 750, background: 'rgb(250 250 250)' }}>
-            <Image
-            priority
-            src="/images/pbj-final.gif"
-            height={144}
-            width={144}
-            alt=""
-          />  
-          <br></br>
-          Step 3:
-          <br></br>
-          Putting it together...
+      <div className={styles.formWrapper}>
+      {
+        showForm ? (
+           // ArticleForm component and previous responses
+           <div className="formBobby">
+           <ArticleForm
+           handleSubmit={handleSubmit}
+           wordCount={wordCount}
+           setWordCount={setWordCount}
+           articleCount={articleCount}
+           setArticleCount={setArticleCount}
+           keywords={keywords}
+           setKeywords={setKeywords}
+           keywordsToExclude={keywordsToExclude}
+           setKeywordsToExclude={setKeywordsToExclude}
+           gptVersion={gptVersion}
+           handleGptVersionChange={handleGptVersionChange}
+           language={language}
+           handleLanguage={handleLanguage}
+           backlinks={backlinks}
+           setBacklinks={setBacklinks}
+           tone={tone}
+           handleToneChange={handleToneChange}
+           otherInstructions={otherInstructions}
+           setOtherInstructions={setOtherInstructions}
+         />
+
+         { /* Check for Previous Responses and display back button + the responses */ }
+         {previousResponses.length > 0 && (
+           <div>
+             <br />
+             <Button size="small" variant="outlined" startIcon={<ArrowBack />} onClick={handleGoBackToLastResponse}>Back to Results</Button>
           </div>
-      ) : response !== '' ? (
-        <div>
-          { isEditingState && 
-          ( 
-             <Editor
-              editorState={editorState}
-              onEditorStateChange={handleEditorStateChange}
-              wrapperClassName="rich-editor-wrapper"
-              editorClassName="rich-editor"
-            />
-          )}
-          { !isEditingState && 
-          (
-           <div dangerouslySetInnerHTML={{ __html: response }} className="pbnj-output">
-            </div>
-          )} 
-          <br />
-          <Button variant="outlined" startIcon={<ArrowBack />} onClick={handleBackState}>Go Back</Button>
-          <br /><br />
-          { !isEditingState &&
-          (
-            <div>
-            <Button variant="outlined" startIcon={<Edit />} onClick={openEditor}>Edit Content</Button>
-            <br /><br />
-            <CopyToClipboardButton text={response} />  
-            <br />
-            <Button variant="contained" color="success" startIcon={<Send />} type="submit">Post article to PBN</Button>
-            </div>
-          )}
-          { isEditingState && (
-            
-    
-            <Button variant="outlined" startIcon={<Edit />} onClick={() => saveEditor(stateToHTML(editorState.getCurrentContent()))}>Save Content</Button>
-          )}
+        )}
 
-
-        </div>
+       </div>
         ) : (
-          <form onSubmit={handleSubmit}>
-
-              <TextField
-                label="Word Count"
-                value={wordCount}
-                onChange={(e) => setWordCount(e.target.value)}
-                margin="normal"
-                type="number"
-                defaultValue="520"
-                style={{width: 250}}
-                placeholder='Approximate count'
-                required
-              />
-
-              <TextField
-                label="Keywords"
-                value={keywords}
-                onChange={(e) => setKeywords(e.target.value)}
-                fullWidth
-                margin="normal"
-                required
-                placeholder='Comma separated'
-              />
-
-              <TextField
-                label="Keywords to Exclude"
-                value={keywordsToExclude}
-                onChange={(e) => setKeywordsToExclude(e.target.value)}
-                fullWidth
-                margin="normal"
-                placeholder='Comma separated'
-              />
-
-              <TextField
-                label="Backlink URL 1"
-                value={backlink1}
-                type={"url"}
-                onChange={(e) => setBacklink1(e.target.value)}
-                margin="normal"
-              />
-
-              <TextField
-                label="Backlink URL 2"
-                value={backlink2}
-                type={"url"}
-                onChange={(e) => setBacklink2(e.target.value)}
-                margin="normal"
-              />
-
-              <TextField
-                label="Backlink URL 3"
-                value={backlink3}
-                type={"url"}
-                onChange={(e) => setBacklink3(e.target.value)}
-                margin="normal"
-              />
-              <br></br>
-              <br></br>
-              <FormControl component="fieldset">
-                <FormLabel component="legend">Tone</FormLabel>
-                <FormGroup>
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={tone.includes('formal')}
-                        onChange={handleToneChange}
-                        value="formal"
+        // Response zone 
+        <div className="response">
+              { (isLoadingFirstRequest || isLoadingThirdRequest) && iterationCount > 0 ? (
+                  <div className={styles.iterationCount}>
+                    Remixing {iterationCount} / {iterationTotal}
+                  </div>
+              ) : '' }
+              { isLoadingFirstRequest ? (
+                  <Step1LoadingStateComponent />
+              ) : isLoadingThirdRequest ? (
+                  <FinalLoadingStateComponent />
+              ) : (                  
+                <div className="allEditing">
+                {/* //start display response and response components if not loading */}
+                  { isEditingState ? (
+                    <div>  
+                      <Editor
+                        editorState={editorState}
+                        onEditorStateChange={handleEditorStateChange}
+                        wrapperClassName="rich-editor-wrapper"
+                        editorClassName="rich-editor"
                       />
-                    }
-                    label="Formal"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={tone.includes('informal')}
-                        onChange={handleToneChange}
-                        value="informal"
-                      />
-                    }
-                    label="Informal"
-                  />
 
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={tone.includes('journalistic')}
-                        onChange={handleToneChange}
-                        value="journalistic"
-                      />
-                    }
-                    label="Journalistic"
-                  />
+                      <Button size="small" variant="contained" startIcon={<Undo />} color="error" onClick={closeRTE}>Cancel</Button>
+                      &nbsp;
+                      <Button size="small" variant="contained" startIcon={<Edit />} onClick={() => saveEditor(stateToHTML(editorState.getCurrentContent()))}>Save Content</Button>
+                    </div>
+                  ) : (
+                    // display Response and action bar components
+                    <div className='responseAndActions'>
+                      <Button size="small" variant="outlined" startIcon={<ArrowBack />} onClick={handleBackState}>Back</Button>
+                       {/* Response Start */}
+                      <div className={styles.pbnjResults} dangerouslySetInnerHTML={{ __html: response }}>
+                      </div>
+                      {/* Response End */}
 
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={tone.includes('joyful')}
-                        onChange={handleToneChange}
-                        value="joyful"
-                      />
-                    }
-                    label="Joyful"
-                  />
+                      {/* Action Bar Start */}
+                      <div className={styles.actionBar}>
+                        <Button 
+                          size="small" 
+                          variant="contained" 
+                          startIcon={<Download />}
+                          onClick={() => downloadContent("response.html", response)}
+                        >
+                          Download Content
+                        </Button>&nbsp;
+                        <Button size="small" variant="contained" startIcon={<Edit />} onClick={openEditor}>Edit Content</Button>
 
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={tone.includes('optimistic')}
-                        onChange={handleToneChange}
-                        value="optimistic"
-                      />
-                    }
-                    label="Optimistic"
-                  />
+                        <Button size="small" variant="contained" startIcon={<Blender />} onClick={handleRemixModalOpen}>Remix</Button>
+                        <RemixModal
+                          isOpen={isRemixModalOpen}
+                          onClose={() => setRemixModalOpen(false)}
+                          onSubmit={handleRemixModalSubmit}
+                        />  
 
-                <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={tone.includes('sincere')}
-                        onChange={handleToneChange}
-                        value="sincere"
-                      />
-                    }
-                    label="Sincere"
-                  />
+                        <CopyToClipboardButton text={response} />  
 
-                <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={tone.includes('humorous')}
-                        onChange={handleToneChange}
-                        value="humorous"
-                      />
-                    }
-                    label="Humorous"
-                  />
+                        <Button size="small" variant="contained" disabled color="success" startIcon={<Send />} type="submit">Post article to PBN (coming soon)</Button> 
+                      </div>
+                       {/* Action Bar End */}
+                    </div>
+                  )}
+                </div>
+              )}
+        </div>  
+      //end of loading check + response and response components
+        )}
 
-                </FormGroup>
-              </FormControl>
+        {/* Show previous responses */}
+        {previousResponses.slice().reverse().map((prevResponse, index) => (
+          <div key={`response-${index}`}>
+            <PreviousResponseComponent key={`component-${index}`}  version={previousResponses.length - index} response={prevResponse} />
+            <div className={styles.actionBar}>
+              <Button 
+                size="small" 
+                variant="contained" 
+                startIcon={<Download />}
+                onClick={() => downloadContent("response.html", prevResponse)}
+              >
+                Download Content
+              </Button>
+              &nbsp;
+              <CopyToClipboardButton text={response} />  
 
-              <TextareaAutosize
-                minRows={4}
-                placeholder="Other Instructions"
-                value={otherInstructions}
-                onChange={(e) => setOtherInstructions(e.target.value)}
-                style={{ width: '100%', marginTop: 20, fontFamily: 'Roboto', fontWeight: 400, fontSize: '1rem', padding: '0.5rem' }}
-              />
+              <Button size="small" variant="contained" disabled color="success" startIcon={<Send />} type="submit">Post article to PBN (coming soon)</Button> 
+            </div>
+          </div>
+        ))}
 
-              <Button variant="contained" type="submit">Give me the PB and the J</Button>
-
-            </form>
-        )
-      }
-    </div>
+      </div>
   );
 };
 
