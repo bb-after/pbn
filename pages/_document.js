@@ -1,6 +1,10 @@
 // pages/_document.js
-
 import Document, { Html, Head, Main, NextScript } from 'next/document';
+
+// const bodyStyle = {
+//   backgroundColor: '#eeeeee',
+// };
+
 
 class MyDocument extends Document {
     render() {
