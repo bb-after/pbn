@@ -6,7 +6,7 @@ interface PreviousResponseProps {
   
 const PreviousResponseComponent: React.FC<PreviousResponseProps> = ({ response, version }) => {
   return (
-    <div>
+    <div className="previousResponse">
       <h3>Version {version}</h3>
       <div dangerouslySetInnerHTML={{ __html: response }} className="previous-response" />
     </div>
