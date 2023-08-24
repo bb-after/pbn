@@ -270,6 +270,7 @@ export const insertBacklinks = async (backlinkValues: any, openAIResponse: strin
         
         - Select a unique and non-repetitive phrase.
         - **Important**: The hyperlinked phrase should strictly be 1 to 4 words in length. Do not exceed this limit.
+        - The hyperlinked phrase can not be in the title or first sentence of the article. 
         - Provide the entire sentence in which the phrase occurs to ensure clarity of context.
         - Within the sentence, encapsulate the specific words to be hyperlinked using square brackets.
        
