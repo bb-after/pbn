@@ -5,7 +5,7 @@ import { EditorState, ContentState, convertFromHTML } from 'draft-js';
 import 'react-draft-wysiwyg/dist/react-draft-wysiwyg.css';
 import { Button, SelectChangeEvent } from '@mui/material';
 import styles from './styles.module.css'; // Make sure the correct path is used
-import { Send, ArrowBack, Edit, Download, Blender, Undo } from '@mui/icons-material';
+import { Send, ArrowBack, Edit, Download, Blender, Undo, RestartAlt } from '@mui/icons-material';
 import CopyToClipboardButton from './CopyToClipboardButton'; // Replace with the correct path to your component
 import { stateToHTML } from 'draft-js-export-html';
 import PreviousResponseComponent from './PreviousResponseComponent';
@@ -151,6 +151,17 @@ const Form: React.FC = () => {
     setEditingState(false);
   }
 
+  const handleStartOver = () => {
+    const confirmed = window.confirm("Are you sure you want to start over? This action will clear your current data.");
+  
+    if (confirmed) {
+        setShowForm(true); 
+        setEditingState(false);
+        setResponse('');
+        setPreviousResponses([]);
+    }
+  }
+
   const handleGoBackToLastResponse = () => {
     const lastResponse = previousResponses[previousResponses.length - 1];
     setResponse(lastResponse);
@@ -276,7 +287,7 @@ const Form: React.FC = () => {
           </div>
         )}
 
-       </div>
+          </div>
         ) : (
         // Response zone 
         <div className="response">
@@ -309,6 +320,9 @@ const Form: React.FC = () => {
                     // display Response and action bar components
                     <div className='responseAndActions'>
                       <Button size="small" variant="outlined" startIcon={<ArrowBack />} onClick={handleBackState}>Back</Button>
+                      &nbsp;&nbsp;
+                      <Button size="small" variant="outlined" startIcon={<RestartAlt />} onClick={handleStartOver}>Start Over</Button>
+
                        {/* Response Start */}
                       <div className={styles.pbnjResults} dangerouslySetInnerHTML={{ __html: response }}>
                       </div>
