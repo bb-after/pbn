@@ -33,7 +33,7 @@ export const sendDataToStatusCrawl = async (inputData: any, hyperlinkedResponse:
     const responseData = await response.json();
     console.log(responseData);
 
-  } catch (error) {
-    console.error('There was a problem with the fetch operation:', error.message);
+  } catch (error: any) {
+    console.error('There was a problem with the fetch operation:', error.msg);
   }
 };
