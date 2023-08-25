@@ -1,7 +1,7 @@
 export const sendDataToStatusCrawl = async (inputData: any, hyperlinkedResponse: string): Promise<void> => {
   // Extract userToken from the URL
   const urlParams = new URLSearchParams(window.location.search);
-  const userToken = urlParams.get('userToken');
+  const userToken = urlParams.get('token');
     debugger;
   // Check if userToken is present
   if (!userToken) {
