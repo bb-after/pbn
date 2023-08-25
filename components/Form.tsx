@@ -21,6 +21,7 @@ import {
   insertBacklinks,
   getBacklinkArray,
 } from '../utils/openai';
+import { sendDataToStatusCrawl } from '../utils/statusCrawl';
 
 // Dynamically load the RTE component (client-side) to prevent server-side rendering issues
 const Editor = dynamic(
@@ -216,6 +217,8 @@ const Form: React.FC = () => {
         }, {}),
     };
   }
+
+
   const handleSubmit = async (e: React.FormEvent) => {
 
     e.preventDefault();
@@ -243,6 +246,8 @@ const Form: React.FC = () => {
       setResponse(hyperlinkedResponse);
       addResponseToPreviousResponses(hyperlinkedResponse);
       setLoadingThirdRequest(false);
+
+      await sendDataToStatusCrawl(inputData, hyperlinkedResponse);
 
     } catch (error) {
       setLoadingFirstRequest(false);      
