@@ -60,7 +60,7 @@ export const callOpenAI = async (inputData: any) => {
         console.log('mockData = '+mockData+'.  Returning dummyText');
         return dummyText;
     }
-    debugger;
+ 
     var promptMessage = createPromptMessageFromInputs(inputData);
 
     const gptMessage = [
@@ -97,7 +97,7 @@ export const callOpenAIToRewriteArticle = async (content: string, inputData: any
         console.log('mockData = '+content+'.  Returning dummyText');
         return content;
     }
-    debugger;
+
     var promptMessage = createRewritePromptMessageFromInputs(content, inputData);
 
     const gptMessage = [
