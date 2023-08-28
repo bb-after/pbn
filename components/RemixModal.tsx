@@ -83,7 +83,7 @@ const RemixModal: React.FC<RemixModalProps> = ({ isOpen, onClose, onSubmit }) =>
               type="number"
               value={iterations}
               onChange={handleIterationsChange}
-              inputProps={{ min: 1, max: 5 }}
+              inputProps={{ min: 1, max: 10 }}
               startAdornment={<InputAdornment position="start">#</InputAdornment>}
             />
           </FormControl>

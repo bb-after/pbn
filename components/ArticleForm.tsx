@@ -58,24 +58,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({
       placeholder='Approximate count'
       required
     />
-    &nbsp;&nbsp;
-    <TextField
-      label="Article Count"
-      value={articleCount}
-      onChange={(e) => setArticleCount(Number(e.target.value))}
-      margin="normal"
-      type="number"
-      defaultValue={3}
-      InputProps={{
-        inputProps: { 
-            max: 10, min: 1 
-        }
-    }}          
-      style={{width: 250}}
-      placeholder='Number of Articles to be generated'
-      required
-    />              
-
+   
     <TextField
       label="Keywords"
       value={keywords}
