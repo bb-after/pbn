@@ -1,23 +1,21 @@
-  // Function to post a notification to Slack
-  export async function postToSlack(notificationMessage: string) {
-    const webhookUrl = 'https://hooks.slack.com/services/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';
-    
-    const response = await fetch(webhookUrl, {
+export const postToSlack = async (message: string) => {
+    try {
+      const response = await fetch('/api/slackNotification', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json',
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-            username: 'PBNJ Bot',
-            icon_url: 'https://ai.statuscrawl.io/_next/image?url=%2Fimages%2Fpbnj.png&w=128&q=75',
-            text: notificationMessage,
-        }),
-    });
-
-    if (response.ok) {
+        body: JSON.stringify({ message }),
+      });
+  
+      const data = await response.json();
+  
+      if (data.success) {
         console.log('Notification posted to Slack successfully');
-    } else {
-        console.error('Failed to post notification to Slack');
+      } else {
+        console.error('Failed to post notification to Slack:', data.message);
+      }
+    } catch (error) {
+      console.error('Error notifying Slack:', error);
     }
   }
-

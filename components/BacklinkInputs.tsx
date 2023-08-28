@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useEffect } from 'react';
 import TextField from '@mui/material/TextField';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
@@ -9,25 +9,32 @@ interface BacklinkInputsProps {
     setBacklinks: (newBacklinks: string[]) => void;  // Assuming `setBacklinks` is a state setter function
   }
   
-const BacklinkInputs: React.FC<BacklinkInputsProps> = ({ backlinks, setBacklinks }) => {    
-    // const BacklinkInputs = ({ backlinks, setBacklinks }): React.JSX.Element => {
-const addBacklink = () => {
+const BacklinkInputs: React.FC<BacklinkInputsProps> = ({ backlinks, setBacklinks }) => {
+  const newestInputRef = useRef<HTMLInputElement>(null); // Step 1: Create a reference
+  const addBacklink = () => {
     if (backlinks.length < 20) {
     setBacklinks([...backlinks, '']);
     }
-};
+  };
 
-const removeBacklink = (index: number) => {
-    const updatedBacklinks = [...backlinks];
-    updatedBacklinks.splice(index, 1);
-    setBacklinks(updatedBacklinks);
-};
+  useEffect(() => {
+    // Step 3: Focus on the input when the backlinks length changes
+    if (newestInputRef.current && backlinks.length > 1) {
+        newestInputRef.current.focus();
+    }
+  }, [backlinks.length]);
 
-const updateBacklink = (index: number, value: string) => {
-    const updatedBacklinks = [...backlinks];
-    updatedBacklinks[index] = value;
-    setBacklinks(updatedBacklinks);
-};
+  const removeBacklink = (index: number) => {
+      const updatedBacklinks = [...backlinks];
+      updatedBacklinks.splice(index, 1);
+      setBacklinks(updatedBacklinks);
+  };
+
+  const updateBacklink = (index: number, value: string) => {
+      const updatedBacklinks = [...backlinks];
+      updatedBacklinks[index] = value;
+      setBacklinks(updatedBacklinks);
+  };
 
   return (
     <div>
@@ -37,6 +44,7 @@ const updateBacklink = (index: number, value: string) => {
             label={`Backlink URL ${index + 1}`}
             value={backlink}
             type="url"
+            inputRef={index === backlinks.length - 1 ? newestInputRef : null}
             onChange={(e) => updateBacklink(index, e.target.value)}
             margin="normal"
           />
