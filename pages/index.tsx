@@ -1,11 +1,34 @@
 // pages/index.tsx
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Form from '../components/Form';
 import Image from 'next/image';
+
+
+
 const pageTitle = "Status AI";
 
 const Home: React.FC = () => {
+  const [hasToken, setHasToken] = useState<boolean>(true); // assume token is there initially
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+
+    if (!token) {
+      setHasToken(false);
+    }
+  }, []);
+
+  if (!hasToken) {
+    // Option 1: Redirect to another page
+    // return <Redirect to="/error" />;
+
+    // Option 2: Display an error message
+    return   <div style={{ paddingTop: '15rem', fontSize: '2rem', textAlign: 'center', color: 'tomato' }}>
+      No User token (or invalid token) found! Please log in to the Sales Portal and try again.
+      </div>;
+  }
+
   return (
     
     <div style={{ padding: 16, margin: 'auto', maxWidth: 750, background: '#ffffff' }}>

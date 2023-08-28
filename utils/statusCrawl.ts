@@ -1,3 +1,4 @@
+const statusCrawlEndpoint = 'https://sales.statuscrawl.io/api/v1/article/save';
 export const sendDataToStatusCrawl = async (inputData: any, hyperlinkedResponse: string): Promise<void> => {
   // Extract userToken from the URL
   const urlParams = new URLSearchParams(window.location.search);
