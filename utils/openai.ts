@@ -3,7 +3,7 @@
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { mock } from 'node:test';
-import { postToSlack } from './postToSlack';
+import { postToSlack } from '../utils/postToSlack';
 // import { openAIApiKey } from '../config';
 // const { Configuration, OpenAIApi } = require("openai");
 const { Configuration, OpenAIApi } = require("openai");
@@ -179,7 +179,7 @@ export const callOpenAIRevised = async (inputData: any, openAIResponse: any) => 
 
 export const parseResponse = function(response: string)
 {
-    postToSlack('parsing Response: '+response);
+    postToSlack(response);
     // Replace outer single quotes to double quotes
     let correctedResponse = response.trim().replace(/'([^']+)':/g, '"$1":');
 
@@ -220,11 +220,6 @@ export const parseResponse = function(response: string)
 }
 
 export const bulkReplaceLinks= function(response: any, originalText: string) {
-    // @TODO - make these unit test scenarios.
-    // const response1 = `"https://zillow.com": {"text": "[online reputation management]", "sentence": "Enter Darius Fisher, a highly regarded entrepreneur and expert in online reputation management, who has emerged as a visionary in this ever-evolving field."};`
-    // const response2 = "'https://zillow.com': {'text': '[protecting one\'s online presence]', 'sentence': 'In today\'s fast-paced digital landscape, where information spreads at lightning speed and reputations can be built or torn down in an instant, protecting one\'s online presence has become paramount.'}";    
-    // const response3 = "\"https://zillow.com\": {'text': '[protecting one's online presence]', 'sentence': 'In today's fast-paced digital landscape, where information spreads at lightning speed and reputations can be built or torn down in an instant, protecting one's online presence has become paramount.'}";    
-    // const response4 = "\"https://zillow.com\": {'text': '[protecting one's online presence]', 'sentence': 'In today's fast-paced digital landscape, where information spreads at lightning speed and reputations can be built or torn down in an instant, protecting one's online presence has become paramount.'}";
     if (typeof response === 'object') {
         response = response.data.choices[0].message.content;
     }
@@ -302,6 +297,7 @@ export const insertBacklinks = async (backlinkValues: any, openAIResponse: strin
         const timeoutPromise = new Promise((resolve, reject) => {
             setTimeout(() => {
                 reject(new Error('Request timed out'));
+                postToSlack('ERROR: Request timeout!');
             }, timeoutMillis);
         });
 
