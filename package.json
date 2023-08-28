@@ -33,6 +33,7 @@
     "react-dom": "18.2.0",
     "react-draft-wysiwyg": "^1.15.0",
     "react-loading-skeleton": "^3.3.1",
+    "react-router-dom": "^6.15.0",
     "styled-components": "^6.0.7",
     "ts-jest": "^29.1.1",
     "typescript": "5.1.6",
