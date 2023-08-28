@@ -84,11 +84,17 @@ const Form: React.FC = () => {
           setLoadingThirdRequest(true);            
           let hyperlinkedResponse = revisedResponse;
           const backlinkArray = getBacklinkArray(inputData);
-          hyperlinkedResponse = await insertBacklinks(backlinkArray.join(', '), hyperlinkedResponse);
-          setResponse(hyperlinkedResponse);
-          addResponseToPreviousResponses(hyperlinkedResponse);
-          postToSlack(hyperlinkedResponse);
+          try {
+            hyperlinkedResponse = await insertBacklinks(backlinkArray.join(', '), hyperlinkedResponse);
+            setResponse(hyperlinkedResponse);
+            addResponseToPreviousResponses(hyperlinkedResponse);
+            postToSlack(hyperlinkedResponse);
+        } catch (error) {
+            setResponse('');
+            alert("Failed to insert backlinks.  Looks like a timeout request.  Please try again.")
+        } finally {
           setLoadingThirdRequest(false);
+        }
       }
     } 
     catch (error) {

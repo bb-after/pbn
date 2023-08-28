@@ -297,6 +297,7 @@ export const insertBacklinks = async (backlinkValues: any, openAIResponse: strin
         const timeoutPromise = new Promise((resolve, reject) => {
             setTimeout(() => {
                 reject(new Error('Request timed out'));
+                postToSlack('ERROR: Request timeout!');
             }, timeoutMillis);
         });
 
