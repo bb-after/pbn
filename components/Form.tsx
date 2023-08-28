@@ -10,6 +10,7 @@ import CopyToClipboardButton from './CopyToClipboardButton'; // Replace with the
 import { stateToHTML } from 'draft-js-export-html';
 import PreviousResponseComponent from './PreviousResponseComponent';
 import RemixModal from './RemixModal';
+import { postToSlack } from '../utils/postToSlack';
 import Step1LoadingStateComponent from './Step1LoadingState';
 import Step2LoadingStateComponent from './Step2LoadingState';
 import FinalLoadingStateComponent from './FinalLoadingState';
@@ -68,16 +69,10 @@ const Form: React.FC = () => {
           setShowForm(false);
           setLoadingFirstRequest(true);    
           
-          // if (mode !== 'generate') {
             // Initial call to openAI to write the article
           const firstResponse = (mode !== 'generate') 
             ? await callOpenAIToRewriteArticle(response, inputData)
             : await callOpenAI(inputData);
-
-            // } else {
-          //   // Initial call to openAI to write the article
-          //   const firstResponse = await callOpenAI(inputData);            
-          // } 
 
           setLoadingFirstRequest(false);      
           
@@ -89,10 +84,9 @@ const Form: React.FC = () => {
           let hyperlinkedResponse = revisedResponse;
           const backlinkArray = getBacklinkArray(inputData);
           hyperlinkedResponse = await insertBacklinks(backlinkArray.join(', '), hyperlinkedResponse);
-          // ...
           setResponse(hyperlinkedResponse);
           addResponseToPreviousResponses(hyperlinkedResponse);
-
+          postToSlack(hyperlinkedResponse);
           setLoadingThirdRequest(false);
       }
     } 
@@ -101,7 +95,7 @@ const Form: React.FC = () => {
         setLoadingThirdRequest(false);      
     } finally {
       setIterationCount(0);
-      setIterationTotal(0);      
+      setIterationTotal(0); 
     }
 
   };
@@ -243,6 +237,7 @@ const Form: React.FC = () => {
       setResponse(hyperlinkedResponse);
       addResponseToPreviousResponses(hyperlinkedResponse);
       setLoadingThirdRequest(false);
+      postToSlack(hyperlinkedResponse);
 
     } catch (error) {
       setLoadingFirstRequest(false);      

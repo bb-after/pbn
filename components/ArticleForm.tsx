@@ -89,7 +89,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({
           onChange={handleGptVersionChange}
         >
         <MenuItem value={"gpt-3.5-turbo"}>GPT 3.5 Turbo (faster)</MenuItem>
-        <MenuItem value={"gpt-4"}>GPT 4 (more advanced)</MenuItem>
+        <MenuItem value={"gpt-4"}>GPT 4 (more advanced, slower)</MenuItem>
         </Select>
       </FormControl>
     </Box>
