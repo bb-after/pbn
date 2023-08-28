@@ -121,7 +121,15 @@ const ArticleForm: React.FC<ArticleFormProps> = ({
           onChange={handleLanguage}
         >
         <MenuItem value={"English"}>English</MenuItem>
+        <MenuItem value={"Arabic"}>Arabic</MenuItem>
+        <MenuItem value={"Italian"}>Italian</MenuItem>
+        <MenuItem value={"French"}>French</MenuItem>
         <MenuItem value={"German"}>German</MenuItem>
+        <MenuItem value={"Hebrew"}>Hebrew</MenuItem>
+        <MenuItem value={"Hindu"}>Hindu</MenuItem>
+        <MenuItem value={"Portuguese"}>Portuguese</MenuItem>
+        <MenuItem value={"Brazilian Portuguese"}>Portuguese (Brazil)</MenuItem>
+        <MenuItem value={"Romanian"}>Romanian</MenuItem>
         <MenuItem value={"Spanish"}>Spanish</MenuItem>
         </Select>
       </FormControl>
