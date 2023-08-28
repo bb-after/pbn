@@ -58,24 +58,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({
       placeholder='Approximate count'
       required
     />
-    &nbsp;&nbsp;
-    <TextField
-      label="Article Count"
-      value={articleCount}
-      onChange={(e) => setArticleCount(Number(e.target.value))}
-      margin="normal"
-      type="number"
-      defaultValue={3}
-      InputProps={{
-        inputProps: { 
-            max: 4, min: 1 
-        }
-    }}          
-      style={{width: 250}}
-      placeholder='Number of Articles to be generated'
-      required
-    />              
-
+   
     <TextField
       label="Keywords"
       value={keywords}
@@ -106,7 +89,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({
           onChange={handleGptVersionChange}
         >
         <MenuItem value={"gpt-3.5-turbo"}>GPT 3.5 Turbo (faster)</MenuItem>
-        <MenuItem value={"gpt-4"}>GPT 4 (more advanced)</MenuItem>
+        <MenuItem value={"gpt-4"}>GPT 4 (more advanced, slower)</MenuItem>
         </Select>
       </FormControl>
     </Box>

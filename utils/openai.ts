@@ -3,6 +3,7 @@
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { mock } from 'node:test';
+import { postToSlack } from './postToSlack';
 // import { openAIApiKey } from '../config';
 // const { Configuration, OpenAIApi } = require("openai");
 const { Configuration, OpenAIApi } = require("openai");
@@ -178,6 +179,7 @@ export const callOpenAIRevised = async (inputData: any, openAIResponse: any) => 
 
 export const parseResponse = function(response: string)
 {
+    postToSlack('parsing Response: '+response);
     // Replace outer single quotes to double quotes
     let correctedResponse = response.trim().replace(/'([^']+)':/g, '"$1":');
 
