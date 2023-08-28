@@ -68,7 +68,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({
       defaultValue={3}
       InputProps={{
         inputProps: { 
-            max: 4, min: 1 
+            max: 10, min: 1 
         }
     }}          
       style={{width: 250}}
