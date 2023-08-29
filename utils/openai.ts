@@ -292,7 +292,7 @@ export const insertBacklinks = async (backlinkValues: any, openAIResponse: strin
         };
 
         // Set a maximum timeout of 30 seconds
-        const timeoutMillis = 30000; // 30 seconds
+        const timeoutMillis = 60000; // 30 seconds
         const responsePromise = gptRequest();
         const timeoutPromise = new Promise((resolve, reject) => {
             setTimeout(() => {
