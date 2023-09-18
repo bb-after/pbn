@@ -19,12 +19,19 @@ function trimKeywords(keywords: string[]): string[] {
 }
 
 const createPromptMessageFromInputs = function(inputData: any) {
-    var promptMessage = `Write an article approximately, but not exactly, ${inputData.wordCount} words in length, using the following keywords: + ${trimKeywords(inputData.keywords).join(', ')}.
-    - **Important**: The keywords should only be used between 2 - 5 times each.  Do not exceed this limit.
-    - Write the article in the following language: ${inputData.language}.
-    - Do not use any of the following words in the articles: '+trimKeywords(inputData.keywordsToExclude).join(', ')+'.';
-    - Write the article with the following tone: ${inputData.tone}.'
-    - Ensure the article has paragraphs of varying lengths, some short and direct, others longer and more detailed`;
+    var toneLine = inputData.tone ? `- Write the article with the following tone: ${inputData.tone}.\n\n` : '';
+    var promptMessage = `Write an article approximately, but not exactly, ${inputData.wordCount} words in length, incorporating the following keywords: + ${trimKeywords(inputData.keywords).join(', ')}.
+
+    **Important:** Please use each keyword between 2 to 5 times, ensuring you do not exceed this limit.
+
+    Write the article in the following language: ${inputData.language}.
+
+    **Important:** Do not include any of the following words: visionary, conclusion, ${trimKeywords(inputData.keywordsToExclude).join(', ')}.
+
+    ${toneLine}
+    Ensure the article has paragraphs of varying lengths, including some that are short and direct, while others are longer and more detailed`;
+
+    console.log('prompt...',promptMessage);
     return promptMessage;
 }
 
@@ -35,7 +42,9 @@ const createRewritePromptMessageFromInputs = function(response: string, inputDat
     [${response}]
 
     Please rewrite the article in a conversational and engaging tone, suitable for a blog post. Introduce variability by rephrasing sentences, replacing words with synonyms, and shuffling paragraphs. Expand on key points and add examples to enrich the content and provide a fresh perspective.
-    `;
+
+    **Important:** Do not include any of the following words: visionary, conclusion, ${trimKeywords(inputData.keywordsToExclude).join(', ')}.`;
+    
     return promptMessage;
 }
 
@@ -235,7 +244,7 @@ export const bulkReplaceLinks = function(response: any, originalText: string) {
             if (typeof text !== 'undefined') {
                 // Remove square brackets from the text
                 const cleanedText = text.replace(/^\[|\]$/g, "");
-                const hyperlink = `<a href="${url}">${cleanedText}</a>`;
+                const hyperlink = `<a href="${url}" target="_blank">${cleanedText}</a>`;
                 
                 if (firstTwoSentences.includes(sentence)) {
                     console.log("match found in first 2 sentences for :"+cleanedText+" - with URL "+url+".");
