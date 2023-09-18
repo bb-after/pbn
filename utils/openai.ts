@@ -19,17 +19,20 @@ function trimKeywords(keywords: string[]): string[] {
 }
 
 const createPromptMessageFromInputs = function(inputData: any) {
+    inputData.keywordsToExclude.push('visionary').push('conclusion');
     var toneLine = inputData.tone ? `- Write the article with the following tone: ${inputData.tone}.\n\n` : '';
     var promptMessage = `Write an article approximately, but not exactly, ${inputData.wordCount} words in length, incorporating the following keywords: + ${trimKeywords(inputData.keywords).join(', ')}.
 
-    **Important:** Please use each keyword between 2 to 5 times, ensuring you do not exceed this limit.
+    - **Important:** Please use each keyword between 2 to 5 times, ensuring you do not exceed this limit.
 
-    Write the article in the following language: ${inputData.language}.
+    - Give the article a title.
 
-    **Important:** Do not include any of the following words: visionary, conclusion, ${trimKeywords(inputData.keywordsToExclude).join(', ')}.
+    - Write the article in the following language: ${inputData.language}.
+
+    - **Important:** Do not include any of the following words: visionary, conclusion, ${trimKeywords(inputData.keywordsToExclude).join(', ')}.
 
     ${toneLine}
-    Ensure the article has paragraphs of varying lengths, including some that are short and direct, while others are longer and more detailed`;
+    -Ensure the article has paragraphs of varying lengths, including some that are short and direct, while others are longer and more detailed`;
 
     console.log('prompt...',promptMessage);
     return promptMessage;
@@ -41,9 +44,11 @@ const createRewritePromptMessageFromInputs = function(response: string, inputDat
     Original Article:
     [${response}]
 
-    Please rewrite the article in a conversational and engaging tone, suitable for a blog post. Introduce variability by rephrasing sentences, replacing words with synonyms, and shuffling paragraphs. Expand on key points and add examples to enrich the content and provide a fresh perspective.
+    - Please rewrite the article in a conversational and engaging tone, suitable for a blog post. Introduce variability by rephrasing sentences, replacing words with synonyms, and shuffling paragraphs. Expand on key points and add examples to enrich the content and provide a fresh perspective.
 
-    **Important:** Do not include any of the following words: visionary, conclusion, ${trimKeywords(inputData.keywordsToExclude).join(', ')}.`;
+    - Give the article a title.
+
+    - **Important:** Do not include any of the following words: visionary, conclusion, ${trimKeywords(inputData.keywordsToExclude).join(', ')}.`;
     
     return promptMessage;
 }
