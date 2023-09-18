@@ -20,11 +20,11 @@ function trimKeywords(keywords: string[]): string[] {
 
 const createPromptMessageFromInputs = function(inputData: any) {
     var promptMessage = `Write an article approximately, but not exactly, ${inputData.wordCount} words in length, using the following keywords: + ${trimKeywords(inputData.keywords).join(', ')}.
-
     - **Important**: The keywords should only be used between 2 - 5 times each.  Do not exceed this limit.
     - Write the article in the following language: ${inputData.language}.
     - Do not use any of the following words in the articles: '+trimKeywords(inputData.keywordsToExclude).join(', ')+'.';
-    - Write the article with the following tone: ${inputData.tone}.'`;
+    - Write the article with the following tone: ${inputData.tone}.'
+    - Ensure the article has paragraphs of varying lengths, some short and direct, others longer and more detailed`;
     return promptMessage;
 }
 
@@ -65,7 +65,7 @@ export const callOpenAI = async (inputData: any) => {
     var promptMessage = createPromptMessageFromInputs(inputData);
 
     const gptMessage = [
-        { "role": "system", "content": `I want you to act as a very proficient SEO and high-end copy writer that speaks and writes fluent ${inputData.language}.` },
+        { "role": "system", "content": `I want you write as if you are a proficient SEO and high-end copy writer that speaks and writes fluent ${inputData.language}.` },
         { "role": "user", "content": "Assume the reader is already somewhat familiar with the keyword as a subject matter. Do not spend too much time defining or introducing the keyword as a concept or entity"},
         { "role": "user", "content": promptMessage },
     ];
@@ -141,7 +141,6 @@ export const callOpenAIRevised = async (inputData: any, openAIResponse: any) => 
     var promptMessage = createPromptMessageFromInputs(inputData);
     const gptMessageRevised = [
         { "role": "system", "content": `I want you to act as a very proficient SEO and high-end copy writer that speaks and writes fluent ${inputData.language}.` },
-        // { "role": "user", "content": "Randomly choose one of the following bloggers and emulate that person's writing style.  Here is your list of authors to reference for all your articles: Arianna Huffington, Neil Patel, Rand Fishkin, Brian Clarke, Christene Barberich, Pete Cashmore, Stephen Totilo, Peter Rojas, Vani Hari, Leon Ho, Johnathan Van Ness, and Mitch Ratcliffe." },
         { "role": "user", "content": "Assume the reader is already somewhat familiar with the keyword as a subject matter. Do not spend too much time defining or introducing the keyword as a concept or entity"},
         { "role": "user", "content": promptMessage },
         { "role": "assistant", "content": openAIResponse.data.choices[0].message.content },
@@ -219,35 +218,63 @@ export const parseResponse = function(response: string)
 
 }
 
-export const bulkReplaceLinks= function(response: any, originalText: string) {
+export const bulkReplaceLinks = function(response: any, originalText: string) {
     if (typeof response === 'object') {
         response = response.data.choices[0].message.content;
     }
     let parsedObject = parseResponse(response);
     let content = originalText;
     if (parsedObject && typeof parsedObject === 'object') {
+
+        let sentences = content.split(/[.!?]/); // Split text into sentences
+        let firstTwoSentences = sentences.slice(0, 2).join("."); // Get the first two sentences
+
+
+
         for (const [url, {text, sentence}] of Object.entries(parsedObject)) {
             if (typeof text !== 'undefined') {
                 // Remove square brackets from the text
                 const cleanedText = text.replace(/^\[|\]$/g, "");
                 const hyperlink = `<a href="${url}">${cleanedText}</a>`;
                 
-                // Adjust the sentence to account for the removed brackets
-                const modifiedSentence = sentence.replace(cleanedText, hyperlink); // Note the change here
-                if (typeof content !== 'string') {
+                if (firstTwoSentences.includes(sentence)) {
+                    console.log("match found in first 2 sentences for :"+cleanedText+" - with URL "+url+".");
 
-                }
-                // Attempt to replace the entire sentence with the modifiedSentence
-                if (content.includes(sentence)) {
-                    content = content.replace(sentence, modifiedSentence);
-                } else {
-                    // Fallback approach: Find an occurrence of the `cleanedText` which isn't wrapped in an <a> tag and replace it
-                    const regex = new RegExp(`(?<!<a [^>]+>)${cleanedText}(?!</a>)`, "i");
-                    const match = content.match(regex);
-                    if (match) {
-                        content = content.replace(match[0], hyperlink);
+                    // Collect all sentences (excluding the first two) containing `cleanedText`.
+                    let eligibleSentences = [];
+                    for (let i = 2; i < sentences.length; i++) {
+                        if (sentences[i].includes(cleanedText)) {
+                            eligibleSentences.push(sentences[i]);
+                        }
+                    }
+
+                    if (eligibleSentences.length > 0) {
+                        // If `sentence` is in the first two sentences and there are eligible sentences to replace, choose a random one.
+                        const randomIndex = Math.floor(Math.random() * eligibleSentences.length);
+                        const randomSentence = eligibleSentences[randomIndex];
+                        content = content.replace(randomSentence, randomSentence.replace(cleanedText, hyperlink));
+                        console.log("match outside of first 2 sentences! find another match further in the article. linking in the following sentence instead :"+randomSentence);
                     } else {
-                        console.error(`Failed to hyperlink '${cleanedText}' as it was not found unwrapped in the content.`);
+                        console.log("no match found outside of first 2 sentences. skipping this hyperlink.");
+                    }
+
+                } else {
+
+                    // Adjust the sentence to account for the removed brackets
+                    const modifiedSentence = sentence.replace(cleanedText, hyperlink); // Note the change here
+
+                    // Attempt to replace the entire sentence with the modifiedSentence
+                    if (content.includes(sentence)) {
+                        content = content.replace(sentence, modifiedSentence);
+                    } else {
+                        // Fallback approach: Find an occurrence of the `cleanedText` which isn't wrapped in an <a> tag and replace it
+                        const regex = new RegExp(`(?<!<a [^>]+>)${cleanedText}(?!</a>)`, "i");
+                        const match = content.match(regex);
+                        if (match) {
+                            content = content.replace(match[0], hyperlink);
+                        } else {
+                            console.error(`Failed to hyperlink '${cleanedText}' as it was not found unwrapped in the content.`);
+                        }
                     }
                 }
             }
@@ -291,8 +318,8 @@ export const insertBacklinks = async (backlinkValues: any, openAIResponse: strin
             return response;
         };
 
-        // Set a maximum timeout of 30 seconds
-        const timeoutMillis = 60000; // 30 seconds
+        // Set a maximum timeout of 120 seconds
+        const timeoutMillis = 120000; // 120 seconds
         const responsePromise = gptRequest();
         const timeoutPromise = new Promise((resolve, reject) => {
             setTimeout(() => {
