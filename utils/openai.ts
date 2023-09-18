@@ -26,6 +26,8 @@ const createPromptMessageFromInputs = function(inputData: any) {
 
     Write the article in the following language: ${inputData.language}.
 
+    -Start the article a title.
+
     **Important:** Do not include any of the following words: visionary, conclusion, ${trimKeywords(inputData.keywordsToExclude).join(', ')}.
 
     ${toneLine}
@@ -41,9 +43,11 @@ const createRewritePromptMessageFromInputs = function(response: string, inputDat
     Original Article:
     [${response}]
 
-    Please rewrite the article in a conversational and engaging tone, suitable for a blog post. Introduce variability by rephrasing sentences, replacing words with synonyms, and shuffling paragraphs. Expand on key points and add examples to enrich the content and provide a fresh perspective.
+    -Please rewrite the article in a conversational and engaging tone, suitable for a blog post. Introduce variability by rephrasing sentences, replacing words with synonyms, and shuffling paragraphs. Expand on key points and add examples to enrich the content and provide a fresh perspective.
 
-    **Important:** Do not include any of the following words: visionary, conclusion, ${trimKeywords(inputData.keywordsToExclude).join(', ')}.`;
+    -Start the article a title.
+
+    -**Important:** Do not include any of the following words: visionary, conclusion, ${trimKeywords(inputData.keywordsToExclude).join(', ')}.`;
     
     return promptMessage;
 }
