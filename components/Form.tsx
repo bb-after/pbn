@@ -18,7 +18,6 @@ import ArticleForm from './ArticleForm'; // Adjust the path as needed
 import {
   callOpenAI,
   callOpenAIToRewriteArticle,
-  callOpenAIRevised,
   insertBacklinks,
   getBacklinkArray,
 } from '../utils/openai';
@@ -77,12 +76,9 @@ const Form: React.FC = () => {
 
           setLoadingFirstRequest(false);      
           
-          // Second call to openAI, this time to re-write it as if not written by AI.
-          const revisedResponse = await callOpenAIRevised(inputData, firstResponse);
-
           // Modify hyperlinkedResponse as needed
           setLoadingThirdRequest(true);            
-          let hyperlinkedResponse = revisedResponse;
+          let hyperlinkedResponse = firstResponse;
           const backlinkArray = getBacklinkArray(inputData);
           try {
             hyperlinkedResponse = await insertBacklinks(backlinkArray.join(', '), hyperlinkedResponse);
@@ -251,12 +247,9 @@ const Form: React.FC = () => {
       // ...
       setLoadingFirstRequest(false);      
       
-      // Second call to openAI, this time to re-write it as if not written by AI.
-      const revisedResponse = await callOpenAIRevised(inputData, firstResponse);
-
       // Modify hyperlinkedResponse as needed
       setLoadingThirdRequest(true);            
-      let hyperlinkedResponse = revisedResponse;
+      let hyperlinkedResponse = firstResponse;
       const backlinkArray = getBacklinkArray(inputData);
       hyperlinkedResponse = await insertBacklinks(backlinkArray.join(', '), hyperlinkedResponse);
       // ...

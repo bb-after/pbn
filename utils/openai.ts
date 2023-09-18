@@ -19,22 +19,31 @@ function trimKeywords(keywords: string[]): string[] {
 }
 
 const createPromptMessageFromInputs = function(inputData: any) {
+    var toneLine = inputData.tone ? `- Write the article with the following tone: ${inputData.tone}.\n\n` : '';
 
-    inputData.keywordsToExclude.push('visionary');
-    var promptMessage = `Write an article approximately, but not exactly, ${inputData.wordCount} words in length, using the following keywords: + ${trimKeywords(inputData.keywords).join(', ')}.
-    - **Important**: The keywords should only be used between 2 - 5 times each.  Do not exceed this limit.
-    - Write the article in the following language: ${inputData.language}.
-    - Do not use any of the following words in the articles: `+trimKeywords(inputData.keywordsToExclude).join(', ')+`.';
-    - Write the article with the following tone: ${inputData.tone}.'
-    - Ensure the article has paragraphs of varying lengths, some short and direct, others longer and more detailed`;
+    var promptMessage = `Write an article approximately, but not exactly, ${inputData.wordCount} words in length, incorporating the following keywords: + ${trimKeywords(inputData.keywords).join(', ')}.
+
+    **Important:** Please use each keyword between 2 to 5 times, ensuring you do not exceed this limit.
+
+    Write the article in the following language: ${inputData.language}.
+
+    **Important:** Do not include any of the following words: visionary, conclusion, ${trimKeywords(inputData.keywordsToExclude).join(', ')}.
+
+    ${toneLine}
+    Ensure the article has paragraphs of varying lengths, including some that are short and direct, while others are longer and more detailed`;
+
+    console.log('prompt...',promptMessage);
     return promptMessage;
 }
 
 const createRewritePromptMessageFromInputs = function(response: string, inputData: any) {
+
     var promptMessage = `Please rewrite the following article to create a unique piece of content while maintaining the essence of the original article.
 
     Original Article:
     [${response}]
+
+    **Important:** Do not include any of the following words: visionary, conclusion, ${trimKeywords(inputData.keywordsToExclude).join(', ')}.
 
     Please rewrite the article in a conversational and engaging tone, suitable for a blog post. Introduce variability by rephrasing sentences, replacing words with synonyms, and shuffling paragraphs. Expand on key points and add examples to enrich the content and provide a fresh perspective.
     `;
@@ -128,54 +137,6 @@ export const callOpenAIToRewriteArticle = async (content: string, inputData: any
         console.error('OpenAI API Error:', error);
         throw new Error('Failed to fetch response from OpenAI API.');
     }
-};
-
-export const callOpenAIRevised = async (inputData: any, openAIResponse: any) => {
-    if (mockData === '1') {
-        console.log('mockData = '+mockData+'.  Returning dummyText for openAiRevised');
-        return dummyText;
-    }
-    if (skipOpenAiRevision) {     
-        console.log('skipping revision!', openAIResponse);
-        return openAIResponse.data.choices[0].message.content.replace(/\n/g, '<br>');
-    }
-
-    var promptMessage = createPromptMessageFromInputs(inputData);
-    const gptMessageRevised = [
-        { "role": "system", "content": `I want you to act as a very proficient SEO and high-end copy writer that speaks and writes fluent ${inputData.language}.` },
-        { "role": "user", "content": "Assume the reader is already somewhat familiar with the keyword as a subject matter. Do not spend too much time defining or introducing the keyword as a concept or entity"},
-        { "role": "user", "content": promptMessage },
-        { "role": "assistant", "content": openAIResponse.data.choices[0].message.content },
-        { "role": "user", "content": "Rewrite the above content so that it is not detected as AI content by AI content detectors."}
-    ];
-
-    if (inputData.otherInstructions !== '')
-    {
-        gptMessageRevised.push({"role": "user", "content": inputData.otherInstructions});
-    }
-
-    try {
-        const GPTRequestRevision2 = async (gptMessageRevised: Object) => {
-            const response2 = await openai.createChatCompletion({
-                model: modelType,
-                messages: gptMessageRevised,
-                // stream: true,
-            });
-            return response2;  
-        };
-
-        const response2 = await GPTRequestRevision2(gptMessageRevised);
-        //add line breaks
-        response2.data.choices[0].message.content =
-        response2.data.choices[0].message.content.replace(/\n/g, '<br>');
-        console.log("!!!!!SECOND iteration!!!", response2.data.choices[0].message.content);
-        return response2.data.choices[0].message.content;        
-
-    } catch (error) {
-        console.error('OpenAI API Error:', error);
-        throw new Error('Failed to fetch response from OpenAI API.');
-    }
-
 };
 
 export const parseResponse = function(response: string)
