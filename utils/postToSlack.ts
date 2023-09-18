@@ -16,6 +16,6 @@ export const postToSlack = async (message: string) => {
         console.error('Failed to post notification to Slack:', data.message);
       }
     } catch (error) {
-      console.error('Error notifying Slack:', error);
+      // console.error('Error notifying Slack:', error);
     }
   }
