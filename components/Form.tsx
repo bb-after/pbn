@@ -362,7 +362,7 @@ const Form: React.FC = () => {
                           Download Content
                         </Button>&nbsp;
 
-                        {previousResponses.length > 0 && (
+                        {previousResponses.length > 1 && (
                           <div>
                             <Button
                               size="small"
