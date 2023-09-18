@@ -88,12 +88,13 @@ const Form: React.FC = () => {
             hyperlinkedResponse = await insertBacklinks(backlinkArray.join(', '), hyperlinkedResponse);
             setResponse(hyperlinkedResponse);
             addResponseToPreviousResponses(hyperlinkedResponse);
-            postToSlack(hyperlinkedResponse);
+            postToSlack('*Iteration #'+i+'*:' + hyperlinkedResponse);
         } catch (error) {
             setResponse('');
             alert("Failed to insert backlinks.  Looks like a timeout request.  Please try again.")
         } finally {
           setLoadingThirdRequest(false);
+          await sendDataToStatusCrawl(inputData, hyperlinkedResponse)
         }
       }
     } 
@@ -190,6 +191,22 @@ const Form: React.FC = () => {
     a.click();
   
     URL.revokeObjectURL(url); // Clean up the object URL
+  }
+
+  function downloadAllContent(filename: string, previousResponses: string[]) {
+    let combinedContent = '';
+    previousResponses.reverse().forEach((prevResponse, index) => {
+        const version = `<strong>Version ${index + 1}:</strong><br>`; // Generate the version number
+        combinedContent += `${version}\n${prevResponse}<br><br>`; // Combine version and response with line breaks
+    });
+
+      const blob = new Blob([combinedContent], { type: 'text/html' }); // Create a blob with the combined content
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); // Create an anchor tag to trigger the download
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url); // Clean up the object URL
   }
   
   const handleGptVersionChange = (event: SelectChangeEvent) => {
@@ -344,6 +361,19 @@ const Form: React.FC = () => {
                         >
                           Download Content
                         </Button>&nbsp;
+
+                        {previousResponses.length > 0 && (
+                          <div>
+                            <Button
+                              size="small"
+                              variant="contained"
+                              startIcon={<Download />} 
+                              onClick={() => downloadAllContent("response.html", previousResponses)}
+                            >
+                              Download All Versions
+                            </Button>&nbsp;
+                          </div>
+                        )}
                         <Button size="small" variant="contained" startIcon={<Edit />} onClick={openEditor}>Edit Content</Button>
 
                         <Button size="small" variant="contained" startIcon={<Blender />} onClick={handleRemixModalOpen}>Remix</Button>
@@ -353,7 +383,7 @@ const Form: React.FC = () => {
                           onSubmit={handleRemixModalSubmit}
                         />  
 
-                        <CopyToClipboardButton text={response} />  
+                        <CopyToClipboardButton text={response} />
 
                         <Button size="small" variant="contained" disabled color="success" startIcon={<Send />} type="submit">Post article to PBN (coming soon)</Button> 
                       </div>
@@ -380,7 +410,7 @@ const Form: React.FC = () => {
                 Download Content
               </Button>
               &nbsp;
-              <CopyToClipboardButton text={response} />  
+              <CopyToClipboardButton text={prevResponse} />  
 
               <Button size="small" variant="contained" disabled color="success" startIcon={<Send />} type="submit">Post article to PBN (coming soon)</Button> 
             </div>
