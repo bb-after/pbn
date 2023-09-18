@@ -19,10 +19,12 @@ function trimKeywords(keywords: string[]): string[] {
 }
 
 const createPromptMessageFromInputs = function(inputData: any) {
+
+    inputData.keywordsToExclude.push('visionary');
     var promptMessage = `Write an article approximately, but not exactly, ${inputData.wordCount} words in length, using the following keywords: + ${trimKeywords(inputData.keywords).join(', ')}.
     - **Important**: The keywords should only be used between 2 - 5 times each.  Do not exceed this limit.
     - Write the article in the following language: ${inputData.language}.
-    - Do not use any of the following words in the articles: '+trimKeywords(inputData.keywordsToExclude).join(', ')+'.';
+    - Do not use any of the following words in the articles: `+trimKeywords(inputData.keywordsToExclude).join(', ')+`.';
     - Write the article with the following tone: ${inputData.tone}.'
     - Ensure the article has paragraphs of varying lengths, some short and direct, others longer and more detailed`;
     return promptMessage;
@@ -235,7 +237,7 @@ export const bulkReplaceLinks = function(response: any, originalText: string) {
             if (typeof text !== 'undefined') {
                 // Remove square brackets from the text
                 const cleanedText = text.replace(/^\[|\]$/g, "");
-                const hyperlink = `<a href="${url}">${cleanedText}</a>`;
+                const hyperlink = `<a href="${url}" target="_blank">${cleanedText}</a>`;
                 
                 if (firstTwoSentences.includes(sentence)) {
                     console.log("match found in first 2 sentences for :"+cleanedText+" - with URL "+url+".");
