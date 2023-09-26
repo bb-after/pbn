@@ -75,19 +75,12 @@ export default async function handler(
         'INSERT INTO pbn_site_submissions (pbn_site_url, title, content, user_token, submission_response) VALUES (?, ?, ?, ?, ?)',
         [domain, title, content, userToken, response.data.link]
       );
-  
-      // Get the submission ID
-      const [submissionIdResult] = await connection.execute(
-        'SELECT LAST_INSERT_ID() AS submission_id'
-      );
-  
-      const submissionId = submissionIdResult[0].submission_id;
-  
+
       res.status(201).json(response.data);
   
       // Close the MySQL connection
       await connection.end();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
 
       // Handle other errors here and send appropriate responses
