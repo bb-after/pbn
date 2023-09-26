@@ -43,12 +43,6 @@ const PbnModal: React.FC<PbnModalProps> = ({
     setTitle(event.target.value);
 };
 
-
-const handleSubmit = () => {
-    const content = stateToHTML(editorState.getCurrentContent());
-    onSubmit(content);
-};
-
 ///
 const postContentToPbn = async () => {
     const contentHTML = stateToHTML(editorState.getCurrentContent());
