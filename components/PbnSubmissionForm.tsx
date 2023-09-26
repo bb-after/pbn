@@ -19,15 +19,12 @@ const Editor = dynamic(
 
 ///
 
-
 interface PbnFormProps {
-    onSubmit: (title: string, content: string) => void;
     articleTitle: string; // Add articleTitle prop
     pbnModalEditorState: EditorState; // Add pbnModalEditorState prop
   }
   
   const PbnSubmissionForm: React.FC<PbnFormProps> = ({
-    onSubmit,
     articleTitle, // Receive articleTitle as a prop
     pbnModalEditorState, // Receive pbnModalEditorState as a prop
   }) => {
