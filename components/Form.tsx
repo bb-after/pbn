@@ -10,6 +10,7 @@ import CopyToClipboardButton from './CopyToClipboardButton'; // Replace with the
 import { stateToHTML } from 'draft-js-export-html';
 import PreviousResponseComponent from './PreviousResponseComponent';
 import RemixModal from './RemixModal';
+import PbnModal from './PbnModal';
 import { postToSlack } from '../utils/postToSlack';
 import Step1LoadingStateComponent from './Step1LoadingState';
 import Step2LoadingStateComponent from './Step2LoadingState';
@@ -21,6 +22,7 @@ import {
   callOpenAIRevised,
   insertBacklinks,
   getBacklinkArray,
+  parseTitleFromArticle,
 } from '../utils/openai';
 import { sendDataToStatusCrawl } from '../utils/statusCrawl';
 
@@ -51,10 +53,30 @@ const Form: React.FC = () => {
   const [tone, setTone] = useState<string[]>([]);
   const [otherInstructions, setOtherInstructions] = useState('');
   const [isRemixModalOpen, setRemixModalOpen] = useState(false);
-  
+  const [isPbnModalOpen, setPbnModalOpen] = useState(false);
+  //post to pbn modal specific constants
+  const [articleTitle, setArticleTitle] = useState('');
+  const [pbnModalEditorState, setPbnModalEditorState] = useState(EditorState.createEmpty());
+
   const handleRemixModalOpen = () => {
     setRemixModalOpen(true);
   };
+
+  const handlePbnModalOpen = (response: string) => {
+    const postTitle = parseTitleFromArticle(response);
+    // Convert the response HTML to DraftJS ContentState
+    const blocksFromHTML = convertFromHTML(response);
+    const contentState = ContentState.createFromBlockArray(
+      blocksFromHTML.contentBlocks,
+      blocksFromHTML.entityMap
+    );
+
+    const editorStateWithContent = EditorState.createWithContent(contentState);
+    // Update the component state with the post title and editor state
+    setArticleTitle(postTitle); // Assuming you have a state variable for article title
+    setPbnModalEditorState(editorStateWithContent); // Assuming you have a state variable for the DraftJS editor
+    setPbnModalOpen(true);
+  }
 
   const handleRemixModalSubmit = async (iterations: number, remixMode: string) => {
 
@@ -107,7 +129,6 @@ const Form: React.FC = () => {
     }
 
   };
-  
 
   const [editorState, setEditorState] = useState<EditorState>(
     // Create an initial EditorState with an empty ContentState
@@ -235,7 +256,6 @@ const Form: React.FC = () => {
     };
   }
 
-
   const handleSubmit = async (e: React.FormEvent) => {
 
     e.preventDefault();
@@ -272,7 +292,6 @@ const Form: React.FC = () => {
       setLoadingThirdRequest(false);      
     }
   };
-  
 
   return (
       <div className={styles.formWrapper}>
@@ -382,10 +401,10 @@ const Form: React.FC = () => {
                           onClose={() => setRemixModalOpen(false)}
                           onSubmit={handleRemixModalSubmit}
                         />  
-
+                        <br />&nbsp;
                         <CopyToClipboardButton text={response} />
-
-                        <Button size="small" variant="contained" disabled color="success" startIcon={<Send />} type="submit">Post article to PBN (coming soon)</Button> 
+                        <br />
+                        <Button size="small" variant="contained" color="success" startIcon={<Send />} onClick={ () => handlePbnModalOpen(response)}>Post article to PBN</Button>
                       </div>
                        {/* Action Bar End */}
                     </div>
@@ -409,14 +428,23 @@ const Form: React.FC = () => {
               >
                 Download Content
               </Button>
+              <br />
               &nbsp;
               <CopyToClipboardButton text={prevResponse} />  
+              <br />
 
-              <Button size="small" variant="contained" disabled color="success" startIcon={<Send />} type="submit">Post article to PBN (coming soon)</Button> 
+              <Button size="small" variant="contained" color="success" startIcon={<Send />} onClick={ () => handlePbnModalOpen(response)}>Post article to PBN</Button>
+
             </div>
           </div>
         ))}
 
+        <PbnModal
+          isOpen={isPbnModalOpen}
+          onClose={() => setPbnModalOpen(false)}
+          articleTitle={articleTitle}
+          pbnModalEditorState={editorState} // Pass the editor state here
+        />
       </div>
   );
 };

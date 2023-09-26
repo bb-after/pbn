@@ -3,7 +3,7 @@ export const sendDataToStatusCrawl = async (inputData: any, hyperlinkedResponse:
   // Extract userToken from the URL
   const urlParams = new URLSearchParams(window.location.search);
   const userToken = urlParams.get('token');
-    debugger;
+
   // Check if userToken is present
   if (!userToken) {
     console.error('userToken not found in the URL.');
