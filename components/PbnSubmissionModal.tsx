@@ -49,7 +49,6 @@ const PbnSubmissionModal: React.FC<PbnModalProps> = ({ isOpen, onClose, articleT
 
 
         <PbnSubmissionForm 
-            // onSubmit={postContentToPbn}
             articleTitle={articleTitle} // Pass articleTitle as a prop
             pbnModalEditorState={pbnModalEditorState} // Pass pbnModalEditorState as a prop
         />
