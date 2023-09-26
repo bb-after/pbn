@@ -24,8 +24,6 @@ export default async function handler(req: any, res: any) {
           text: notificationMessage,
         }),
       });
-
-      console.log('ressssssp', response);
   
       if (!response.ok) {
         throw new Error('Slack API Error');
