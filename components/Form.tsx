@@ -10,7 +10,7 @@ import CopyToClipboardButton from './CopyToClipboardButton'; // Replace with the
 import { stateToHTML } from 'draft-js-export-html';
 import PreviousResponseComponent from './PreviousResponseComponent';
 import RemixModal from './RemixModal';
-import PbnModal from './PbnModal';
+import PbnSubmissionModal from './PbnSubmissionModal';
 import { postToSlack } from '../utils/postToSlack';
 import Step1LoadingStateComponent from './Step1LoadingState';
 import Step2LoadingStateComponent from './Step2LoadingState';
@@ -70,7 +70,7 @@ const Form: React.FC = () => {
       blocksFromHTML.contentBlocks,
       blocksFromHTML.entityMap
     );
-
+    
     const editorStateWithContent = EditorState.createWithContent(contentState);
     // Update the component state with the post title and editor state
     setArticleTitle(postTitle); // Assuming you have a state variable for article title
@@ -439,7 +439,7 @@ const Form: React.FC = () => {
           </div>
         ))}
 
-        <PbnModal
+        <PbnSubmissionModal
           isOpen={isPbnModalOpen}
           onClose={() => setPbnModalOpen(false)}
           articleTitle={articleTitle}
