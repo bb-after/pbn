@@ -1,4 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
+import { OkPacket, RowDataPacket } from 'mysql2';
 import mysql from 'mysql2/promise'; // Import the 'promise' version of mysql2
 import axios from 'axios';
 
@@ -28,10 +29,11 @@ export default async function handler(
       const connection = await mysql.createConnection(dbConfig);
 
       // Get a random active PBN site
-      const [rows] = await connection.execute(
+      const [queryResult] = await connection.execute(
         'SELECT login, password, domain FROM pbn_sites WHERE active = 1 ORDER BY RAND() LIMIT 1'
       );
 
+      const rows: RowDataPacket[] = queryResult as RowDataPacket[];
       if (!rows || rows.length === 0) {
         // Handle the case where no active blogs are found
         res.status(404).json({ error: 'No active blogs found in the database' });
@@ -39,17 +41,18 @@ export default async function handler(
       }
       const { domain, password, login } = rows[0];
   
-      // Check if the content has already been submitted
-      const [exists] = await connection.execute(
+    // Check if the content has already been submitted
+    const [queryResultExistingArticle] = await connection.execute(
         'SELECT * FROM pbn_site_submissions WHERE content = ? LIMIT 1',
         [content]
-      );
+    );
 
-      if (exists && exists.length > 0) {
+    const exists: RowDataPacket[] = queryResultExistingArticle as RowDataPacket[];
+    if (exists && exists.length > 0) {
         // Handle the case where content has already been uploaded
         res.status(400).json({ error: 'Content already uploaded to PBN' });
         return;
-      }
+    }
 
       // Make a POST request to WordPress using the retrieved credentials
       const response = await axios.post(
