@@ -12,9 +12,6 @@ const PbnFormPage: React.FC = () => {
     <div>
       <h1>Standalone PBN Form</h1>
       <PbnSubmissionForm
-        onSubmit={(title, content) => {
-          // Handle form submission (e.g., post to PBN)
-        }}
         articleTitle={initialArticleTitle}
         pbnModalEditorState={initialEditorState}
       />
