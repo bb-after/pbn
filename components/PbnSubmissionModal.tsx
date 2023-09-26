@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { EditorState } from 'draft-js'; // Import EditorState from draft-js
+
 import {
   Modal,
   Backdrop,
@@ -12,9 +14,11 @@ import PbnSubmissionForm from './PbnSubmissionForm';
 interface PbnModalProps {
   isOpen: boolean;
   onClose: () => void;
+  articleTitle: string; // Pass the article title as a prop
+  pbnModalEditorState: EditorState; // Pass the DraftJS editor state as a prop
 }
 
-const PbnModal: React.FC<PbnModalProps> = ({ isOpen, onClose }) => {
+const PbnSubmissionModal: React.FC<PbnModalProps> = ({ isOpen, onClose, articleTitle, pbnModalEditorState }) => {
   // You can define any modal-specific state or props here
 
   return (
@@ -43,7 +47,12 @@ const PbnModal: React.FC<PbnModalProps> = ({ isOpen, onClose }) => {
         >
           <h2>Post Article to PBN</h2>
 
-          <PbnSubmissionForm onClose={onClose} />
+
+        <PbnSubmissionForm 
+            // onSubmit={postContentToPbn}
+            articleTitle={articleTitle} // Pass articleTitle as a prop
+            pbnModalEditorState={pbnModalEditorState} // Pass pbnModalEditorState as a prop
+        />
 
           <br /> <br />
 
@@ -56,4 +65,4 @@ const PbnModal: React.FC<PbnModalProps> = ({ isOpen, onClose }) => {
   );
 };
 
-export default PbnModal;
+export default PbnSubmissionModal;
