@@ -239,10 +239,8 @@ export const bulkReplaceLinks = function(response: any, originalText: string) {
     let content = originalText;
     if (parsedObject && typeof parsedObject === 'object') {
 
-        let sentences = content.split(/[.!?]/); // Split text into sentences
+        let sentences = content.split(/[.!?]\s+|\n+/); // Split text into sentences
         let firstTwoSentences = sentences.slice(0, 2).join("."); // Get the first two sentences
-
-
 
         for (const [url, {text, sentence}] of Object.entries(parsedObject)) {
             if (typeof text !== 'undefined') {
@@ -360,4 +358,15 @@ export const insertBacklinks = async (backlinkValues: any, openAIResponse: strin
     }
 
 }
+
+export const parseTitleFromArticle = function(input: string): string {
+    const textWithLineBreaks = input.replace(/<br\s*\/?>/g, '\n');
+    let sentences = textWithLineBreaks.split(/[.!?]\s+|\n+/); // Split text into sentences
+    let match = sentences.slice(0, 1);
+    if (match && match.length > 0) {
+      return match[0].replace('Title: ','').trim(); // Remove leading/trailing whitespace
+    } else {
+      return ''; // No sentence found in the input
+    }
+  }
 /**** openapi code end */
