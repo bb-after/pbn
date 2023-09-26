@@ -76,7 +76,7 @@ const postContentToPbn = async () => {
         } else {
             alert('Failed to post article to PBN');
         } 
-      } catch (error) {
+      } catch (error: any) {
             alert('Request error: ' + error.message);
       }
 };
