@@ -7,6 +7,7 @@ type PostToWordPressRequest = {
     title: string;
     content: string;
     userToken: string;
+    clientName: string;
     categories: number[]; // Array of category IDs
     tags: number[]; // Array of tag IDs
   };
@@ -23,14 +24,23 @@ export default async function handler(
     req: NextApiRequest,
     res: NextApiResponse
   ) {
-    const { title, content, userToken, categories, tags } = req.body as PostToWordPressRequest;
+    const { title, content, userToken, categories, tags, clientName } = req.body as PostToWordPressRequest;
     try {
       // Create a MySQL connection
       const connection = await mysql.createConnection(dbConfig);
 
       // Get a random active PBN site
       const [queryResult] = await connection.execute(
-        'SELECT login, password, domain FROM pbn_sites WHERE active = 1 ORDER BY RAND() LIMIT 1'
+        `SELECT * FROM pbn_sites 
+        LEFT JOIN (
+            SELECT DISTINCT pbn_site_id
+            FROM pbn_site_submissions
+            WHERE client_name = '${clientName}'
+		    AND (created <= DATE_SUB(NOW(), INTERVAL 3 MONTH) OR created IS NULL)
+        ) AS recent_submissions
+        ON pbn_sites.id = recent_submissions.pbn_site_id
+        WHERE pbn_sites.active = 1
+        ORDER BY RAND() LIMIT 1;`
       );
 
       const rows: RowDataPacket[] = queryResult as RowDataPacket[];
@@ -39,7 +49,7 @@ export default async function handler(
         res.status(404).json({ error: 'No active blogs found in the database' });
         return;
       }
-      const { domain, password, login } = rows[0];
+      const { id, domain, password, login } = rows[0];
   
     // Check if the content has already been submitted
     const [queryResultExistingArticle] = await connection.execute(
@@ -72,8 +82,8 @@ export default async function handler(
   
       // Insert submission record into the database
       const [insertResult] = await connection.execute(
-        'INSERT INTO pbn_site_submissions (pbn_site_url, title, content, user_token, submission_response) VALUES (?, ?, ?, ?, ?)',
-        [domain, title, content, userToken, response.data.link]
+        'INSERT INTO pbn_site_submissions (pbn_site_id, title, content, user_token, submission_response, client_name) VALUES (?, ?, ?, ?, ?, ?)',
+        [id, title, content, userToken, response.data.link, clientName]
       );
 
       res.status(201).json(response.data);

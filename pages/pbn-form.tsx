@@ -5,7 +5,7 @@ import { EditorState, ContentState, convertFromHTML } from 'draft-js';
 
 const PbnFormPage: React.FC = () => {
   // Define any initial values for the props if needed
-  const initialArticleTitle = 'Initial Article Title';
+  const initialArticleTitle = '';
   const initialEditorState = EditorState.createEmpty();
 
   return (
