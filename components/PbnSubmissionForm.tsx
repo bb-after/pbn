@@ -30,6 +30,7 @@ interface PbnFormProps {
   }) => {
     const [editorState, setEditorState] = useState(pbnModalEditorState); // Use pbnModalEditorState as initial state
     const [title, setTitle] = useState(articleTitle); // Use articleTitle as initial state
+    const [clientName, setClientName] = useState(''); // Use '' as initial state
 
     const postContentToPbn = async () => {
         const contentHTML = stateToHTML(editorState.getCurrentContent());
@@ -41,6 +42,7 @@ interface PbnFormProps {
               method: 'POST',
               body: JSON.stringify({
                 title: title,
+                clientName: clientName,
                 content: contentHTML,
                 userToken: userToken,
                 categories: [],
@@ -50,11 +52,12 @@ interface PbnFormProps {
                 'Content-Type': 'application/json',
               },
             });
-            console.log('rrr',response);
+
             if (response.status === 201) {
-              // Article posted successfully
-              // You can redirect the user or show a success message here.
-              alert('article posted successfully!');
+                const responseData = await response.json();
+                // Article posted successfully
+                  // You can redirect the user or show a success message here.
+                  alert('article posted successfully! \n' + responseData.link);
             } else if (response.status == 400) {
                 alert('Article already uploaded to PBN');
             } else if (response.status == 404) {
@@ -75,6 +78,10 @@ interface PbnFormProps {
   const handleTitleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setTitle(event.target.value);
   };
+  
+  const handleClientChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setClientName(event.target.value);
+  };
 
   return (
     <div>
@@ -87,6 +94,16 @@ interface PbnFormProps {
           required
           placeholder="Article Title"
           onChange={handleTitleChange}
+        />
+
+        <TextField
+          label="Client Name"
+          value={clientName}
+          fullWidth
+          margin="normal"
+          required
+          placeholder="Client Name"
+          onChange={handleClientChange}
         />
       </FormControl>
 
