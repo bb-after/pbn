@@ -29,8 +29,22 @@ const PbnSiteSubmissionsTable = () => {
 
   return (
     <div>
+        <style jsx global>
+        {`
+        body {
+            background: #eee;
+        }
+        th {
+            font-weight: bold !important;
+        }
+        `}
+    </style>
+
+      <div style={{padding: '2rem', borderRadius: '3px', margin: '2rem', background: '#fff'}}>
+
+        
       <Typography variant="h5" gutterBottom>
-        PBN Site Submissions
+        <a href="/">Portal</a> &raquo; PBN Site Submissions
       </Typography>
       <TableContainer component={Paper}>
         <Table>
@@ -64,6 +78,7 @@ const PbnSiteSubmissionsTable = () => {
           </TableBody>
         </Table>
       </TableContainer>
+    </div>
     </div>
   );
 };
