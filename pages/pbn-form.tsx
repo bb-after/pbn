@@ -24,7 +24,7 @@ const PbnFormPage: React.FC = () => {
 
         <div style={{padding: '2rem', borderRadius: '3px', margin: '2rem', background: '#fff'}}>
         <Typography variant="h5" gutterBottom>
-        <Link href="/">Portal</Link> &raquo; 
+        <Link href="https://sales.statuscrawl.io">Portal</Link> &raquo; 
         Post an Article to the PBN
         </Typography>
         <PbnSubmissionForm
