@@ -17,7 +17,7 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
     const connection = await mysql.createConnection(dbConfig);
 
     // Fetch data from the pbn_site_submissions table
-    const [rows] = await connection.query('SELECT * FROM pbn_site_submissions');
+    const [rows] = await connection.query('SELECT * FROM pbn_site_submissions order by id DESC');
 
     // Close the MySQL connection
     await connection.end();
