@@ -52,7 +52,9 @@ const PbnSubmissionModal: React.FC<PbnModalProps> = ({ isOpen, onClose, articleT
             // onSubmit={postContentToPbn}
             articleTitle={articleTitle} // Pass articleTitle as a prop
             pbnModalEditorState={pbnModalEditorState} // Pass pbnModalEditorState as a prop
-        />
+            onSubmit={function (title: string, content: string): void {
+              throw new Error('Function not implemented.');
+            } }        />
 
           <br /> <br />
 
