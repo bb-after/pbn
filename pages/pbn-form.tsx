@@ -28,9 +28,10 @@ const PbnFormPage: React.FC = () => {
         Post an Article to the PBN
         </Typography>
         <PbnSubmissionForm
-            articleTitle={initialArticleTitle}
-            pbnModalEditorState={initialEditorState}
-        />
+          articleTitle={initialArticleTitle}
+          pbnModalEditorState={initialEditorState} onSubmit={function (title: string, content: string): void {
+            throw new Error('Function not implemented.');
+          } }        />
         </div>
     </div>
   );
