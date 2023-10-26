@@ -16,8 +16,27 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
     // Create a MySQL connection
     const connection = await mysql.createConnection(dbConfig);
 
+    // Check for the search query parameter
+    const searchQuery = req.query.search;
+
+    let query;
+    let queryConfig: string[];
+
+    if (searchQuery) {
+      // If a query parameter is provided, use it to filter the results
+      query = 'SELECT * FROM pbn_site_submissions WHERE title LIKE ? ORDER BY id DESC';
+      queryConfig = [`%${searchQuery}%`]; // using a parameterized query to prevent SQL injection
+    } else {
+      // If no query parameter, select all entries
+      query = 'SELECT * FROM pbn_site_submissions ORDER BY id DESC';
+      queryConfig = [];
+    }
+
+    // Execute the query with the provided configuration
+    const [rows] = await connection.query(query, queryConfig);  
+    
     // Fetch data from the pbn_site_submissions table
-    const [rows] = await connection.query('SELECT * FROM pbn_site_submissions order by id DESC');
+    // const [rows] = await connection.query('SELECT * FROM pbn_site_submissions order by id DESC');
 
     // Close the MySQL connection
     await connection.end();
