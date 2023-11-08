@@ -47,7 +47,7 @@ async function fetchCompanyWikipediaText(companyName: string): Promise<string | 
       return null;
     }
   } catch (error: any) {
-    console.error(`Error while fetching Wikipedia page: ${error.message}`);
+    console.error(`Error while fetching Wikipedia page`);
     return null;
   }
 }
