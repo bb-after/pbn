@@ -1,7 +1,7 @@
 // pages/api/wikipedia.js
 import axios from 'axios';
 
-export default async function handler(req, res) {
+export default async function handler(req: { query: { companyName: any; }; }, res: { setHeader: (arg0: string, arg1: string) => void; status: (arg0: number) => { (): any; new(): any; send: { (arg0: any): void; new(): any; }; end: { (arg0: string): void; new(): any; }; }; }) {
   const { companyName } = req.query;
 
   try {
