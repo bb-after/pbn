@@ -42,7 +42,7 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
     } else {
       return res.status(response.status).json(response.data);
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error:', error.message);
     return res.status(500).json({ error: 'An error occurred while fetching data from Seamless AI' });
   }
