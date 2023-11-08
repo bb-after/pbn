@@ -46,7 +46,7 @@ async function fetchCompanyWikipediaText(companyName: string): Promise<string | 
       console.error(`Failed to retrieve Wikipedia page for ${companyName}`);
       return null;
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error(`Error while fetching Wikipedia page: ${error.message}`);
     return null;
   }
