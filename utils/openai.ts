@@ -325,7 +325,7 @@ export const bulkReplaceLinks = function(response: any, originalText: string) {
     if (typeof response === 'object') {
         response = response.data.choices[0].message.content;
     }
-    debugger;
+
     let parsedObject = parseResponse(response);
     let content = originalText;
     if (parsedObject && typeof parsedObject === 'object') {
@@ -381,9 +381,15 @@ export const bulkReplaceLinks = function(response: any, originalText: string) {
                 }
             }
         }
+
+        content = replaceHyperLinkInFirstSentenceFallback(content);
+        return content;
     }
 
-    //final check to remove any hyper links in the title
+}
+
+export const replaceHyperLinkInFirstSentenceFallback = function(content: string) {
+     //final check to remove any hyper links in the title
     // Identify the first sentence
     const firstSentenceEnd = content.match(/(\.|\n\n|\n)/); // Match a period, double newline, or single newline
     if (firstSentenceEnd && firstSentenceEnd.index !== undefined) {
@@ -401,9 +407,6 @@ export const bulkReplaceLinks = function(response: any, originalText: string) {
     console.log('content!!! ', content);
     return content;
     
-
-    console.log('content!!! ', content);
-    return content;
 }
 
 export const insertBacklinks = async (backlinkValues: any, openAIResponse: string) => {

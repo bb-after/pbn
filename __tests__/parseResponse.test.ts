@@ -1,4 +1,4 @@
-import { bulkReplaceLinks, parseResponse } from '../utils/openai'; // Update the import path
+import { bulkReplaceLinks, replaceHyperLinkInFirstSentenceFallback, parseResponse } from '../utils/openai'; // Update the import path
 
 describe('bulkReplaceLinks function', () => {
   it('correctly replaces links in valid response', () => {
@@ -104,7 +104,24 @@ it('does not insert hyperlink if match found in first sentence of article', () =
   expect(textWithLinksReplaced).not.toContain('https://www.linkedin.com/in/jesseboskoff/');
 });
 
+it('should skip hyperlink if found within the first two sentences', () => {
+    // Mock response and original text
+    const mockResponse = `"http://example.com": {
+        text: "[Link Text]",
+        sentence: "This is a sentence containing Link Text."
+    }`;
+    const originalText = `This is a sentence containing <a href="http://example.com">Link Text</a>. This is the second sentence. This is another sentence without the link text.`;
 
+    // Running the function
+    const result = replaceHyperLinkInFirstSentenceFallback(originalText);
+
+    // Check that the hyperlink is not added in the first two sentences
+    const firstTwoSentences = result.split(/[.!?]\s+|\n+/).slice(0, 2).join(".");
+    expect(firstTwoSentences.includes('<a href="http://example.com" target="_blank">Link Text</a>')).toBe(false);
+
+    // Check that the rest of the content is unchanged
+    expect(result.includes("This is another sentence without the link text.")).toBe(true);
+});
 
 describe('parseResponse function', () => {
   it('correctly parses a valid response', () => {
