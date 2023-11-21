@@ -325,7 +325,7 @@ export const bulkReplaceLinks = function(response: any, originalText: string) {
     if (typeof response === 'object') {
         response = response.data.choices[0].message.content;
     }
-    debugger;
+
     let parsedObject = parseResponse(response);
     let content = originalText;
     if (parsedObject && typeof parsedObject === 'object') {
@@ -381,10 +381,32 @@ export const bulkReplaceLinks = function(response: any, originalText: string) {
                 }
             }
         }
+
+        content = replaceHyperLinkInFirstSentenceFallback(content);
+        return content;
+    }
+
+}
+
+export const replaceHyperLinkInFirstSentenceFallback = function(content: string) {
+     //final check to remove any hyper links in the title
+    // Identify the first sentence
+    const firstSentenceEnd = content.match(/(\.|\n\n|\n)/); // Match a period, double newline, or single newline
+    if (firstSentenceEnd && firstSentenceEnd.index !== undefined) {
+        const endPosition = firstSentenceEnd.index + firstSentenceEnd[0].length;
+        let firstSentence = content.substring(0, endPosition);
+
+        // Remove hyperlinks from the first sentence
+        firstSentence = firstSentence.replace(/<a [^>]+>(.*?)<\/a>/g, "$1");
+
+        // Reconstruct the content with the modified first sentence
+        content = firstSentence + content.substring(endPosition);
+        postToSlack('Boom! Match found for hyperlink in title: '+content + ' - first sentence afffter '+firstSentence);        
     }
 
     console.log('content!!! ', content);
     return content;
+    
 }
 
 export const insertBacklinks = async (backlinkValues: any, openAIResponse: string) => {
