@@ -27,7 +27,7 @@ export const processIterations = async (inputData: any, numberOfIterations: numb
       // Modify hyperlinkedResponse as needed
       let hyperlinkedResponse = revisedResponse;
       const backlinkArray = getBacklinkArray(inputData);
-      hyperlinkedResponse = await insertBacklinks(backlinkArray.join(', '), hyperlinkedResponse);
+        hyperlinkedResponse = await insertBacklinks(backlinkArray.join(', '), hyperlinkedResponse);
       // ...
 
       newResponses.push(hyperlinkedResponse);

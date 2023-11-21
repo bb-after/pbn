@@ -12,6 +12,8 @@ interface ArticleFormProps {
     setKeywords: React.Dispatch<React.SetStateAction<string>>;
     keywordsToExclude: string;
     setKeywordsToExclude: React.Dispatch<React.SetStateAction<string>>;
+    sourceUrl: string;
+    setSourceUrl: React.Dispatch<React.SetStateAction<string>>;
     gptVersion: string;
     handleGptVersionChange: (e: SelectChangeEvent) => void;
     handleLanguage: (e: SelectChangeEvent) => void;
@@ -34,6 +36,8 @@ const ArticleForm: React.FC<ArticleFormProps> = ({
   setKeywords,
   keywordsToExclude,
   setKeywordsToExclude,
+  sourceUrl,
+  setSourceUrl,
   gptVersion,
   handleGptVersionChange,
   language,
@@ -77,8 +81,19 @@ const ArticleForm: React.FC<ArticleFormProps> = ({
       margin="normal"
       placeholder='Comma separated'
     />
+    <br />
+
+    <TextField
+      label="Source Url (Optional)"
+      value={sourceUrl}
+      onChange={(e) => setSourceUrl(e.target.value)}
+      fullWidth
+      margin="normal"
+      placeholder='An article that system should use for context'
+    />
+
     <br /><br />
-    
+
     <Box>
       <FormControl>
         <InputLabel>GPT Engine</InputLabel>
@@ -118,7 +133,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({
       </FormControl>
     </Box>
 
-    <br />
+    <br></br>
     <BacklinkInputs backlinks={backlinks} setBacklinks={setBacklinks} />
     <br></br>
     <br></br>
