@@ -44,8 +44,6 @@ const ArticleForm: React.FC<ArticleFormProps> = ({
   handleLanguage,
   backlinks,
   setBacklinks,
-  referenceUrls,
-  setReferenceUrls,
   tone,
   handleToneChange,
   otherInstructions,
