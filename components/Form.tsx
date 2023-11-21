@@ -49,6 +49,7 @@ const Form: React.FC = () => {
   const [language, setLanguage] = useState("English");
   const [wordCount, setWordCount] = useState(300);
   const [keywordsToExclude, setKeywordsToExclude] = useState('');
+  const [sourceUrl, setSourceUrl] = useState('');
   const [articleCount, setArticleCount] = useState(1);
   const [tone, setTone] = useState<string[]>([]);
   const [otherInstructions, setOtherInstructions] = useState('');
@@ -242,6 +243,7 @@ const Form: React.FC = () => {
     return {
       keywords: keywords.split(','),
       keywordsToExclude: keywordsToExclude.split(','),
+      sourceUrl: sourceUrl,
       tone: tone.join(', '),
       wordCount: wordCount,
       gptVersion: gptVersion,
@@ -307,6 +309,8 @@ const Form: React.FC = () => {
            setArticleCount={setArticleCount}
            keywords={keywords}
            setKeywords={setKeywords}
+           sourceUrl={sourceUrl}
+           setSourceUrl={setSourceUrl}
            keywordsToExclude={keywordsToExclude}
            setKeywordsToExclude={setKeywordsToExclude}
            gptVersion={gptVersion}
