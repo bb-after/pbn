@@ -2,6 +2,7 @@
 
 import mysql from 'mysql2/promise';
 import { NextApiRequest, NextApiResponse } from 'next';
+import { RowDataPacket } from 'mysql2';
 
 export default async (req: NextApiRequest, res: NextApiResponse) => {
   // Define your MySQL connection options
@@ -12,39 +13,52 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
     database: process.env.DB_DATABASE,
   };
 
+  // Create a MySQL connection
+  const connection = await mysql.createConnection(dbConfig);
+
   try {
-    // Create a MySQL connection
-    const connection = await mysql.createConnection(dbConfig);
 
     // Check for the search query parameter
     const searchQuery = req.query.search;
 
     let query;
-    let queryConfig: string[];
-
+    let queryConfig;
+    const page = parseInt(typeof req.query.page === 'string' ? req.query.page : '0', 10) || 0;
+    const rowsPerPage = parseInt(typeof req.query.rowsPerPage === 'string' ? req.query.rowsPerPage : '10', 10) || 10;
+    const offset = page * rowsPerPage;
+    
     if (searchQuery) {
-      // If a query parameter is provided, use it to filter the results
-      query = 'SELECT * FROM pbn_site_submissions WHERE title LIKE ? ORDER BY id DESC';
-      queryConfig = [`%${searchQuery}%`]; // using a parameterized query to prevent SQL injection
+      query = 'SELECT * FROM pbn_site_submissions WHERE title LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?';
+      queryConfig = [`%${searchQuery}%`, rowsPerPage, offset];
     } else {
-      // If no query parameter, select all entries
-      query = 'SELECT * FROM pbn_site_submissions ORDER BY id DESC';
-      queryConfig = [];
+      query = 'SELECT * FROM pbn_site_submissions ORDER BY id DESC LIMIT ? OFFSET ?';
+      queryConfig = [rowsPerPage, offset];
     }
 
     // Execute the query with the provided configuration
     const [rows] = await connection.query(query, queryConfig);  
-    
-    // Fetch data from the pbn_site_submissions table
-    // const [rows] = await connection.query('SELECT * FROM pbn_site_submissions order by id DESC');
 
+    let totalCountQuery = 'SELECT COUNT(*) as total FROM pbn_site_submissions';
+    if (searchQuery) {
+        totalCountQuery += ' WHERE title LIKE ?';
+        const [totalCountResult] = await connection.query(totalCountQuery, [`%${searchQuery}%`]) as RowDataPacket[];
+        var totalCount = totalCountResult[0]?.total;
+    } else {
+        const [totalCountResult] = await connection.query(totalCountQuery) as RowDataPacket[];
+        var totalCount = totalCountResult[0]?.total;
+    }
+    
     // Close the MySQL connection
     await connection.end();
 
     // Send the data as a JSON response
-    res.status(200).json(rows);
-  } catch (error) {
+    res.status(200).json({ rows, totalCount });
+  } catch (error: any) {
     console.error(error);
-    res.status(500).json({ error: 'Failed to fetch data' });
+    res.status(500).json({ error: 'Failed to fetch data', details: error.message });
+      // Close the MySQL connection in case of an error, but only if it's still open
+    if (connection && connection.end) {
+      await connection.end();
+    }
   }
 };
