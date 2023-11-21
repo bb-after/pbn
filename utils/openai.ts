@@ -22,11 +22,11 @@ const createPromptMessageFromInputs = function(inputData: any) {
     var toneLine = inputData.tone ? `- Write the article with the following tone: ${inputData.tone}.\n\n` : '';
     var promptMessage = `Write an article approximately, but not exactly, ${inputData.wordCount} words in length, incorporating the following keywords: + ${trimKeywords(inputData.keywords).join(', ')}.
 
-    **Important:** Please use each keyword between 2 to 5 times, ensuring you do not exceed this limit.
+    **Important:** Use each keyword beteen 2 to 5 times, ensuring you do not exceed this limit.
 
     Write the article in the following language: ${inputData.language}.
 
-    -Start the article a title.
+    -Start the article with a title.
 
     **Important:** Do not include any of the following words: visionary, conclusion, ${trimKeywords(inputData.keywordsToExclude).join(', ')}.
 
@@ -68,25 +68,133 @@ export const getBacklinkArray = function(inputData: any) {
     return backlinkArray;
 }
 
+// Function to fetch data from a URL
+// Function to fetch data from a URL
+const fetchDataFromURL = async (url: string): Promise<string> => {
+    try {
+        const response = await axios.get(`/api/fetchData?url=${encodeURIComponent(url)}`);
+        const cleanedData = response.data.replace(/<[^>]*>?/gm, '').trim();
+        console.log('Data:', cleanedData);
+        return cleanedData; // Return the fetched data
+    } catch (error) {
+        console.error('Error:', error);
+        throw new Error('Failed to fetch data from URL.');
+    }
+};
+
+const fetchDataFromURLNew = async (url: string): Promise<string> => {
+    try {
+        const response = await axios.get(`/api/fetchData?url=${encodeURIComponent(url)}`);
+
+        // Remove <script>...</script>, <script type="text/javascript">...</script>, <style type="text/css">...</style>
+        let cleanedData = response.data
+            .replace(/<script.*?>.*?<\/script>/gs, '')
+            .replace(/<style.*?>.*?<\/style>/gs, '')
+            .replace(/<form.*?>.*?<\/form>/gs, '');
+
+        // Remove any remaining HTML tags
+        cleanedData = cleanedData.replace(/<[^>]*>?/gm, '');
+
+        // Replace double newlines with single newline
+        cleanedData = cleanedData.replace(/\n\t+/g, '\n');
+        cleanedData = cleanedData.replace(/\n+/g, '\n');
+        cleanedData = cleanedData.replace(/\t+/g, '\t');
+        // cleanedData = he.decode(cleanedData);
+        console.log('Cleaned Data:', cleanedData);
+        return cleanedData.trim(); // Return the cleaned and trimmed data
+    } catch (error) {
+        console.error('Error:', error);
+        throw new Error('Failed to fetch data from URL.');
+    }
+};
+
+
+function splitUrlContentIntoChunks(urlContent: string, maxChunkLength: number = 1000): string[] {
+    const chunks = [];
+    let currentChunk = '';
+
+    // Split the content into words
+    const words = urlContent.split(' ');
+
+    for (const word of words) {
+        // Check if adding the next word would exceed the maxChunkLength
+        if ((currentChunk + word).length > maxChunkLength) {
+            // If it does, add the currentChunk to the chunks array and start a new chunk
+            chunks.push(currentChunk);
+            currentChunk = word;
+        } else {
+            // If not, add the word to the current chunk
+            currentChunk += (currentChunk.length > 0 ? ' ' : '') + word;
+        }
+    }
+
+    // Add the last chunk if it's not empty
+    if (currentChunk.length > 0) {
+        chunks.push(currentChunk);
+    }
+
+    return chunks;
+}
+const maxTokens = 4000; // Set this to the token limit of your OpenAI model
+const estimateTokenCount = (text: string) => {
+    return text.split(/\s+/).length; // Roughly splitting by whitespace
+};
+
+const trimContentToFitTokenLimit = (contentArray: any, maxTokens: number) => {
+    let totalTokens = 0;
+    const trimmedContent = [];
+
+    for (const content of contentArray) {
+        const tokens = estimateTokenCount(content.content);
+        if (totalTokens + tokens <= maxTokens) {
+            trimmedContent.push(content);
+            totalTokens += tokens;
+        } else {
+            // Optionally, trim the last piece to fit
+            // This part is optional and can be adjusted based on your needs
+            const remainingTokens = maxTokens - totalTokens;
+            const words = content.content.split(/\s+/).slice(0, remainingTokens).join(' ');
+            trimmedContent.push({ ...content, content: words });
+            break;
+        }
+    }
+
+    return trimmedContent;
+};
+
+
+
 /*** openapi code start */
 export const callOpenAI = async (inputData: any) => {
     if (mockData === '1') {
         console.log('mockData = '+mockData+'.  Returning dummyText');
         return dummyText;
     }
- 
+
+    // Fetch content from URLs
+    let urlContent = '';
+    // const companyName = 'Darius_Fisher';
+    if (inputData.sourceUrl && inputData.sourceUrl !== '') {
+        urlContent = await fetchDataFromURLNew(inputData.sourceUrl);
+    }
+
+    console.log("url length ", urlContent.length);
+
+    const urlContentChunks = splitUrlContentIntoChunks(urlContent);
+
     var promptMessage = createPromptMessageFromInputs(inputData);
 
-    const gptMessage = [
-        { "role": "system", "content": `I want you write as if you are a proficient SEO and high-end copy writer that speaks and writes fluent ${inputData.language}.` },
-        { "role": "user", "content": "Assume the reader is already somewhat familiar with the keyword as a subject matter. Do not spend too much time defining or introducing the keyword as a concept or entity"},
+    const initialGptMessage = [
+        { "role": "system", "content": `I want you write as if you are a proficient SEO and copy writer that speaks and writes fluent ${inputData.language}.` },
+        // { "role": "user", "content": "Assume the reader is already somewhat familiar with the keyword as a subject matter. Do not spend too much time defining or introducing the keyword as a concept or entity"},
+        ...urlContentChunks.map(chunk => ({ "role": "system", "content": chunk })),
         { "role": "user", "content": promptMessage },
     ];
 
+    const gptMessage = trimContentToFitTokenLimit(initialGptMessage, maxTokens);
+    console.log("mesage", gptMessage);
     try {
-        
         const GPTRequest = async (message: Object) => {
-            
             const response = await openai.createChatCompletion({
                 model: modelType,
                 messages: message,
@@ -235,6 +343,7 @@ export const bulkReplaceLinks = function(response: any, originalText: string) {
     if (typeof response === 'object') {
         response = response.data.choices[0].message.content;
     }
+    debugger;
     let parsedObject = parseResponse(response);
     let content = originalText;
     if (parsedObject && typeof parsedObject === 'object') {
@@ -297,6 +406,11 @@ export const bulkReplaceLinks = function(response: any, originalText: string) {
 }
 
 export const insertBacklinks = async (backlinkValues: any, openAIResponse: string) => {
+    if (backlinkValues.length < 1) {
+        console.log('no backlinks for this search!, skipping.');
+        return openAIResponse;
+    }
+
     const prompt2 = [
         { "role": "user", "content": `${openAIResponse}` },
         {
