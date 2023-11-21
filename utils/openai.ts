@@ -1,11 +1,7 @@
 // utils/openai.ts
 
 import axios from 'axios';
-import dotenv from 'dotenv';
-import { mock } from 'node:test';
 import { postToSlack } from '../utils/postToSlack';
-// import { openAIApiKey } from '../config';
-// const { Configuration, OpenAIApi } = require("openai");
 const { Configuration, OpenAIApi } = require("openai");
 const openAIApiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
 const config = new Configuration({
@@ -67,20 +63,6 @@ export const getBacklinkArray = function(inputData: any) {
     }
     return backlinkArray;
 }
-
-// Function to fetch data from a URL
-// Function to fetch data from a URL
-const fetchDataFromURL = async (url: string): Promise<string> => {
-    try {
-        const response = await axios.get(`/api/fetchData?url=${encodeURIComponent(url)}`);
-        const cleanedData = response.data.replace(/<[^>]*>?/gm, '').trim();
-        console.log('Data:', cleanedData);
-        return cleanedData; // Return the fetched data
-    } catch (error) {
-        console.error('Error:', error);
-        throw new Error('Failed to fetch data from URL.');
-    }
-};
 
 const fetchDataFromURLNew = async (url: string): Promise<string> => {
     try {
