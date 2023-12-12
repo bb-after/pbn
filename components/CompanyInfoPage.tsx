@@ -18,7 +18,9 @@ const CompanyInfoPage: React.FC = () => {
 /////
 const [matchCount, setMatchCount] = useState(0); // Assuming you have this state defined somewhere
 const [totalCount, setTotalCount] = useState(0); // Assuming you have this state defined somewhere
-const [exportDataList, setExportDataList] = useState<{ companyName: string; wikipediaText: string }[]>([]);
+const [noWikiFoundCount, setNoWikiFoundCount] = useState(0);
+const [exportDataList, setExportDataList] = useState<{ companyName: string; wikipediaText: string}[]>([]);
+const [noWikiFoundExportDataList, setNoWikiFoundExportDataList] = useState<{ companyName: string; }[]>([]);
 const [companyInfo, setCompanyInfo] = useState(null); // To store Clearbit company info
 const [isLoading, setIsLoading] = useState(false);
 const headerTags = ["h2", "h3", "h4"]; // Add any other relevant header tags
@@ -47,7 +49,7 @@ async function fetchCompanyWikipediaText(companyName: string): Promise<string | 
       return null;
     }
   } catch (error: any) {
-    console.error(`Error while fetching Wikipedia page`);
+    console.error(`Error while fetching Wikipedia page` + error);
     return null;
   }
 }
@@ -144,9 +146,8 @@ function parseSections(html: string) {
 
         // Make a request to your Next.js API endpoint
         const response = await fetch(`/api/clearbit?companyName=${encodeURIComponent(companyName)}`);
-        
-        // debugger;
         if (response.ok) {
+          console.log("clearbit data?", response);
           const data = await response.json();
           setCompanyInfo(data); // Store Clearbit data in state
         } else {
@@ -168,25 +169,42 @@ function parseSections(html: string) {
     }
   }, [wikipediaText]);
   
-  // Function to export data
-  const exportData = (data: { companyName: string; wikipediaText: string }[]) => {
-    const csvRows = []; // Array to hold CSV rows
-  
-    // Add header
-    csvRows.push('Company Name,Wikipedia Text');
-  
+  const exportData = (data: { companyName: string, wikipediaText: string }[]) => {
+    const csvRows = ['Company Name,Wikipedia Text'];
+
     // Add rows with data
     data.forEach(({ companyName, wikipediaText }) => {
-      csvRows.push(`"${companyName}","${wikipediaText.replace(/"/g, '""')}"`);
+      // Handle nullable fields
+      const safeCompanyName = companyName ? companyName.replace(/"/g, '""') : '';
+      const safeWikipediaText = wikipediaText ? wikipediaText.replace(/"/g, '""') : '';
+      csvRows.push(`"${safeCompanyName}","${safeWikipediaText}"`);
     });
+
+    // Create a Blob from the CSV String
+    const csvString = csvRows.join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8' });
+
+    // Use file-saver to save the file
+    saveAs(blob, 'export.csv');
+  };
+
+  const exportDataNoWikiPage = (data: { companyName: string }[]) => {
+    const csvRows = ['Company Name']; // Only Company Name needed
   
+    data.forEach(({ companyName }) => {
+      // Handle nullable fields
+      const safeCompanyName = companyName ? companyName.replace(/"/g, '""') : '';
+      csvRows.push(`"${safeCompanyName}"`);
+    });
+    
     // Create a Blob from the CSV String
     const csvString = csvRows.join('\n');
     const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8' });
   
     // Use file-saver to save the file
-    saveAs(blob, 'export.csv');
-  };  
+    saveAs(blob, 'companies_without_wikipedia_page.csv');
+  };
+  
   
 const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -194,22 +212,22 @@ const handleSubmit = async (e: React.FormEvent) => {
     let allCombinedText = ''; // Initialize a variable to accumulate content for all companies
     let searchIndex = 1;
     let matches = 0;
+    let noWikiFoundMatches = 0;
     setTotalCount(companyNames.length);  
     setMatchCount(0);
+    setNoWikiFoundCount(0);
     setExportDataList([]);
+    setNoWikiFoundExportDataList([]);
 
     companyNames.forEach(async (company) => {
 
       // Call the fetchCompanyWikipediaText function with the user-generated companyName
-      const text = await fetchCompanyWikipediaText(company)
-      
+      const text = await fetchCompanyWikipediaText(company);
       if (text) {
           console.log(`Wikipedia Text for ${company}:\n${text}`);
           const controversySections = parseSections(text);
           console.log("CONTROVERSY?!?", controversySections);
-          // debugger;
           if (Object.keys(controversySections).length > 0) {
-            // debugger;
             const combinedText = Object.keys(controversySections)
             .filter((header) => controversySections[header])
             .map((header) => (
@@ -220,32 +238,28 @@ const handleSubmit = async (e: React.FormEvent) => {
             )).join(''); // Concatenate the JSX elements into a single string
         
             // Update the state with the combined text
-            // setWikipediaText(combinedText);
             const companyContent = `<h2>${searchIndex}.  ${company}</h2>${combinedText}<br><br><br>`;
 
-            // setWikipediaText((prevContent) => prevContent + combinedText + '\n\n\n');
             allCombinedText += companyContent;
             setExportDataList((prevData) => [...prevData, { companyName: company, wikipediaText: combinedText.replace(/<[^>]*>?/gm, '') }]);
+
             matches++;
             setMatchCount(matches);
           } else {
-            // setWikipediaText((prevContent) => prevContent + `No controversy found for ${company}\n\n\n`);
             allCombinedText += `<div className="error"><h2>${searchIndex}.  ${company}</h2>No controversy found for ${company}<br><br><br></div>`;
-              // setWikipediaText('no controversy text found');
           }
       } else {
+        noWikiFoundMatches++;
+        setNoWikiFoundCount(noWikiFoundMatches);
+        setNoWikiFoundExportDataList((prevData) => [...prevData, { companyName: company }]);
         console.log(`Wikipedia page not found for ${company}`);
-        // setWikipediaText('no wiki page (and therefore controversy text) found');
         allCombinedText += `<div className="error"><h2>${searchIndex}.  ${company}</h2>  No Wikipedia page found for ${company}<br><br><br></div>`;
-
       }
 
       searchIndex++;
       setWikipediaText(allCombinedText);
     });
   };
-
-
 
   return (
 
@@ -273,7 +287,6 @@ const handleSubmit = async (e: React.FormEvent) => {
           alt=""
         />
 
-
         </div>
         <h1>Wiki Reputation Lookup</h1>
         
@@ -294,19 +307,21 @@ const handleSubmit = async (e: React.FormEvent) => {
             />
           </label>
 
-
           <Button type="submit" variant="contained" color="primary">
             Get Wikipedia Text
           </Button>
-
 
         </form>
         {wikipediaText !== null && (
         <div style={{ float: 'left', clear: 'both' }}>
           <br />
             <h2>Results: {matchCount} / {totalCount}</h2>
-            <Button onClick={() => exportData(exportDataList)} variant="outlined">Export Results</Button>
+            <Button onClick={() => exportData(exportDataList)} variant="outlined">Export Matches ({matchCount})</Button>
+            &nbsp;
+            <Button onClick={() => exportDataNoWikiPage(noWikiFoundExportDataList)} variant="outlined">Export Companies Without Wikipedia Page ({noWikiFoundCount})</Button>
             <div className="wikipediaResultsHolder" dangerouslySetInnerHTML={{ __html: wikipediaText }}></div>
+
+
           </div>
         )}
       </div>
