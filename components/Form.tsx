@@ -13,7 +13,6 @@ import RemixModal from './RemixModal';
 import PbnSubmissionModal from './PbnSubmissionModal';
 import { postToSlack } from '../utils/postToSlack';
 import Step1LoadingStateComponent from './Step1LoadingState';
-import Step2LoadingStateComponent from './Step2LoadingState';
 import FinalLoadingStateComponent from './FinalLoadingState';
 import ArticleForm from './ArticleForm'; // Adjust the path as needed
 import {
