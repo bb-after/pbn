@@ -17,10 +17,12 @@ const CompanyInfoPage: React.FC = () => {
   const [wikipediaText, setWikipediaText] = useState<string | null>(null);
 /////
 const [matchCount, setMatchCount] = useState(0); // Assuming you have this state defined somewhere
+const [wikiMatchCount, setWikiMatchCount] = useState(0); // Assuming you have this state defined somewhere
 const [totalCount, setTotalCount] = useState(0); // Assuming you have this state defined somewhere
 const [noWikiFoundCount, setNoWikiFoundCount] = useState(0);
 const [exportDataList, setExportDataList] = useState<{ companyName: string; wikipediaText: string}[]>([]);
 const [noWikiFoundExportDataList, setNoWikiFoundExportDataList] = useState<{ companyName: string; }[]>([]);
+const [wikiFoundExportDataList, setWikiFoundExportDataList] = useState<{ companyName: string; }[]>([]);
 const [companyInfo, setCompanyInfo] = useState(null); // To store Clearbit company info
 const [isLoading, setIsLoading] = useState(false);
 const headerTags = ["h2", "h3", "h4"]; // Add any other relevant header tags
@@ -212,12 +214,15 @@ const handleSubmit = async (e: React.FormEvent) => {
     let allCombinedText = ''; // Initialize a variable to accumulate content for all companies
     let searchIndex = 1;
     let matches = 0;
+    let wikiMatches = 0;
     let noWikiFoundMatches = 0;
     setTotalCount(companyNames.length);  
     setMatchCount(0);
+    setWikiMatchCount(0);
     setNoWikiFoundCount(0);
     setExportDataList([]);
     setNoWikiFoundExportDataList([]);
+    setWikiFoundExportDataList([]);
 
     companyNames.forEach(async (company) => {
 
@@ -246,6 +251,9 @@ const handleSubmit = async (e: React.FormEvent) => {
             matches++;
             setMatchCount(matches);
           } else {
+            wikiMatches++;
+            setWikiMatchCount(wikiMatches);
+            setWikiFoundExportDataList((prevData) => [...prevData, { companyName: company }]);
             allCombinedText += `<div className="error"><h2>${searchIndex}.  ${company}</h2>No controversy found for ${company}<br><br><br></div>`;
           }
       } else {
@@ -288,11 +296,12 @@ const handleSubmit = async (e: React.FormEvent) => {
         />
 
         </div>
-        <h1>Wiki Reputation Lookup</h1>
+        <h1>Wiki Scraper</h1>
         
-        <div style={{ paddingTop: 20 }}>
-            <br />
+        <div>
         <form onSubmit={handleSubmit}>
+          <p>Wikiscraper detects companies with Wikipedia controversies, pages, or no presence and exports the results.</p>
+          <br /><br />
           <label>
             <TextField
               label="Companies (separate by line breaks)"
@@ -308,7 +317,7 @@ const handleSubmit = async (e: React.FormEvent) => {
           </label>
 
           <Button type="submit" variant="contained" color="primary">
-            Get Wikipedia Text
+            Find Wikipedia Pages
           </Button>
 
         </form>
@@ -316,8 +325,10 @@ const handleSubmit = async (e: React.FormEvent) => {
         <div style={{ float: 'left', clear: 'both' }}>
           <br />
             <h2>Results: {matchCount} / {totalCount}</h2>
-            <Button onClick={() => exportData(exportDataList)} variant="outlined">Export Matches ({matchCount})</Button>
-            &nbsp;
+            <Button onClick={() => exportData(exportDataList)} variant="outlined">Export Controversy Matches ({matchCount})</Button>
+            &nbsp;<br /><br />
+            <Button onClick={() => exportDataNoWikiPage(wikiFoundExportDataList)} variant="outlined">Export Wiki Matches but no Controversy ({wikiMatchCount})</Button>
+            &nbsp;<br /><br />
             <Button onClick={() => exportDataNoWikiPage(noWikiFoundExportDataList)} variant="outlined">Export Companies Without Wikipedia Page ({noWikiFoundCount})</Button>
             <div className="wikipediaResultsHolder" dangerouslySetInnerHTML={{ __html: wikipediaText }}></div>
 

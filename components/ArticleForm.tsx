@@ -30,8 +30,6 @@ const ArticleForm: React.FC<ArticleFormProps> = ({
   handleSubmit,
   wordCount,
   setWordCount,
-  articleCount,
-  setArticleCount,
   keywords,
   setKeywords,
   keywordsToExclude,
