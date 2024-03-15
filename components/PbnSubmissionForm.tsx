@@ -9,7 +9,12 @@ import {
   Button,
   FormControl,
   FormLabel,
+  Select,
+  SelectChangeEvent,
+  MenuItem,
+  InputLabel,
 } from '@mui/material';
+import CopyToClipboardButton from './CopyToClipboardButton'; // Replace with the correct path to your component
 
 // Dynamically load the RTE component (client-side) to prevent server-side rendering issues
 const Editor = dynamic(
@@ -29,9 +34,16 @@ interface PbnFormProps {
     articleTitle, // Receive articleTitle as a prop
     pbnModalEditorState, // Receive pbnModalEditorState as a prop
   }) => {
+    const [copyButtonText, setCopyButtonText] = useState('Copy URL');
     const [editorState, setEditorState] = useState(pbnModalEditorState); // Use pbnModalEditorState as initial state
     const [title, setTitle] = useState(articleTitle); // Use articleTitle as initial state
     const [clientName, setClientName] = useState(''); // Use '' as initial state
+    const [category, setCategory] = useState(''); // State for tracking the selected category
+    const [submissionUrl, setSubmissionUrl] = useState('');
+    const [isSubmissionSuccessful, setIsSubmissionSuccessful] = useState(false);
+    const handleCategoryChange = (event: SelectChangeEvent) => {
+      setCategory(event.target.value as string);
+    };    
 
     const postContentToPbn = async () => {
         const contentHTML = stateToHTML(editorState.getCurrentContent());
@@ -46,7 +58,7 @@ interface PbnFormProps {
                 clientName: clientName,
                 content: contentHTML,
                 userToken: userToken,
-                categories: [],
+                category: category,
                 tags: [],
               }),
               headers: {
@@ -57,17 +69,22 @@ interface PbnFormProps {
             if (response.status === 201) {
                 const responseData = await response.json();
                 // Article posted successfully
-                  // You can redirect the user or show a success message here.
-                  alert('article posted successfully! \n' + responseData.link);
+                  // alert('article posted successfully! \n' + responseData.link);
+                setSubmissionUrl(responseData.link); // Assuming responseData.link contains the URL
+                setIsSubmissionSuccessful(true);
             } else if (response.status == 400) {
                 alert('Article already uploaded to PBN');
-            } else if (response.status == 404) {
+                setIsSubmissionSuccessful(false);
+              } else if (response.status == 404) {
                 alert('No active blogs found in database');
-            } else {
+                setIsSubmissionSuccessful(false);
+              } else {
                 alert('Failed to post article to PBN');
+                setIsSubmissionSuccessful(false);
             } 
           } catch (error: any) {
                 alert('Request error: ' + error.message);
+                setIsSubmissionSuccessful(false);
           }
     };
     
@@ -86,6 +103,21 @@ interface PbnFormProps {
 
   return (
     <div>
+      {isSubmissionSuccessful && submissionUrl ? (
+        <div>
+          <TextField
+            fullWidth
+            margin="normal"
+            value={submissionUrl}
+            InputProps={{
+              readOnly: true,
+            }}
+            variant="outlined"
+          />
+          <CopyToClipboardButton text={submissionUrl} />  
+        </div>
+      ) : (
+        <>
       <FormControl component="fieldset" fullWidth>
         <TextField
           label="Article Title"
@@ -106,6 +138,25 @@ interface PbnFormProps {
           placeholder="Client Name"
           onChange={handleClientChange}
         />
+
+        <InputLabel id="category-select-label">Category</InputLabel>
+        <Select
+          labelId="category-select-label"
+          id="category-select"
+          value={category}
+          label="Category"
+          onChange={handleCategoryChange}
+          fullWidth
+        >
+          {['Business', 'Finance', 'Health', 'Lifestyle', 'Technology', 'News', 'Education', 'Entrepreneurship', 'Sports', 'General'].map((cat) => (
+            <MenuItem key={cat} value={cat}>
+              {cat}
+            </MenuItem>
+          ))}
+        </Select>
+
+
+        
       </FormControl>
 
       <br /> <br />
@@ -127,7 +178,9 @@ interface PbnFormProps {
       <Button onClick={postContentToPbn} variant="contained" color="primary">
         Submit
       </Button>
-    </div>
+      </>
+      )}
+    </div>    
   );
 };
 

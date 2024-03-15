@@ -28,14 +28,13 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
     const offset = page * rowsPerPage;
     
     if (searchQuery) {
-      query = 'SELECT * FROM pbn_site_submissions WHERE title LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?';
+      query = 'SELECT * FROM pbn_site_submissions JOIN users ON users.user_token = pbn_site_submissions.user_token WHERE title LIKE ? and deleted_at is null ORDER BY pbn_site_submissions.id DESC LIMIT ? OFFSET ?';
       queryConfig = [`%${searchQuery}%`, rowsPerPage, offset];
     } else {
-      query = 'SELECT * FROM pbn_site_submissions ORDER BY id DESC LIMIT ? OFFSET ?';
+      query = 'SELECT * FROM pbn_site_submissions JOIN users ON users.user_token = pbn_site_submissions.user_token WHERE deleted_at is null ORDER BY pbn_site_submissions.id DESC LIMIT ? OFFSET ?';
       queryConfig = [rowsPerPage, offset];
     }
 
-    // Execute the query with the provided configuration
     const [rows] = await connection.query(query, queryConfig);  
 
     let totalCountQuery = 'SELECT COUNT(*) as total FROM pbn_site_submissions';
