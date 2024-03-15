@@ -80,7 +80,7 @@ export default async function handler(req: any, res: any) {
   }
 }
 
-async function findPostIdBySlug(domain, slug, auth) {
+async function findPostIdBySlug(domain: string, slug: string | null, auth: { username: any; password: any; }) {
   try {
     const response = await axios.get(`${domain}/wp-json/wp/v2/posts`, {
       params: { slug },
