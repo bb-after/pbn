@@ -2,13 +2,14 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { OkPacket, RowDataPacket } from 'mysql2';
 import mysql from 'mysql2/promise'; // Import the 'promise' version of mysql2
 import axios from 'axios';
+import { log } from 'console';
 
 type PostToWordPressRequest = {
     title: string;
     content: string;
     userToken: string;
     clientName: string;
-    categories: number[]; // Array of category IDs
+    category: string; // Array of category names
     tags: number[]; // Array of tag IDs
   };
 
@@ -20,11 +21,36 @@ const dbConfig = {
     database: process.env.DB_DATABASE,
 };
 
+  async function ensureCategoryExists(domain: any, categoryName: any, auth: { username: string; password: string; }) {
+    try {
+
+      // Fetch existing categories to check if the desired category already exists
+      const categoriesResponse = await axios.get(`${domain}/wp-json/wp/v2/categories`, 
+        { params: { search: categoryName } 
+      });
+      const existingCategory = categoriesResponse.data.find((cat: { name: string; }) => cat.name.toLowerCase() === categoryName.toLowerCase());
+
+      // If the category exists, return its ID
+      if (existingCategory) {
+        return existingCategory.id;
+      }
+
+      // If the category doesn't exist, create it
+      const newCategoryResponse = await axios.post(`${domain}/wp-json/wp/v2/categories`, { name: categoryName }, { auth });
+      console.log('response???',newCategoryResponse);
+      
+      return newCategoryResponse.data.id;
+    } catch (error) {
+      console.error('Error ensuring category exists:', error);
+      throw new Error('Failed to ensure category exists');
+    }
+  }
+
 export default async function handler(
     req: NextApiRequest,
     res: NextApiResponse
   ) {
-    const { title, content, userToken, categories, tags, clientName } = req.body as PostToWordPressRequest;
+    const { title, content, userToken, category, tags, clientName } = req.body as PostToWordPressRequest;
     try {
       // Create a MySQL connection
       const connection = await mysql.createConnection(dbConfig);
@@ -64,6 +90,14 @@ export default async function handler(
         return;
     }
 
+    const auth = {
+      username: login,
+      password: password,
+    };
+    
+      // Ensure the category exists (and get its ID)
+      const categoryId = await ensureCategoryExists(domain, category, auth);
+
       // Make a POST request to WordPress using the retrieved credentials
       const response = await axios.post(
         `${domain}/wp-json/wp/v2/posts`,
@@ -71,6 +105,7 @@ export default async function handler(
           title: title,
           content: content,
           status: 'publish',
+          categories: [categoryId],
         },
         {
           auth: {
@@ -82,8 +117,8 @@ export default async function handler(
   
       // Insert submission record into the database
       const [insertResult] = await connection.execute(
-        'INSERT INTO pbn_site_submissions (pbn_site_id, title, content, user_token, submission_response, client_name) VALUES (?, ?, ?, ?, ?, ?)',
-        [id, title, content, userToken, response.data.link, clientName]
+        'INSERT INTO pbn_site_submissions (pbn_site_id, title, content, categories, user_token, submission_response, client_name) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [id, title, content, category, userToken, response.data.link, clientName]
       );
 
       res.status(201).json(response.data);

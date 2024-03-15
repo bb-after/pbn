@@ -15,6 +15,32 @@ import {
   TablePagination,
 } from '@mui/material';
 
+const handleDeleteSubmission = async (submissionId: number, submissionUrl: string) => {
+  try {
+    const response = await fetch(`/api/deleteFromWordPress`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ submissionId, submissionUrl }),
+    });
+
+    const data = await response.json();
+    if (response.ok) {
+      alert('Submission deleted successfully!');
+      window.location.reload();
+      // Refresh your submissions list or handle UI updates here
+    } else {
+      // Handle backend errors (e.g., post not found, deletion failed)
+      alert(`Error deleting submission: ${data.error}`);
+    }
+  } catch (error) {
+    console.error('Error deleting submission:', error);
+    alert('Failed to delete submission. Please try again.');
+  }
+};
+
+
 const PbnSiteSubmissionsTable = () => {
   const [submissions, setSubmissions] = useState([]);
   const [search, setSearch] = useState(""); // new state for the search query
@@ -121,19 +147,18 @@ const PbnSiteSubmissionsTable = () => {
           <TableHead>
             <TableRow>
               <TableCell>ID</TableCell>
-              <TableCell>PBN Site URL</TableCell>
               <TableCell>Title</TableCell>
               <TableCell>Content</TableCell>
-              <TableCell>User Token</TableCell>
+              <TableCell>User</TableCell>
               <TableCell>Submission Response</TableCell>
               <TableCell>Created</TableCell>
+              <TableCell>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {submissions.map((submission: any) => (
               <TableRow key={submission.id}>
                 <TableCell>{submission.id}</TableCell>
-                <TableCell>{submission.pbn_site_url}</TableCell>
                 <TableCell>{submission.title}</TableCell>
                 <TableCell>
                   {expandedRows[submission.id] ? (
@@ -145,7 +170,7 @@ const PbnSiteSubmissionsTable = () => {
                     {expandedRows[submission.id] ? 'Collapse' : 'Expand'}
                   </Button>
                 </TableCell>
-                <TableCell>{submission.user_token}</TableCell>
+                <TableCell>{submission.name}</TableCell>
                 <TableCell>
                   <Link href={submission.submission_response} target="_blank">
                     {submission.submission_response}
@@ -153,6 +178,16 @@ const PbnSiteSubmissionsTable = () => {
                 </TableCell>
                 <TableCell>
                     {submission.created}
+                </TableCell>
+                <TableCell>
+                <Link href={submission.submission_response} underline="none" target="_blank">
+                  <Button size="small" variant="outlined" color="primary">View</Button>
+                  </Link>
+                  <Button size="small" variant="outlined" color="error"
+                  onClick={() => handleDeleteSubmission(submission.id, submission.submission_response)}
+                  >Delete
+                  </Button>
+
                 </TableCell>
 
               </TableRow>
