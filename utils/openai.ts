@@ -1,22 +1,40 @@
 // utils/openai.ts
 import axios from 'axios';
 import { postToSlack } from '../utils/postToSlack';
-// import OpenAI from "openai";
-const OpenAI = require('openai');
-const openAIApiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
-const openai = new OpenAI({
-    apiKey: openAIApiKey,
-    dangerouslyAllowBrowser: true,
-});
+import OpenAI from 'openai';
 
-const modelType = 'gpt-3.5-turbo';//process.env.NEXT_PUBLIC_GPT_ENGINE;
+const getOpenAIClient: () => OpenAI = (() => {
+    let openAIClient: OpenAI | undefined;
+  
+    return () => {
+      if (!openAIClient) {
+        const apiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+        if (!apiKey) {
+          throw new Error('OPENAI_API_KEY is not set');
+        }
+        const organization = process.env.NEXT_PUBLIC_OPENAI_ORGANIZATION_ID;
+        if (!organization) {
+          throw new Error('OPENAI_ORGANIZATION_ID is not set');
+        }
+  
+        openAIClient = new OpenAI({
+          apiKey,
+          organization,
+          dangerouslyAllowBrowser: true,
+        });
+      }
+      return openAIClient;
+    };
+  })();
+
+const modelType = 'gpt-3.5-turbo-16k';//process.env.NEXT_PUBLIC_GPT_ENGINE;
 function trimKeywords(keywords: string[]): string[] {
     return keywords.map(keyword => keyword.trim());
 }
 
 const createPromptMessageFromInputs = function(inputData: any) {
     var toneLine = inputData.tone ? `- Write the article with the following tone: ${inputData.tone}.\n\n` : '';
-    var promptMessage = `Write an article approximately, but not exactly, ${inputData.wordCount} words in length, incorporating the following keywords: + ${trimKeywords(inputData.keywords).join(', ')}.
+    var promptMessage = `Write an article approximately, but not exactly, ${inputData.wordCount} words in length, incorporating the following keywords: ${trimKeywords(inputData.keywords).join(', ')}.
 
     **Important:** Use each keyword beteen 2 to 5 times, ensuring you do not exceed this limit.
 
@@ -174,20 +192,21 @@ export const callOpenAI = async (inputData: any) => {
     ];
 
     const gptMessage = trimContentToFitTokenLimit(initialGptMessage, maxTokens);
-    console.log("mesage", gptMessage);
     try {
-        const GPTRequest = async (message: Object) => {
-            const response = await openai.createChatCompletion({
+        const openai = getOpenAIClient();
+        const GPTRequest = async (message: any) => {
+            const response = await openai.chat.completions
+            .create({
                 model: modelType,
+                temperature: 0.8,
                 messages: message,
-                // stream: true,
             });
+        
             return response;
         };
     
         const response = GPTRequest(gptMessage);
         return response;
-        // console.log(response);
 
     } catch (error) {
         console.error('OpenAI API Error:', error);
@@ -211,13 +230,15 @@ export const callOpenAIToRewriteArticle = async (content: string, inputData: any
 
     try {
         
-        const GPTRequest = async (message: Object) => {
-            
-            const response = await openai.createChatCompletion({
-                model: modelType,
-                messages: message,
-                // stream: true,
-            });
+        const GPTRequest = async (message: any) => {
+            const openai = getOpenAIClient();
+            const response = await openai.chat.completions
+                .create({
+                    model: modelType,
+                    temperature: 0.8,
+                    messages: message,
+                });
+
             return response;
         };
     
@@ -238,7 +259,7 @@ export const callOpenAIRevised = async (inputData: any, openAIResponse: any) => 
     }
     if (skipOpenAiRevision) {     
         console.log('skipping revision!', openAIResponse);
-        return openAIResponse.data.choices[0].message.content.replace(/\n/g, '<br>');
+        return openAIResponse.choices[0].message.content.replace(/\n/g, '<br>');
     }
 
     var promptMessage = createPromptMessageFromInputs(inputData);
@@ -246,7 +267,7 @@ export const callOpenAIRevised = async (inputData: any, openAIResponse: any) => 
         { "role": "system", "content": `I want you to act as a very proficient SEO and high-end copy writer that speaks and writes fluent ${inputData.language}.` },
         { "role": "user", "content": "Assume the reader is already somewhat familiar with the keyword as a subject matter. Do not spend too much time defining or introducing the keyword as a concept or entity"},
         { "role": "user", "content": promptMessage },
-        { "role": "assistant", "content": openAIResponse.data.choices[0].message.content },
+        { "role": "assistant", "content": openAIResponse.choices[0].message.content },
         { "role": "user", "content": "Rewrite the above content so that it is not detected as AI content by AI content detectors."}
     ];
 
@@ -256,8 +277,10 @@ export const callOpenAIRevised = async (inputData: any, openAIResponse: any) => 
     }
 
     try {
-        const GPTRequestRevision2 = async (gptMessageRevised: Object) => {
-            const response2 = await openai.createChatCompletion({
+        const GPTRequestRevision2 = async (gptMessageRevised: any) => {
+            const openai = getOpenAIClient();
+            const response2 = await openai.chat.completions
+            .create({
                 model: modelType,
                 messages: gptMessageRevised,
                 // stream: true,
@@ -266,11 +289,17 @@ export const callOpenAIRevised = async (inputData: any, openAIResponse: any) => 
         };
 
         const response2 = await GPTRequestRevision2(gptMessageRevised);
+        console.log("!!!!!SECOND iteration!!!", response2.choices[0].message.content);
+
         //add line breaks
-        response2.data.choices[0].message.content =
-        response2.data.choices[0].message.content.replace(/\n/g, '<br>');
-        console.log("!!!!!SECOND iteration!!!", response2.data.choices[0].message.content);
-        return response2.data.choices[0].message.content;        
+        if (response2.choices[0].message.content) {
+            response2.choices[0].message.content =
+            response2.choices[0].message.content.replace(/\n/g, '<br>');     
+        } else {
+            return null;
+        }
+
+        return response2.choices[0].message.content;        
 
     } catch (error) {
         console.error('OpenAI API Error:', error);
@@ -323,7 +352,7 @@ export const parseResponse = function(response: string)
 
 export const bulkReplaceLinks = function(response: any, originalText: string) {
     if (typeof response === 'object') {
-        response = response.data.choices[0].message.content;
+        response = response.choices[0].message.content;
     }
 
     let parsedObject = parseResponse(response);
@@ -437,9 +466,10 @@ export const insertBacklinks = async (backlinkValues: any, openAIResponse: strin
 
     try {
 
-        const gptRequest = async () => {
-
-            const response = await openai.createChatCompletion({
+        const gptRequest = async (prompt2: any) => {
+            const openai = getOpenAIClient();
+            const response = await openai.chat.completions
+            .create({
                 model: modelType,
                 messages: prompt2,
             });
@@ -449,7 +479,7 @@ export const insertBacklinks = async (backlinkValues: any, openAIResponse: strin
 
         // Set a maximum timeout of 120 seconds
         const timeoutMillis = 120000; // 120 seconds
-        const responsePromise = gptRequest();
+        const responsePromise = gptRequest(prompt2);
         const timeoutPromise = new Promise((resolve, reject) => {
             setTimeout(() => {
                 reject(new Error('Request timed out'));

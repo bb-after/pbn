@@ -96,7 +96,7 @@ const Form: React.FC = () => {
           const firstResponse = (mode !== 'generate') 
             ? await callOpenAIToRewriteArticle(response, inputData)
             : await callOpenAI(inputData);
-
+        debugger;
           setLoadingFirstRequest(false);      
           
           // Second call to openAI, this time to re-write it as if not written by AI.
@@ -265,6 +265,7 @@ const Form: React.FC = () => {
     const numberOfIterations = 1; // Set the desired number of iterations
     
     try {
+      debugger;
       setShowForm(false);
       setLoadingFirstRequest(true);      
       // Initial call to openAI to write the article
