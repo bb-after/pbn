@@ -95,8 +95,13 @@ export default async function handler(
       password: password,
     };
     
+    let categoryId = null;
+
+    // Check if category is provided and not empty
+    if (category && category.trim() !== '') {
       // Ensure the category exists (and get its ID)
-      const categoryId = await ensureCategoryExists(domain, category, auth);
+      categoryId = await ensureCategoryExists(domain, category, auth);
+    }
 
       // Make a POST request to WordPress using the retrieved credentials
       const response = await axios.post(
@@ -105,7 +110,7 @@ export default async function handler(
           title: title,
           content: content,
           status: 'publish',
-          categories: [categoryId],
+          categories: categoryId ? [categoryId] : [],
         },
         {
           auth: {

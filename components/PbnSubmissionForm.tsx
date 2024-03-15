@@ -138,7 +138,10 @@ interface PbnFormProps {
           placeholder="Client Name"
           onChange={handleClientChange}
         />
+      </FormControl>
+      <br /><br />
 
+      <FormControl>
         <InputLabel id="category-select-label">Category</InputLabel>
         <Select
           labelId="category-select-label"
@@ -147,6 +150,7 @@ interface PbnFormProps {
           label="Category"
           onChange={handleCategoryChange}
           fullWidth
+          style={{ minWidth: 120 }}
         >
           {['Business', 'Finance', 'Health', 'Lifestyle', 'Technology', 'News', 'Education', 'Entrepreneurship', 'Sports', 'General'].map((cat) => (
             <MenuItem key={cat} value={cat}>
