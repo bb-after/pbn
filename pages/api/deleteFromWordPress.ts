@@ -53,9 +53,9 @@ export default async function handler(req: any, res: any) {
       
     const slug = getSlugFromUrl(submissionUrl);
     console.log('we have a slug? ', slug);
-      
+    console.log(slug);
     // Step 3: Use the slug to find the WordPress post ID
-    const postID = await findPostIdBySlug(domain, slug, { username: login, password });
+    const postID = await findPostIdBySlug(domain, slug, { username: login, password: password });
     console.log('we have a postID? ', postID);
 
     if (!postID) {
@@ -80,8 +80,10 @@ export default async function handler(req: any, res: any) {
   }
 }
 
-async function findPostIdBySlug(domain: string, slug: string | null, auth: { username: any; password: any; }) {
+async function findPostIdBySlug(domain: any, slug: any, auth: { username: any; password: any; }) {
   try {
+    console.log("what is domain?",domain);
+    console.log("auth?",auth);
     const response = await axios.get(`${domain}/wp-json/wp/v2/posts`, {
       params: { slug },
       auth,

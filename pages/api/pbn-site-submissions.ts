@@ -28,10 +28,10 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
     const offset = page * rowsPerPage;
     
     if (searchQuery) {
-      query = 'SELECT * FROM pbn_site_submissions JOIN users ON users.user_token = pbn_site_submissions.user_token WHERE title LIKE ? and deleted_at is null ORDER BY pbn_site_submissions.id DESC LIMIT ? OFFSET ?';
+      query = 'SELECT pbn_site_submissions.*, users.email FROM pbn_site_submissions JOIN users ON users.user_token = pbn_site_submissions.user_token WHERE title LIKE ? and deleted_at is null ORDER BY pbn_site_submissions.id DESC LIMIT ? OFFSET ?';
       queryConfig = [`%${searchQuery}%`, rowsPerPage, offset];
     } else {
-      query = 'SELECT * FROM pbn_site_submissions JOIN users ON users.user_token = pbn_site_submissions.user_token WHERE deleted_at is null ORDER BY pbn_site_submissions.id DESC LIMIT ? OFFSET ?';
+      query = 'SELECT pbn_site_submissions.*, users.email FROM pbn_site_submissions JOIN users ON users.user_token = pbn_site_submissions.user_token WHERE deleted_at is null ORDER BY pbn_site_submissions.id DESC LIMIT ? OFFSET ?';
       queryConfig = [rowsPerPage, offset];
     }
 
