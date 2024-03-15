@@ -2,14 +2,13 @@
 
 import axios from 'axios';
 import { postToSlack } from '../utils/postToSlack';
-const { Configuration, OpenAIApi } = require("openai");
+import { OpenAI } from "openai";
 const openAIApiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
-const config = new Configuration({
-    apiKey: openAIApiKey
+const openai = new OpenAI({
+    apiKey: openAIApiKey,
+    dangerouslyAllowBrowser: true,
   });
 const modelType = 'gpt-3.5-turbo';//process.env.NEXT_PUBLIC_GPT_ENGINE;
-const openai = new OpenAIApi(config);
-
 function trimKeywords(keywords: string[]): string[] {
     return keywords.map(keyword => keyword.trim());
 }
