@@ -1,8 +1,7 @@
 // utils/openai.ts
-
 import axios from 'axios';
 import { postToSlack } from '../utils/postToSlack';
-import { OpenAI } from "openai";
+import OpenAI from "openai";
 const openAIApiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
 const openai = new OpenAI({
     apiKey: openAIApiKey,
