@@ -2,6 +2,7 @@
 import axios from 'axios';
 import mysql from 'mysql2/promise';
 import { RowDataPacket } from 'mysql2';
+import { getSlugFromUrl, findPostIdBySlug } from '../../utils/urlUtils';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'DELETE') {
@@ -39,16 +40,6 @@ export default async function handler(req: any, res: any) {
 
     const { domain, login, password } = rows[0];
 
-    const getSlugFromUrl = (url: string) => {
-        // Remove trailing slash if present
-        const urlWithoutTrailingSlash = url.endsWith('/') ? url.slice(0, -1) : url;
-        
-        // Extract the last part of the URL, which should be the slug
-        const slug = urlWithoutTrailingSlash.split("/").pop();
-        
-        // If there are query parameters, remove them
-        return slug ? slug.split('?')[0] : null;
-    };
     console.log('we have a submissionURL? ', submissionUrl);
       
     const slug = getSlugFromUrl(submissionUrl);
@@ -77,23 +68,5 @@ export default async function handler(req: any, res: any) {
   } catch (error) {
     console.error('Error deleting submission:', error);
     return res.status(500).json({ error: 'Failed to delete submission' });
-  }
-}
-
-async function findPostIdBySlug(domain: string, slug: string | null, auth: { username: any; password: any; }) {
-  try {
-    const response = await axios.get(`${domain}/wp-json/wp/v2/posts`, {
-      params: { slug },
-      auth,
-    });
-
-    if (response.data.length > 0) {
-      return response.data[0].id;
-    }
-
-    return null;
-  } catch (error) {
-    console.error('Error finding post ID by slug:', error);
-    throw new Error('Failed to find post ID by slug');
   }
 }

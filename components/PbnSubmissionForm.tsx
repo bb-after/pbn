@@ -1,5 +1,5 @@
 // PbnSubmissionForm.tsx (Reusable Form Component)
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { EditorState } from 'draft-js';
 import 'react-draft-wysiwyg/dist/react-draft-wysiwyg.css';
@@ -26,25 +26,44 @@ const Editor = dynamic(
 
 interface PbnFormProps {
     articleTitle: string; // Add articleTitle prop
+    clientName?: string;
+    categories?: string;
+    submissionId?: number, 
     pbnModalEditorState: EditorState; // Add pbnModalEditorState prop
     onSubmit: (title: string, content: string) => void;
   }
   
   const PbnSubmissionForm: React.FC<PbnFormProps> = ({
     articleTitle, // Receive articleTitle as a prop
+    clientName = '',
+    categories = '',
+    submissionId,
     pbnModalEditorState, // Receive pbnModalEditorState as a prop
   }) => {
-    const [copyButtonText, setCopyButtonText] = useState('Copy URL');
     const [editorState, setEditorState] = useState(pbnModalEditorState); // Use pbnModalEditorState as initial state
     const [title, setTitle] = useState(articleTitle); // Use articleTitle as initial state
-    const [clientName, setClientName] = useState(''); // Use '' as initial state
-    const [category, setCategory] = useState(''); // State for tracking the selected category
+    const [client, setClient] = useState(clientName); // Use '' as initial state
+    const [id, setId] = useState(submissionId);
+    const [category, setCategory] = useState(categories); // State for tracking the selected category
     const [submissionUrl, setSubmissionUrl] = useState('');
     const [isSubmissionSuccessful, setIsSubmissionSuccessful] = useState(false);
     const handleCategoryChange = (event: SelectChangeEvent) => {
       setCategory(event.target.value as string);
     };    
 
+
+    useEffect(() => {
+      setId(submissionId);
+      console.log("subbbb", submissionId);
+      setTitle(articleTitle);
+      setClient(clientName);
+      setCategory(categories);
+      // Assuming you also pass the content as a prop and want to initialize it similarly
+      // const contentState = stateFromHTML(EditorState); // Convert HTML to Draft.js ContentState
+      setEditorState(pbnModalEditorState);
+    }, [articleTitle, pbnModalEditorState]); // Add articleContent to dependencies if you're using it
+
+    
     const postContentToPbn = async () => {
         const contentHTML = stateToHTML(editorState.getCurrentContent());
         const urlParams = new URLSearchParams(window.location.search);
@@ -60,6 +79,7 @@ interface PbnFormProps {
                 userToken: userToken,
                 category: category,
                 tags: [],
+                submissionId: id,
               }),
               headers: {
                 'Content-Type': 'application/json',
@@ -98,7 +118,7 @@ interface PbnFormProps {
   };
   
   const handleClientChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setClientName(event.target.value);
+    setClient(event.target.value);
   };
 
   return (
@@ -131,32 +151,30 @@ interface PbnFormProps {
 
         <TextField
           label="Client Name"
-          value={clientName}
+          value={client}
           fullWidth
           margin="normal"
           required
           placeholder="Client Name"
           onChange={handleClientChange}
         />
-
-        <InputLabel id="category-select-label">Category</InputLabel>
-        <Select
-          labelId="category-select-label"
-          id="category-select"
-          value={category}
-          label="Category"
-          onChange={handleCategoryChange}
-          fullWidth
-        >
-          {['Business', 'Finance', 'Health', 'Lifestyle', 'Technology', 'News', 'Education', 'Entrepreneurship', 'Sports', 'General'].map((cat) => (
-            <MenuItem key={cat} value={cat}>
-              {cat}
-            </MenuItem>
-          ))}
-        </Select>
-
-
-        
+        </FormControl>
+        <FormControl component="fieldset" fullWidth>
+         <InputLabel id="category-select-label">Category</InputLabel>
+          <Select
+            labelId="category-select-label"
+            id="category-select"
+            value={category}
+            label="Category"
+            onChange={handleCategoryChange}
+            fullWidth
+          >
+            {['Business', 'Finance', 'Health', 'Lifestyle', 'Technology', 'News', 'Education', 'Entrepreneurship', 'Sports', 'General'].map((cat) => (
+              <MenuItem key={cat} value={cat}>
+                {cat}
+              </MenuItem>
+            ))}
+          </Select>
       </FormControl>
 
       <br /> <br />
