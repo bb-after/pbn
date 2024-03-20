@@ -183,6 +183,10 @@ const PbnSiteSubmissionsTable = () => {
                 <Link href={submission.submission_response} underline="none" target="_blank">
                   <Button size="small" variant="outlined" color="primary">View</Button>
                   </Link>
+                  <Link href={`/editPost/${submission.id}`}>
+                  <Button size="small" variant="outlined">
+                  Edit</Button>  
+                    </Link>
                   <Button size="small" variant="outlined" color="error"
                   onClick={() => handleDeleteSubmission(submission.id, submission.submission_response)}
                   >Delete
