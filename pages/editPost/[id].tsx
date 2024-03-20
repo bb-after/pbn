@@ -1,4 +1,5 @@
 import { useRouter } from 'next/router';
+import { Link } from '@mui/material';
 import React, { useState, useEffect } from 'react';
 import { EditorState, convertToRaw } from 'draft-js';
 import 'react-draft-wysiwyg/dist/react-draft-wysiwyg.css';
@@ -50,7 +51,7 @@ export default function EditPost() {
   return (
     <div style={{ padding: 16, margin: 'auto', maxWidth: 750, overflow: 'auto', background: '#ffffff' }}>
         <StatusLabsHeader />
-        <h1><a href="/pbn-site-submissions">PBN Sites</a>&raquo;Edit PBN Post</h1>
+        <h1><Link href="/pbn-site-submissions">PBN Sites</Link>&raquo;Edit PBN Post</h1>
         <PbnSubmissionForm 
             articleTitle={articleTitle} // Pass articleTitle as a prop
             pbnModalEditorState={editorState} // Pass pbnModalEditorState as a prop
