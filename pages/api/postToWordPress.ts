@@ -78,7 +78,7 @@ export default async function handler(
  
               // Update the existing submission record
               await connection.query(
-                  'UPDATE pbn_site_submissions SET title = ?, content = ?, categories = ?, user_token = ?, client_name = ? WHERE id = ?',
+                  'UPDATE pbn_site_submissions SET title = ?, content = ?, categories = ?, client_name = ? WHERE id = ?',
                   [title, content, category, userToken, clientName, submissionId]
               );
 
