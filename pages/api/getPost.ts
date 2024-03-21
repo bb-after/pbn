@@ -45,17 +45,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           categories: submission.categories,
         };
 
-        res.status(200).json(combinedData);
+        return res.status(200).json(combinedData);
       } else {
-        res.status(404).json({ error: 'WordPress post ID not found for submission id ' + id });
+        return res.status(404).json({ error: 'WordPress post ID not found for submission id ' + id });
       }
 
-      res.status(200).json(rows[0]);
     } else {
-      res.status(404).json({ error: 'Post not found for id' + id });
+      return res.status(404).json({ error: 'Post not found for id' + id });
     }
   } catch (error) {
     console.error('Database error:', error);
-    res.status(500).json({ error: 'Failed to fetch post' });
+    return res.status(500).json({ error: 'Failed to fetch post' });
   }
 }
