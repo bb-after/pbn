@@ -12,6 +12,8 @@ import {
   Paper,
   Typography,
   Link,
+  Select,
+  MenuItem,
   TablePagination,
 } from '@mui/material';
 
@@ -44,6 +46,14 @@ const handleDeleteSubmission = async (submissionId: number, submissionUrl: strin
 const PbnSiteSubmissionsTable = () => {
   const [submissions, setSubmissions] = useState([]);
   const [search, setSearch] = useState(""); // new state for the search query
+  const [selectedUser, setSelectedUser] = useState('');
+  interface User {
+    name: string;
+    user_token: string; // Adjust this type based on the actual data, e.g., string, number, etc.
+    pbn_count: number;
+  }
+  const [users, setUsers] = useState<User[]>([]);
+
   const [page, setPage] = useState(0);//current page
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
@@ -60,8 +70,13 @@ const PbnSiteSubmissionsTable = () => {
   const fetchData = (query = "", page = 0, rowsPerPage = 10) => {
     let apiUrl = `/api/pbn-site-submissions?page=${page}&rowsPerPage=${rowsPerPage}`;
     if (query) {
-      apiUrl += `?search=${query}`; // modify the API route to accept a search query
+      apiUrl += `&search=${query}`; // modify the API route to accept a search query
     }
+    console.log("selectedUSer?", selectedUser);
+    if (selectedUser) {
+      apiUrl += `&userToken=${selectedUser}`; // Assuming your backend can handle a 'user' query parameter
+    }
+  
 
     fetch(apiUrl)
       .then((response) => response.json())
@@ -73,9 +88,25 @@ const PbnSiteSubmissionsTable = () => {
   };
 
   useEffect(() => {
-    fetchData(search, page, rowsPerPage); // initial fetch without a search query
-  }, [search, page, rowsPerPage]);
+    // Function to fetch users
+    const fetchUsers = async () => {
+      try {
+        const response = await fetch('/api/getUsers');
+        const data = await response.json();
+        setUsers(data.rows); 
+      } catch (error) {
+        console.error('Failed to fetch users:', error);
+      }
+    };
+  
+    fetchUsers();
+  }, []); 
 
+  useEffect(() => {
+    fetchData(search, page, rowsPerPage);
+  }, [search, page, rowsPerPage, selectedUser]);
+
+  
     // Search handler
     const handleSearch = () => {
       fetchData(search, page, rowsPerPage); // fetch data using the current search query
@@ -116,14 +147,34 @@ const PbnSiteSubmissionsTable = () => {
         <Link href="https://sales.statuscrawl.io">Portal</Link> &raquo; PBN Site Submissions
       </Typography>
 
+        <Box mr={1}>
+        </Box>
+ 
         {/* Search bar */}
         <Box
           display="flex" // creates a flex container
           justifyContent="flex-end" // aligns the child elements to the right
           alignItems="center" // centers children vertically
           mb={2} // margin-bottom for spacing below the search bar
-        >
+        > 
+        <Box mr={1}>
+        <Select
+            value={selectedUser}
+            onChange={(e) => setSelectedUser(e.target.value)}
+            displayEmpty
+            inputProps={{ 'aria-label': 'Without label' }}
+          >
+            <MenuItem value="">
+              <em>All Users</em>
+            </MenuItem>
+            { users.map((user, index) => (
+              <MenuItem key={index} value={user.user_token}>{user.name} ({user.pbn_count})</MenuItem>
+            ))}
+          </Select>
+
+        </Box>
           <Box mr={1}>
+            
             <TextField
               label="Search"
               value={search}
