@@ -27,7 +27,7 @@ const getOpenAIClient: () => OpenAI = (() => {
     };
   })();
 
-const modelType = 'gpt-3.5-turbo-16k';//process.env.NEXT_PUBLIC_GPT_ENGINE;
+const modelType = 'gpt-4';//process.env.NEXT_PUBLIC_GPT_ENGINE;
 function trimKeywords(keywords: string[]): string[] {
     return keywords.map(keyword => keyword.trim());
 }
@@ -135,7 +135,7 @@ function splitUrlContentIntoChunks(urlContent: string, maxChunkLength: number = 
 
     return chunks;
 }
-const maxTokens = 4000; // Set this to the token limit of your OpenAI model
+const maxTokens = 8000; // Set this to the token limit of your OpenAI model
 const estimateTokenCount = (text: string) => {
     return text.split(/\s+/).length; // Roughly splitting by whitespace
 };
@@ -517,4 +517,32 @@ export const parseTitleFromArticle = function(input: string): string {
       return ''; // No sentence found in the input
     }
   }
+
+  /*** openapi code start */
+export const callOpenAISuperstarVersion = async (inputData: any) => {
+    var initialGptMessage = inputData.promptMessage;
+    
+    const gptMessage = trimContentToFitTokenLimit(initialGptMessage, maxTokens);
+    console.log('.....',gptMessage);
+    try {
+        const openai = getOpenAIClient();
+        const GPTRequest = async (message: any) => {
+            const response = await openai.chat.completions
+            .create({
+                model: modelType,
+                temperature: 0.8,
+                messages: message,
+            });
+        
+            return response;
+        };
+    
+        const response = GPTRequest(gptMessage);
+        return response;
+
+    } catch (error) {
+        console.error('OpenAI API Error:', error);
+        throw new Error('Failed to fetch response from OpenAI API.');
+    }
+};
 /**** openapi code end */
