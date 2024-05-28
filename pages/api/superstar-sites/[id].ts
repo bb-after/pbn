@@ -23,20 +23,20 @@ const handleRequest = async (req: NextApiRequest, res: NextApiResponse) => {
   try {
     if (req.method === 'GET') {
       const [rows] = await connection.query<RowDataPacket[]>(
-        'SELECT id, domain, GROUP_CONCAT(topic) AS topics FROM superstar_sites ss LEFT JOIN superstar_site_topics sst ON ss.id = sst.superstar_site_id WHERE ss.id = ? GROUP BY ss.id',
+        'SELECT ss.id, domain, GROUP_CONCAT(topic) AS topics FROM superstar_sites ss LEFT JOIN superstar_site_topics sst ON ss.id = sst.superstar_site_id WHERE ss.id = ? GROUP BY ss.id',
         [id]
       );
 
       if (rows.length === 0) {
         res.status(404).json({ error: 'Site not found' });
       } else {
-        const site: SuperstarSite = {
-            ...rows[0],
-            topics: rows[0].topics ? (rows[0].topics as string).split(',') : [],
-            id: 0,
-            domain: ''
-        };
-        res.status(200).json(site);
+        const site = rows[0];
+        const topicsArray = site.topics ? site.topics.split(',') : [];
+        res.status(200).json({
+          ...site,
+          topics: topicsArray
+        });
+
       }
     } else if (req.method === 'PUT') {
       const { topics } = req.body;

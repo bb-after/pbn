@@ -3,20 +3,23 @@ import axios from 'axios';
 type PostToWordPressRequest = {
   title: string;
   content: string;
+  domain: string;
   auth: {
     username: string;
     password: string;
   };
+  author?: string;
 };
 
-export async function postToWordpress({ title, content, auth }: PostToWordPressRequest) {
+export async function postToWordpress({ title, content, domain, auth, author }: PostToWordPressRequest) {
   try {
     const response = await axios.post(
-      `${process.env.WORDPRESS_SITE_URL}/wp-json/wp/v2/posts`,
+      `${domain}/wp-json/wp/v2/posts`,
       {
         title,
         content,
         status: 'publish',
+        author,
       },
       {
         auth,
