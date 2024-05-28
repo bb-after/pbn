@@ -13,7 +13,7 @@ import {
   Chip,
 } from "@mui/material";
 import { useRouter } from "next/router";
-import { makeStyles } from "@mui/styles";
+import { styled } from "@mui/system";
 
 // Sample colors array to cycle through for the tags
 const colors = [
@@ -30,11 +30,15 @@ const colors = [
   "#aed581",
 ];
 
-const useStyles = makeStyles(() => ({
-  chip: {
-    margin: "2px",
-  },
-}));
+// const useStyles = styled('div')({
+//     color: 'hotpink'
+//   });
+
+// const useStyles = makeStyles(() => ({
+//   chip: {
+//     margin: "2px",
+//   },
+// }));
 
 interface SuperstarSite {
   id: number;
@@ -47,7 +51,7 @@ interface SuperstarSite {
 const SuperstarSites: React.FC = () => {
   const [sites, setSites] = useState<SuperstarSite[]>([]);
   const router = useRouter();
-  const classes = useStyles();
+  //   const classes = useStyles();
 
   useEffect(() => {
     const fetchSites = async () => {
@@ -107,7 +111,7 @@ const SuperstarSites: React.FC = () => {
                     <Chip
                       key={index}
                       label={topic}
-                      className={classes.chip}
+                      //   className={classes.chip}
                       style={{
                         backgroundColor: colors[index % colors.length],
                         color: "#fff",

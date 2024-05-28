@@ -8,17 +8,13 @@
     "start": "next start",
     "lint": "next lint"
   },
-  "resolutions": {
-    "react": "^18.2.0"
-  },
   "dependencies": {
     "@babel/preset-typescript": "^7.23.3",
-    "@emotion/react": "^11.11.1",
-    "@emotion/styled": "^11.11.0",
+    "@emotion/react": "^11.11.4",
+    "@emotion/styled": "^11.11.5",
     "@mui/icons-material": "^5.14.3",
     "@mui/lab": "^5.0.0-alpha.170",
     "@mui/material": "^5.15.18",
-    "@mui/styles": "^5.15.18",
     "@types/jest": "^29.5.8",
     "axios": "^1.5.1",
     "babel-jest": "^29.7.0",
