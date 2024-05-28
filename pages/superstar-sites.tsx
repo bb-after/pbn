@@ -52,7 +52,13 @@ const SuperstarSites: React.FC = () => {
         const response = await axios.get<SuperstarSite[]>(
           "/api/superstar-sites"
         );
-        setSites(response.data);
+        const parsedData = response.data.map((site) => ({
+          ...site,
+          topics: Array.isArray(site.topics)
+            ? site.topics
+            : site.topics.split(","),
+        }));
+        setSites(parsedData);
       } catch (error) {
         console.error("Error fetching sites:", error);
       }
