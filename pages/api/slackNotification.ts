@@ -4,7 +4,7 @@ export default async function handler(req: any, res: any) {
   }
 
   const notificationMessage = req.body.message;
-  const channel = req.body.channel || '#general'; // Default to a general channel if not specified
+  const channel = req.body.channel || '#pbnj-notifications'; // Default to a general channel if not specified
 
   const webhookUrl = process.env.SLACK_WEBHOOK_URL;
   if (!webhookUrl) {
