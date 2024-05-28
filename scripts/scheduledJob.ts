@@ -28,7 +28,7 @@ async function getRandomTopic(siteId: number): Promise<string | null> {
 }
 
 // Function to post content to WordPress and save to DB
-async function postContentToWordpress(site: any, content: string) {
+async function postContentToWordpress(site: any, title: string, content: string) {
   const connection = await mysql.createConnection(dbConfig);
   try {
     const { id, domain, login, password } = site;
@@ -39,10 +39,12 @@ async function postContentToWordpress(site: any, content: string) {
     };
 
     const response = await postToWordpress({
-      title: `Generated Article for ${domain}`,
-      content,
-      auth,
-    });
+        title,
+        content,
+        domain,
+        auth,
+      });
+  
 
     await connection.execute(
       'INSERT INTO superstar_site_submissions (superstar_site_id, title, content, submission_response) VALUES (?, ?, ?, ?)',
