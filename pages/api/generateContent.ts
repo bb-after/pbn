@@ -10,10 +10,10 @@ export default async function handler(
     const topic = req.query.topic as string || 'default_topic';
 
     // Call your function to generate content
-    const content = await generateSuperStarContent(topic);
+    const { title, body } = await generateSuperStarContent(topic);
 
     // Send the generated content back as a response
-    res.status(200).json({ success: true, content });
+    res.status(200).json({ success: true, title, body });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
