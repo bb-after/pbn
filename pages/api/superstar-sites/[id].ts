@@ -30,13 +30,13 @@ const handleRequest = async (req: NextApiRequest, res: NextApiResponse) => {
       if (rows.length === 0) {
         res.status(404).json({ error: 'Site not found' });
       } else {
-        const site: SuperstarSite = {
-            ...rows[0],
-            topics: rows[0].topics ? (rows[0].topics as string).split(',') : [],
-            id: 0,
-            domain: ''
-        };
-        res.status(200).json(site);
+        const site = rows[0];
+        const topicsArray = site.topics ? site.topics.split(',') : [];
+        res.status(200).json({
+          ...site,
+          topics: topicsArray
+        });
+
       }
     } else if (req.method === 'PUT') {
       const { topics } = req.body;
