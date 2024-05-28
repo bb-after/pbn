@@ -3,6 +3,7 @@ export default async function handler(req: any, res: any) {
     return res.status(405).end(); // Method Not Allowed if not POST
   }
 
+  console.log('wtf');
   const notificationMessage = req.body.message;
   const channel = req.body.channel || '#general'; // Default to a general channel if not specified
 

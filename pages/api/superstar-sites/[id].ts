@@ -23,7 +23,7 @@ const handleRequest = async (req: NextApiRequest, res: NextApiResponse) => {
   try {
     if (req.method === 'GET') {
       const [rows] = await connection.query<RowDataPacket[]>(
-        'SELECT id, domain, GROUP_CONCAT(topic) AS topics FROM superstar_sites ss LEFT JOIN superstar_site_topics sst ON ss.id = sst.superstar_site_id WHERE ss.id = ? GROUP BY ss.id',
+        'SELECT ss.id, domain, GROUP_CONCAT(topic) AS topics FROM superstar_sites ss LEFT JOIN superstar_site_topics sst ON ss.id = sst.superstar_site_id WHERE ss.id = ? GROUP BY ss.id',
         [id]
       );
 
