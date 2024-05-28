@@ -1,6 +1,6 @@
 export const postToSlack = async (message: string, channel?: string) => {
   try {
-    const response = await fetch('/api/slackNotification', {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/slackNotification`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
