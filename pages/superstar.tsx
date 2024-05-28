@@ -65,8 +65,10 @@ const HomePage = () => {
       );
       const { title, body } = response.data;
       setTitle(title);
-      setContent(body);
-      setEditableContent(body);
+
+      const contentWithLineBreaks = body.replace(/\n\n/g, "<p></p>");
+      setContent(contentWithLineBreaks);
+      setEditableContent(contentWithLineBreaks);
       setLoading(false);
     } catch (error) {
       console.error("Error generating content:", error);
