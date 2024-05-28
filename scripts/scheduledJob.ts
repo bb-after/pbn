@@ -71,7 +71,7 @@ async function generateAndPostContent() {
       const topic = await getRandomTopic(site.id);
       if (topic) {
         const content = await generateSuperStarContent(topic);
-        await postContentToWordpress(site, content);
+        await postContentToWordpress(site, '', content);
       }
     }
     await postToSlack('Scheduled job completed successfully.', SLACK_CHANNEL);
