@@ -538,8 +538,19 @@ export const callOpenAISuperstarVersion = async (inputData: any) => {
         };
     
         const response = GPTRequest(gptMessage);
-        return response;
+        const content = (await response).choices[0].message.content;
 
+        // Second request to generate SEO-friendly blog title
+        const seoTitleMessage = [
+            { role: 'system', content: 'You are an assistant that generates SEO-friendly blog titles.' },
+            { role: 'user', content: `Generate an SEO-friendly blog title for the following content: ${content}` },
+        ];
+      
+        const titleResponse = await GPTRequest(seoTitleMessage);
+        const seoTitle = titleResponse.choices[0].message.content;
+        
+        return { content, seoTitle };
+     
     } catch (error) {
         console.error('OpenAI API Error:', error);
         throw new Error('Failed to fetch response from OpenAI API.');
