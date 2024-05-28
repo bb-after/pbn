@@ -49,7 +49,7 @@ async function postContentToWordpress(site: any, content: string) {
       [id, response.title, content, response.link]
     );
     await postToSlack(`Successfully posted content to WordPress for site ${domain}.`, SLACK_CHANNEL);
-  } catch (error) {
+  } catch (error: any) {
     await postToSlack(`Failed to post content to WordPress for site ${site.domain}: ${error.message}`, SLACK_CHANNEL);
     console.error('Error posting content to WordPress:', error);
   } finally {
