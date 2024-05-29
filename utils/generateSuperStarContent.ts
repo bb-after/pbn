@@ -10,8 +10,17 @@ export const generateSuperStarContent = async (topic: string, language = 'Englis
   
     const processContent = (content: string, seoTitle: string) => {
         // Remove leading and trailing quotes from seoTitle
-        const cleanedTitle = seoTitle.replace(/^"|"$/g, '').trim();
+        let cleanedTitle = seoTitle.replace(/^"|"$/g, '').trim();
     
+        // Handle multiple title suggestions
+        if (/^\d+\.\s*".*"$/.test(seoTitle)) {
+        const titles = seoTitle.match(/\d+\.\s*"([^"]+)"/g);
+        if (titles && titles.length > 0) {
+          cleanedTitle = titles[0].replace(/^\d+\.\s*"|"$/g, '').trim();
+        }
+      }
+
+      console.log('did i make it here');
         // Function to add line breaks within the article every 3-5 sentences
         const addParagraphs = (text: string) => {
           const sentences = text.split('. ');
@@ -47,7 +56,7 @@ export const generateSuperStarContent = async (topic: string, language = 'Englis
         return { content, title: cleanedTitle };
       };
     
-
+      console.log('topics', topic);
     // Fetch news summaries related to the topic
   const newsSummaries = await fetchNews(topic);
   console.log("news!!!", newsSummaries);
