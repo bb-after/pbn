@@ -91,9 +91,9 @@ const HomePage = () => {
 
       for (let i = 0; i < sentences.length; i++) {
         paragraph += sentences[i] + (i < sentences.length - 1 ? ". " : "");
-        if (Math.random() < 0.25 || i === sentences.length - 1) {
+        if ((i + 1) % 3 === 0 || i === sentences.length - 1) {
           // Approx every 3-5 sentences
-          formattedText += paragraph + "\n\n";
+          formattedText += `<p>${paragraph}</p>`;
           paragraph = "";
         }
       }
@@ -130,16 +130,12 @@ const HomePage = () => {
       const { title, body } = response.data;
       const processedContent = processContent(body, title);
       setTitle(processedContent.title);
-      // Convert line breaks to HTML <p> tags
-      const contentWithLineBreaks = processedContent.content.replace(
-        /\n\n/g,
-        "<p></p>"
-      );
-      setContent(contentWithLineBreaks);
-      setEditableContent(contentWithLineBreaks);
+      setContent(processedContent.content);
+      setEditableContent(processedContent.content);
       setLoading(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error generating content:", error);
+      alert("There was an error generating content:" + error.message);
       setLoading(false);
     }
   };
