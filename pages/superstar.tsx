@@ -93,7 +93,7 @@ const HomePage = () => {
         paragraph += sentences[i] + (i < sentences.length - 1 ? ". " : "");
         if ((i + 1) % 3 === 0 || i === sentences.length - 1) {
           // Approx every 3-5 sentences
-          formattedText += `<p>${paragraph}</p>`;
+          formattedText += `<p></p><p>${paragraph}</p>`;
           paragraph = "";
         }
       }
