@@ -8,7 +8,6 @@ import {
   InputLabel,
   FormControl,
   OutlinedInput,
-  Box,
 } from "@mui/material";
 import LayoutContainer from "../components/LayoutContainer";
 import StyledHeader from "../components/StyledHeader";
@@ -56,23 +55,6 @@ const HomePage = () => {
     fetchSites();
   }, []);
 
-  const processContent = (content: string) => {
-    // Remove "Title" keyword if it is the first word and set it as title
-    if (content.startsWith("Title")) {
-      const parts = content.split("\n");
-      setTitle(parts[0].replace("Title: ", "").trim());
-      content = parts.slice(1).join("\n");
-    }
-
-    // Replace [text](url) with <a href="url">text</a>
-    content = content.replace(
-      /\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g,
-      '<a href="$2">$1</a>'
-    );
-
-    return content;
-  };
-
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setLoading(true);
@@ -81,9 +63,12 @@ const HomePage = () => {
       const response = await axios.get(
         `/api/generateContent?topic=${encodeURIComponent(topic)}`
       );
-      const processedContent = processContent(response.data.content);
-      setContent(processedContent);
-      setEditableContent(processedContent);
+      const { title, body } = response.data;
+      setTitle(title);
+
+      const contentWithLineBreaks = body.replace(/\n\n/g, "<p></p>");
+      setContent(contentWithLineBreaks);
+      setEditableContent(contentWithLineBreaks);
       setLoading(false);
     } catch (error) {
       console.error("Error generating content:", error);
