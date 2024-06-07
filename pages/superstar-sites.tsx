@@ -59,7 +59,9 @@ const SuperstarSites: React.FC = () => {
           ...site,
           topics: Array.isArray(site.topics)
             ? site.topics
-            : site.topics.split(","),
+            : site.topics
+            ? site.topics.split(",")
+            : [],
         }));
         setSites(parsedData);
       } catch (error) {
