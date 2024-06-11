@@ -76,12 +76,10 @@ const SuperstarSites: React.FC = () => {
     router.push(`/superstar-sites/${id}/edit`);
   };
 
-  const TopRightButton = styled(Button)({
+  const TopRightBox = styled(Box)({
     float: "right",
     marginTop: "-5rem",
     marginRight: "2rem",
-    // top: "16px",
-    // right: "16px",
   });
 
   return (
@@ -89,20 +87,15 @@ const SuperstarSites: React.FC = () => {
       <StyledHeader />
       <TableContainer component={Paper}>
         <h1>Superstar Sites</h1>
-        {/* <Button
-          variant="contained"
-          color="primary"
-          component={RouterLink}
-          to="/superstar"
-        >
-          + New Post
-        </Button> */}
-        {/* <Box sx={{ position: "relative", height: "100vh", width: "100vw" }}> */}
-        {/* Other components and content */}
-        <TopRightButton variant="contained" color="primary" href="/superstar">
-          New Post
-        </TopRightButton>
-        {/* </Box> */}
+        <TopRightBox>
+          <Button variant="contained" color="primary" href="/superstar">
+            New AI Post
+          </Button>
+          &nbsp;
+          <Button variant="contained" color="primary" href="/superstar-form">
+            Submit Post
+          </Button>
+        </TopRightBox>
 
         <Table>
           <TableHead>

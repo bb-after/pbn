@@ -12,6 +12,7 @@ type PostToWordPressRequest = {
 };
 
 export async function postToWordpress({ title, content, domain, auth, author }: PostToWordPressRequest) {
+
   try {
     const response = await axios.post(
       `${domain}/wp-json/wp/v2/posts`,
@@ -19,7 +20,7 @@ export async function postToWordpress({ title, content, domain, auth, author }: 
         title,
         content,
         status: 'publish',
-        author,
+        // author,
       },
       {
         auth,
