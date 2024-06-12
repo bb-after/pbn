@@ -4,9 +4,9 @@ import { postToWordpress } from '../../utils/postToWordpress';
 import { postToSlack } from '../../utils/postToSlack';
 import { generateSuperStarContent } from '../../utils/generateSuperStarContent';
 
-// This function can run for a maximum of 10 minutes
+// This function can run for a maximum of 5 minutes (max on pro plan)
 export const config = {
-    maxDuration: 600,
+    maxDuration: 300,
   };
   
 const dbConfig = {
