@@ -1,8 +1,14 @@
 // pages/api/superstar-site-submissions.ts
 
-import mysql from 'mysql2/promise';
+import mysql, { RowDataPacket } from 'mysql2/promise';
 import { NextApiRequest, NextApiResponse } from 'next';
 
+// Define the type for the total count query result
+interface TotalCountRow extends RowDataPacket {
+  total: number;
+}
+
+// eslint-disable-next-line import/no-anonymous-default-export
 export default async (req: NextApiRequest, res: NextApiResponse) => {
   // Define your MySQL connection options
   const dbConfig = {
@@ -17,15 +23,15 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
 
   try {
     // Check for the search query parameter and userToken parameter
-    const searchQuery = req.query.search;
-    const userToken = req.query.userToken;
+    const searchQuery = req.query.search as string | undefined;
+    const userToken = Array.isArray(req.query.userToken) ? req.query.userToken[0] : req.query.userToken;
 
     const page = parseInt(typeof req.query.page === 'string' ? req.query.page : '0', 10) || 0;
     const rowsPerPage = parseInt(typeof req.query.rowsPerPage === 'string' ? req.query.rowsPerPage : '10', 10) || 10;
     const offset = page * rowsPerPage;
 
     let whereClauses = ['deleted_at IS NULL']; // Always include the check for non-deleted records
-    let queryConfig = [];
+    let queryConfig: (string | number)[] = [];
 
     if (searchQuery) {
       whereClauses.push('title LIKE ?');
@@ -58,7 +64,7 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
     }
 
     const totalCountConfig = queryConfig.slice(0, -2); // Remove limit and offset for total count query
-    const [totalCountRows] = await connection.query(totalCountQuery, totalCountConfig);
+    const [totalCountRows] = await connection.query<TotalCountRow[]>(totalCountQuery, totalCountConfig);
     const totalCount = totalCountRows[0]?.total;
 
     // Close the MySQL connection
@@ -66,7 +72,7 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
 
     // Send the data as a JSON response
     res.status(200).json({ rows, totalCount });
-  } catch (error) {
+  } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch data', details: error.message });
     // Close the MySQL connection in case of an error, but only if it's still open
