@@ -36,9 +36,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const connection = await mysql.createConnection(dbConfig);
 
   try {
+    console.log('Fetching active superstar sites...');
     const [sites]: [SuperstarSite[], any] = await connection.query('SELECT * FROM superstar_sites WHERE active = 1');
+    console.log(`Fetched ${sites.length} active sites.`);
 
     for (const site of sites) {
+      console.log(`Processing site: ${site.domain}`);
+
       const auth = { username: site.login, password: site.password };
 
       // Fetch topics for the current site
@@ -54,17 +58,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // Select a random topic
       const randomTopic = topics[Math.floor(Math.random() * topics.length)].topic;
+      console.log(`Selected topic: ${randomTopic}`);
 
       // Generate content for the random topic
       const { title, body: content } = await generateSuperStarContent(randomTopic);
+      console.log(`Generated content for topic "${randomTopic}": ${title}`);
 
       try {
+        console.log(`Posting content to WordPress for site ${site.domain}`);
         const response = await postToWordpress({
           title,
           content,
           domain: site.domain,
           auth,
         });
+        console.log(`Posted content to WordPress: ${response.link}`);
 
         await connection.execute(
           'INSERT INTO superstar_site_submissions (superstar_site_id, title, content, submission_response) VALUES (?, ?, ?, ?)',
@@ -72,7 +80,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         );
 
         await postToSlack(`Successfully posted content to WordPress for site ${site.domain} on topic "${randomTopic}".`, SLACK_CHANNEL);
-
       } catch (error: any) {
         const errorMessage = `Failed to post content to WordPress for site ${site.domain} on topic "${randomTopic}": ${error.message} using auth ${auth.username}`;
         await postToSlack(errorMessage, SLACK_CHANNEL);
@@ -85,6 +92,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.error('Error fetching sites or posting content:', error);
     res.status(500).json({ message: 'Failed to post content', details: error.message });
   } finally {
+    console.log('Closing database connection.');
     await connection.end();
   }
 }

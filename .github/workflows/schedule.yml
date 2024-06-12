@@ -10,4 +10,4 @@ jobs:
     steps:
       - name: Trigger Vercel Function
         run: |
-          curl -X POST https://ai.statuscrawl.io/api/postSuperstarContent
+          curl -X POST https://ai.statuscrawl.io/api/postSuperStarContent
