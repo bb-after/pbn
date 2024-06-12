@@ -4,6 +4,11 @@ import { postToWordpress } from '../../utils/postToWordpress';
 import { postToSlack } from '../../utils/postToSlack';
 import { generateSuperStarContent } from '../../utils/generateSuperStarContent';
 
+// This function can run for a maximum of 10 minutes
+export const config = {
+    maxDuration: 600,
+  };
+  
 const dbConfig = {
   host: process.env.DB_HOST_NAME,
   user: process.env.DB_USER_NAME,
