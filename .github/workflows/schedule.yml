@@ -1,0 +1,13 @@
+name: Schedule Post to Superstar Sites
+
+on:
+  schedule:
+    - cron: "*/3 * * * *" # Every 3 mins
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel Function
+        run: |
+          curl -X POST https://ai.statuscrawl.io/api/postSuperstarContent
