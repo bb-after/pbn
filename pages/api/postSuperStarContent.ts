@@ -81,7 +81,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     res.status(200).json({ message: 'Content posted successfully' });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching sites or posting content:', error);
     res.status(500).json({ message: 'Failed to post content', details: error.message });
   } finally {
