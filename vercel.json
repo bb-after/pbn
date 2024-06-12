@@ -1,7 +1,0 @@
-{
-  "functions": {
-    "api/postSuperStarContent": {
-      "maxDuration": 900
-    }
-  }
-}
