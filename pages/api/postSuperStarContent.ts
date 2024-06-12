@@ -73,7 +73,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         await postToSlack(`Successfully posted content to WordPress for site ${site.domain} on topic "${randomTopic}".`, SLACK_CHANNEL);
 
-      } catch (error) {
+      } catch (error: any) {
         const errorMessage = `Failed to post content to WordPress for site ${site.domain} on topic "${randomTopic}": ${error.message} using auth ${auth.username}`;
         await postToSlack(errorMessage, SLACK_CHANNEL);
         console.error('Error posting content to WordPress:', error);
