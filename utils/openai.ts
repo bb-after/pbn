@@ -27,7 +27,7 @@ const getOpenAIClient: () => OpenAI = (() => {
     };
   })();
 
-const modelType = 'gpt-4';//process.env.NEXT_PUBLIC_GPT_ENGINE;
+const modelType = 'gpt-4o';//process.env.NEXT_PUBLIC_GPT_ENGINE;
 function trimKeywords(keywords: string[]): string[] {
     return keywords.map(keyword => keyword.trim());
 }
@@ -135,7 +135,7 @@ function splitUrlContentIntoChunks(urlContent: string, maxChunkLength: number = 
 
     return chunks;
 }
-const maxTokens = 8000; // Set this to the token limit of your OpenAI model
+const maxTokens = 16000; // Set this to the token limit of your OpenAI model
 const estimateTokenCount = (text: string) => {
     return text.split(/\s+/).length; // Roughly splitting by whitespace
 };
@@ -548,9 +548,9 @@ export const callOpenAISuperstarVersion = async (inputData: any) => {
       
         const titleResponse = await GPTRequest(seoTitleMessage);
         const seoTitle = titleResponse.choices[0].message.content;
-        
+
         return { content, seoTitle };
-     
+
     } catch (error) {
         console.error('OpenAI API Error:', error);
         throw new Error('Failed to fetch response from OpenAI API.');

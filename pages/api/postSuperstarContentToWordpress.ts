@@ -36,15 +36,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const connection = await mysql.createConnection(dbConfig);
   let site: SuperstarSite | null = null;
+  const [rows] = await connection.query<SuperstarSite[]>('SELECT * FROM superstar_site_submissions JOIN superstar_sites on superstar_sites.id = superstar_site_submissions.superstar_site_id WHERE superstar_site_submissions.id = ?', [siteId]);
+  site = rows[0];
+
+  if (!site) {
+    throw new Error('Site not found');
+  }
+
+  console.log("site?", site);
 
   try {
-    const [rows] = await connection.query<SuperstarSite[]>('SELECT * FROM superstar_sites WHERE id = ?', [siteId]);
-    site = rows[0];
-
-    if (!site) {
-      throw new Error('Site not found');
-    }
-
     const auth = {
       username: site.login,
       password: site.password,
@@ -57,6 +58,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       auth,
     });
 
+    console.log('Response from WordPress:', response);
+
+    if (!response.title || !content || !response.link) {
+      throw new Error('Response from WordPress contains undefined values');
+    }
+
     await connection.execute(
       'INSERT INTO superstar_site_submissions (superstar_site_id, title, content, submission_response) VALUES (?, ?, ?, ?)',
       [siteId, response.title, content, response.link]
@@ -67,7 +74,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.status(200).json({ message: 'Content posted successfully' });
   } catch (error: any) {
     const errorMessage = site
-      ? `Failed to post content to WordPress for site ${site.domain}: ${error.message}`
+      ? `Failed to post content to WordPress for site ${site.domain}: ${error.message} using auth ${site.login}`
       : `Failed to post content to WordPress: ${error.message}`;
 
     await postToSlack(errorMessage, SLACK_CHANNEL);

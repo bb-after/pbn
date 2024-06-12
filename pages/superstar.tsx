@@ -13,6 +13,7 @@ import LayoutContainer from "../components/LayoutContainer";
 import StyledHeader from "../components/StyledHeader";
 import axios from "axios";
 import dynamic from "next/dynamic";
+import { formatSuperstarContent } from "utils/formatSuperstarContent";
 
 const ReactQuill = dynamic(() => import("react-quill"), { ssr: false });
 import "react-quill/dist/quill.snow.css"; // Import styles for ReactQuill
@@ -71,54 +72,6 @@ const HomePage = () => {
     }
   }, [selectedSite, sites]);
 
-  const processContent = (content: string, seoTitle: string) => {
-    // Remove leading and trailing quotes from seoTitle
-    let cleanedTitle = seoTitle.replace(/^"|"$/g, "").trim();
-
-    // Handle multiple title suggestions
-    if (/^\d+\.\s*".*"$/.test(seoTitle)) {
-      const titles = seoTitle.match(/\d+\.\s*"([^"]+)"/g);
-      if (titles && titles.length > 0) {
-        cleanedTitle = titles[0].replace(/^\d+\.\s*"|"$/g, "").trim();
-      }
-    }
-
-    // Function to add line breaks within the article every 3-5 sentences
-    const addParagraphs = (text: string) => {
-      const sentences = text.split(". ");
-      let paragraph = "";
-      let formattedText = "";
-
-      for (let i = 0; i < sentences.length; i++) {
-        paragraph += sentences[i] + (i < sentences.length - 1 ? ". " : "");
-        if ((i + 1) % 3 === 0 || i === sentences.length - 1) {
-          // Approx every 3-5 sentences
-          formattedText += `<p></p><p>${paragraph}</p>`;
-          paragraph = "";
-        }
-      }
-
-      return formattedText.trim();
-    };
-
-    // Remove "Title" keyword if it is the first word and set it as title
-    if (content.startsWith("Title")) {
-      const parts = content.split("\n");
-      content = parts.slice(1).join("\n");
-    }
-
-    // Replace [text](url) with <a href="$2">$1</a>
-    content = content.replace(
-      /\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g,
-      '<a href="$2">$1</a>'
-    );
-
-    // Add paragraphs
-    content = addParagraphs(content);
-
-    return { content, title: cleanedTitle };
-  };
-
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setLoading(true);
@@ -128,10 +81,9 @@ const HomePage = () => {
         `/api/generateContent?topic=${encodeURIComponent(formattedTopic)}`
       );
       const { title, body } = response.data;
-      const processedContent = processContent(body, title);
-      setTitle(processedContent.title);
-      setContent(processedContent.content);
-      setEditableContent(processedContent.content);
+      setTitle(title);
+      setContent(body);
+      setEditableContent(body);
       setLoading(false);
     } catch (error: any) {
       console.error("Error generating content:", error);

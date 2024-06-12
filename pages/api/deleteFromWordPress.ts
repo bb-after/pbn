@@ -1,4 +1,3 @@
-// pages/api/delete-submission.js
 import axios from 'axios';
 import mysql from 'mysql2/promise';
 import { RowDataPacket } from 'mysql2';
@@ -9,7 +8,11 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { submissionId, submissionUrl } = req.body;
+  const { submissionId, submissionUrl, type } = req.body;
+
+  if (!type || (type !== 'pbn' && type !== 'superstar')) {
+    return res.status(400).json({ error: 'Invalid type provided' });
+  }
 
   try {
     // Initialize database connection
@@ -20,48 +23,47 @@ export default async function handler(req: any, res: any) {
       database: process.env.DB_DATABASE,
     });
 
-    // Step 2: Look up the PBN site details
+    // Determine the table and query based on the type
+    let tableName, siteTable, siteIdColumn;
+    if (type === 'pbn') {
+      tableName = 'pbn_site_submissions';
+      siteTable = 'pbn_sites';
+      siteIdColumn = 'pbn_site_id';
+    } else if (type === 'superstar') {
+      tableName = 'superstar_site_submissions';
+      siteTable = 'superstar_sites';
+      siteIdColumn = 'superstar_site_id';
+    }
+
+    // Look up the site details
     const [queryResult] = await connection.query(
-      'SELECT pbn_sites.domain, pbn_sites.login, pbn_sites.password FROM pbn_site_submissions JOIN pbn_sites ON pbn_site_submissions.pbn_site_id = pbn_sites.id WHERE pbn_site_submissions.id = ?',
+      `SELECT ${siteTable}.domain, ${siteTable}.login, ${siteTable}.password FROM ${tableName} JOIN ${siteTable} ON ${tableName}.${siteIdColumn} = ${siteTable}.id WHERE ${tableName}.id = ?`,
       [submissionId]
     );
 
     const rows: RowDataPacket[] = queryResult as RowDataPacket[];
     if (!rows || rows.length === 0) {
-      // Handle the case where no active blogs are found
       res.status(404).json({ error: 'No active blogs found in the database' });
       return;
     }
 
-    if (rows.length === 0) {
-      await connection.end();
-      return res.status(404).json({ error: 'Submission not found' });
-    }
-
     const { domain, login, password } = rows[0];
 
-    console.log('we have a submissionURL? ', submissionUrl);
-      
     const slug = getSlugFromUrl(submissionUrl);
-    console.log('we have a slug? ', slug);
-      
-    // Step 3: Use the slug to find the WordPress post ID
     const postID = await findPostIdBySlug(domain, slug, { username: login, password });
-    console.log('we have a postID? ', postID);
 
     if (!postID) {
       await connection.end();
       return res.status(404).json({ error: 'Post not found' });
     }
 
-    // Step 4: Delete the WordPress post
+    // Delete the WordPress post
     await axios.delete(`${domain}/wp-json/wp/v2/posts/${postID}?force=true`, {
       auth: { username: login, password },
     });
 
-
-    // Optional Step 5: Delete the submission record from your database
-    await connection.query('UPDATE pbn_site_submissions SET deleted_at = NOW() WHERE id = ?', [submissionId]);
+    // Update the submission record in your database
+    await connection.query(`UPDATE ${tableName} SET deleted_at = NOW() WHERE id = ?`, [submissionId]);
     await connection.end();
 
     return res.status(200).json({ message: 'Post deleted successfully' });
