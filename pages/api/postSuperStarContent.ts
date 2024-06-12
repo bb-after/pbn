@@ -4,6 +4,11 @@ import { postToWordpress } from '../../utils/postToWordpress';
 import { postToSlack } from '../../utils/postToSlack';
 import { generateSuperStarContent } from '../../utils/generateSuperStarContent';
 
+// This function can run for a maximum of 5 minutes (max on pro plan)
+export const config = {
+    maxDuration: 300,
+  };
+  
 const dbConfig = {
   host: process.env.DB_HOST_NAME,
   user: process.env.DB_USER_NAME,
@@ -40,7 +45,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const [sites]: [SuperstarSite[], any] = await connection.query('SELECT * FROM superstar_sites WHERE active = 1');
     console.log(`Fetched ${sites.length} active sites.`);
 
-    for (const site of sites) {
+    const tasks = sites.map(async (site) => {
       console.log(`Processing site: ${site.domain}`);
 
       const auth = { username: site.login, password: site.password };
@@ -53,7 +58,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       if (topics.length === 0) {
         console.log(`No topics found for site ID ${site.id}`);
-        continue;
+        return;
       }
 
       // Select a random topic
@@ -85,7 +90,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         await postToSlack(errorMessage, SLACK_CHANNEL);
         console.error('Error posting content to WordPress:', error);
       }
-    }
+    });
+
+    await Promise.all(tasks);
 
     res.status(200).json({ message: 'Content posted successfully' });
   } catch (error: any) {
