@@ -2,7 +2,7 @@ name: Schedule Post to Superstar Sites
 
 on:
   schedule:
-    - cron: "*/3 * * * *" # Every 3 mins
+    - cron: "0 9 * * *" # Every 3 mins
 
 jobs:
   build:
