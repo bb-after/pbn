@@ -8,6 +8,9 @@ export const formatSuperstarContent = (content: string, seoTitle: string) => {
       cleanedTitle = seoTitle.replace(/^"|"$/g, '').trim();
     }
   
+    // Remove any instance of "###" from the title
+    cleanedTitle = cleanedTitle.replace(/###/g, '');
+  
     // Handle multiple title suggestions
     if (/^\d+\.\s*".*"$/.test(seoTitle)) {
       const titles = seoTitle.match(/\d+\.\s*"([^"]+)"/g);
@@ -42,6 +45,9 @@ export const formatSuperstarContent = (content: string, seoTitle: string) => {
     // Replace multiple # symbols in a row with <br><br>
     content = content.replace(/#{2,}/g, '<br><br>');
   
+    // Remove any instance of "# " from the body
+    content = content.replace(/#\s/g, '');
+  
     // Replace [text](url) with <a href="url">text</a>
     content = content.replace(
       /\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g,
@@ -56,6 +62,12 @@ export const formatSuperstarContent = (content: string, seoTitle: string) => {
   
     // Add paragraphs
     content = addParagraphs(content);
+  
+    // Remove any instances of multiple line breaks (more than double spaced) with a single line break
+    content = content.replace(/\n{3,}/g, '\n\n');
+  
+    // Remove leading spaces from the start of each line
+    content = content.split('\n').map(line => line.trimStart()).join('\n');
   
     // Ensure the final content ends with double newline characters if not already present
     if (!content.endsWith('\n\n')) {

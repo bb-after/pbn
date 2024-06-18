@@ -30,7 +30,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const { siteId, title, content, tags, author } = req.body;
 
-  if (!siteId || !content || !author) {
+  if (!siteId || !content) {
     return res.status(400).json({ message: 'Missing required fields' });
   }
 
