@@ -87,7 +87,9 @@ const SuperstarSubmissionForm: React.FC<SuperstarFormProps> = ({
   const [superstarSites, setSuperstarSites] = useState<ParsedSuperstarSite[]>(
     []
   );
-  const [selectedSite, setSelectedSite] = useState(superStarSiteId || "");
+  const [selectedSite, setSelectedSite] = useState(
+    superStarSiteId || undefined
+  );
   const [tagInput, setTagInput] = useState<string>(""); // Single string for comma-separated tags
 
   useEffect(() => {
@@ -137,7 +139,8 @@ const SuperstarSubmissionForm: React.FC<SuperstarFormProps> = ({
 
   const handleCategoryChange = (event: SelectChangeEvent) => {
     setCategory(event.target.value as string);
-    setSelectedSite(event.target.value as string);
+    const siteId = parseInt(event.target.value, 10);
+    setSelectedSite(isNaN(siteId) ? undefined : siteId);
   };
 
   const postContentToSuperstar = async () => {
