@@ -17,6 +17,7 @@ import { formatSuperstarContent } from "utils/formatSuperstarContent";
 
 const ReactQuill = dynamic(() => import("react-quill"), { ssr: false });
 import "react-quill/dist/quill.snow.css"; // Import styles for ReactQuill
+import router from "next/router";
 
 interface SuperstarSite {
   id: number;
@@ -103,6 +104,7 @@ const HomePage = () => {
       };
       await axios.post("/api/postSuperstarContentToWordpress", postContent);
       alert("Content posted successfully!");
+      router.push("/superstar-site-submissions");
     } catch (error) {
       console.error("Error posting content:", error);
       alert("Failed to post content.");
@@ -137,25 +139,7 @@ const HomePage = () => {
         margin="normal"
         label="Categories"
       />
-      <FormControl fullWidth variant="outlined" margin="normal">
-        <InputLabel htmlFor="tags">Tags</InputLabel>
-        <OutlinedInput
-          id="tags"
-          value={tags}
-          onChange={(e) => setTags(e.target.value.split(", "))}
-          placeholder="Enter tags separated by commas"
-          label="Tags"
-        />
-      </FormControl>
-      <TextField
-        variant="outlined"
-        fullWidth
-        value={author}
-        onChange={(e) => setAuthor(e.target.value)}
-        placeholder="Enter author name"
-        margin="normal"
-        label="Author"
-      />
+
       <form onSubmit={handleSubmit}>
         <Button
           type="submit"
@@ -179,6 +163,16 @@ const HomePage = () => {
             label="Title"
           />
           <ReactQuill value={editableContent} onChange={setEditableContent} />
+          <FormControl fullWidth variant="outlined" margin="normal">
+            <InputLabel htmlFor="tags">Tags</InputLabel>
+            <OutlinedInput
+              id="tags"
+              value={tags}
+              onChange={(e) => setTags(e.target.value.split(", "))}
+              placeholder="Enter tags separated by commas"
+              label="Tags"
+            />
+          </FormControl>
         </div>
       )}
       <Button

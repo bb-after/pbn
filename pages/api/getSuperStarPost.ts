@@ -22,9 +22,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (rows.length > 0) {
       const submission = rows[0];
-      // Assuming 'wordpress_post_id' is the column that stores the WordPress post ID
       const submission_response = submission.submission_response;
       if (submission_response) {
+       
+        // Parse the title and grab the 'rendered' key if it is JSON
+        let title;
+        try {
+            const parsedTitle = JSON.parse(submission.title);
+            title = parsedTitle.rendered || submission.title;
+        } catch {
+            title = submission.title; // If not JSON, use the title as is
+        }
         const domain = submission.domain;
         const slug = getSlugFromUrl(submission_response);  
         const login = submission.login;
@@ -38,8 +46,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
         
         const combinedData = {
-          pbn_site_id: submission.pbn_site_id,
-          title: submission.title,
+          superstar_site_id: submission.superstar_site_id,
+          title: title,
           client_name: submission.client_name,
           content: wordpressResponse.data.content.rendered.replace(/(\n|<br\s*\/?>)/g, ' '),
           categories: submission.categories,
