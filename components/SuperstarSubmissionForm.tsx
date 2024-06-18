@@ -245,7 +245,7 @@ const SuperstarSubmissionForm: React.FC<SuperstarFormProps> = ({
             <Select
               labelId="superstar-site-select-label"
               id="superstar-site-select"
-              value={selectedSite}
+              value={selectedSite !== undefined ? selectedSite.toString() : ""}
               label="Superstar Site"
               onChange={handleCategoryChange}
               fullWidth
