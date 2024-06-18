@@ -19,7 +19,9 @@ export default function EditPost() {
   const [submissionId, setSubmissionId] = useState<number | undefined>(
     undefined
   );
-  const [superStarSiteId, setSuperStarSiteId] = useState("");
+  const [superStarSiteId, setSuperStarSiteId] = useState<number | undefined>(
+    undefined
+  );
 
   useEffect(() => {
     if (id) {
@@ -43,7 +45,7 @@ export default function EditPost() {
         setArticleTitle(data.title);
         setClientName(data.client_name);
         setCategories(data.categories);
-        setSuperStarSiteId(data.superstar_site_id);
+        setSuperStarSiteId(Number(data.superstar_site_id)); // Ensure this is a number
       }
     };
 
