@@ -16,6 +16,8 @@ import {
   styled,
 } from "@mui/material";
 import CopyToClipboardButton from "./CopyToClipboardButton"; // Replace with the correct path to your component
+import router from "next/router";
+import superstarSites from "pages/api/superstar-sites";
 
 const Editor = dynamic(
   () => import("react-draft-wysiwyg").then((module) => module.Editor),
@@ -29,6 +31,7 @@ interface SuperstarFormProps {
   submissionId?: number;
   superstarModalEditorState: EditorState;
   onSubmit: (title: string, content: string, tags: string[]) => void;
+  superStarSiteId?: number;
 }
 
 interface SuperstarSite {
@@ -72,6 +75,7 @@ const SuperstarSubmissionForm: React.FC<SuperstarFormProps> = ({
   categories = "",
   submissionId,
   superstarModalEditorState,
+  superStarSiteId,
 }) => {
   const [editorState, setEditorState] = useState(superstarModalEditorState);
   const [title, setTitle] = useState(articleTitle);
@@ -83,17 +87,33 @@ const SuperstarSubmissionForm: React.FC<SuperstarFormProps> = ({
   const [superstarSites, setSuperstarSites] = useState<ParsedSuperstarSite[]>(
     []
   );
+  const [selectedSite, setSelectedSite] = useState(
+    superStarSiteId || undefined
+  );
   const [tagInput, setTagInput] = useState<string>(""); // Single string for comma-separated tags
 
   useEffect(() => {
     const fetchSuperstarSites = async () => {
-      const response = await fetch("/api/superstar-sites"); // Use the existing API endpoint
-      const data: SuperstarSite[] = await response.json(); // Explicitly type the response data
-      const parsedData: ParsedSuperstarSite[] = data.map((site) => ({
-        ...site,
-        topics: site.topics.split(",").map((topic) => topic.trim()), // Split and trim topics
-      }));
-      setSuperstarSites(parsedData);
+      try {
+        const response = await fetch("/api/superstar-sites"); // Use the existing API endpoint
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data: SuperstarSite[] = await response.json(); // Explicitly type the response data
+
+        const parsedData: ParsedSuperstarSite[] = data.map((site) => ({
+          ...site,
+          topics: (site.topics ? site.topics : "")
+            .split(",")
+            .map((topic) => topic.trim()), // Split and trim topics
+        }));
+
+        setSuperstarSites(parsedData);
+      } catch (error) {
+        console.error("Error fetching superstar sites:", error);
+        // Handle the error as needed, e.g., set an error state
+      }
     };
 
     fetchSuperstarSites();
@@ -108,10 +128,19 @@ const SuperstarSubmissionForm: React.FC<SuperstarFormProps> = ({
     submissionId,
     clientName,
     categories,
+    superStarSiteId,
   ]);
+
+  useEffect(() => {
+    if (superStarSiteId) {
+      setSelectedSite(superStarSiteId);
+    }
+  }, [superStarSiteId]);
 
   const handleCategoryChange = (event: SelectChangeEvent) => {
     setCategory(event.target.value as string);
+    const siteId = parseInt(event.target.value, 10);
+    setSelectedSite(isNaN(siteId) ? undefined : siteId);
   };
 
   const postContentToSuperstar = async () => {
@@ -126,10 +155,10 @@ const SuperstarSubmissionForm: React.FC<SuperstarFormProps> = ({
       .filter((tag) => tag);
 
     try {
-      const response = await fetch("/api/postSuperStarContentToWordpress", {
+      const response = await fetch("/api/postSuperstarContentToWordpress", {
         method: "POST",
         body: JSON.stringify({
-          siteId: category,
+          siteId: superStarSiteId,
           title: title,
           content: contentHTML,
           tags: tags,
@@ -144,6 +173,8 @@ const SuperstarSubmissionForm: React.FC<SuperstarFormProps> = ({
       if (response.ok) {
         setSubmissionUrl(data.link);
         setIsSubmissionSuccessful(true);
+        alert(`Submission posted successfully!`);
+        router.push("/superstar-site-submissions");
       } else {
         alert(`Error posting content: ${data.message}`);
       }
@@ -214,10 +245,11 @@ const SuperstarSubmissionForm: React.FC<SuperstarFormProps> = ({
             <Select
               labelId="superstar-site-select-label"
               id="superstar-site-select"
-              value={category}
+              value={selectedSite !== undefined ? selectedSite.toString() : ""}
               label="Superstar Site"
               onChange={handleCategoryChange}
               fullWidth
+              disabled={!!superStarSiteId} // Make dropdown read-only if superStarSiteId is provided
             >
               {superstarSites.map((site) => (
                 <MenuItem key={site.id} value={site.id}>

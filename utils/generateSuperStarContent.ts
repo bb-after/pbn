@@ -5,19 +5,28 @@ interface SuperStarContent {
   title: string;
   body: string;
 }
- 
+
 export const generateSuperStarContent = async (topic: string, language = 'English'): Promise<SuperStarContent> => {
-     
   console.log('topics', topic);
+
   // Fetch news summaries related to the topic
-  const newsSummaries = await fetchNews(topic);
-  console.log("news!!!", newsSummaries);
-  if (newsSummaries.length === 0) {
-    throw new Error('No news summaries available to generate content.');
+  let newsSummaries: any[] = [];
+  try {
+    newsSummaries = await fetchNews(topic);
+    console.log("news!!!", newsSummaries);
+  } catch (error) {
+    console.error('Failed to fetch news summaries:', error);
   }
 
-  // Combine news summaries into a single string
-  const newsContext = newsSummaries.join(' ');
+  // Check if news summaries are available, if not use OpenAI's general knowledge
+  let newsContext = '';
+  if (newsSummaries.length > 0) {
+    // Combine news summaries into a single string
+    newsContext = newsSummaries.join(' ');
+  } else {
+    // Use OpenAI's general knowledge to write an article given the topics
+    newsContext = `Use your general knowledge to write an article about ${topic}.`;
+  }
 
   // Prepare the prompt with the news context
   const prompt = `Write a detailed blog post, between 2000 - 5000 words, about the latest developments in ${topic}. Context: ${newsContext}. Include one or two hyperlinks to relevant third-party sites somewhere in the middle of the article. Make the use of those hyperlinks feel organic, similar to what you would see on a blog post.`;
