@@ -17,6 +17,7 @@ import {
 } from "@mui/material";
 import CopyToClipboardButton from "./CopyToClipboardButton"; // Replace with the correct path to your component
 import router from "next/router";
+import superstarSites from "pages/api/superstar-sites";
 
 const Editor = dynamic(
   () => import("react-draft-wysiwyg").then((module) => module.Editor),
@@ -30,6 +31,7 @@ interface SuperstarFormProps {
   submissionId?: number;
   superstarModalEditorState: EditorState;
   onSubmit: (title: string, content: string, tags: string[]) => void;
+  superStarSiteId?: number;
 }
 
 interface SuperstarSite {
