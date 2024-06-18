@@ -1,7 +1,7 @@
 import { useRouter } from "next/router";
 import { Link } from "@mui/material";
 import React, { useState, useEffect } from "react";
-import { EditorState, convertToRaw } from "draft-js";
+import { EditorState } from "draft-js";
 import "react-draft-wysiwyg/dist/react-draft-wysiwyg.css";
 import { stateFromHTML } from "draft-js-import-html";
 import StatusLabsHeader from "components/StatusLabsHeader";
@@ -19,6 +19,7 @@ export default function EditPost() {
   const [submissionId, setSubmissionId] = useState<number | undefined>(
     undefined
   );
+  const [superStarSiteId, setSuperStarSiteId] = useState("");
 
   useEffect(() => {
     if (id) {
@@ -42,6 +43,7 @@ export default function EditPost() {
         setArticleTitle(data.title);
         setClientName(data.client_name);
         setCategories(data.categories);
+        setSuperStarSiteId(data.superstar_site_id);
       }
     };
 
@@ -66,11 +68,12 @@ export default function EditPost() {
         &raquo;Edit Superstar Post
       </h1>
       <SuperstarSubmissionForm
-        articleTitle={articleTitle} // Pass articleTitle as a prop
-        superstarModalEditorState={editorState} // Pass pbnModalEditorState as a prop
+        articleTitle={articleTitle}
+        superstarModalEditorState={editorState}
         clientName={clientName}
         categories={categories}
         submissionId={submissionId}
+        superStarSiteId={superStarSiteId} // Pass superStarSiteId as a prop
         onSubmit={function (title: string, content: string): void {
           throw new Error("Function not implemented.");
         }}
