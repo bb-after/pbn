@@ -28,15 +28,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
+
   const { siteId, title, content, tags, author } = req.body;
 
   if (!siteId || !content) {
     return res.status(400).json({ message: 'Missing required fields' });
   }
 
+
   const connection = await mysql.createConnection(dbConfig);
   let site: SuperstarSite | null = null;
-  const [rows] = await connection.query<SuperstarSite[]>('SELECT * FROM superstar_site_submissions JOIN superstar_sites on superstar_sites.id = superstar_site_submissions.superstar_site_id WHERE superstar_site_submissions.id = ?', [siteId]);
+  const [rows] = await connection.query<SuperstarSite[]>('SELECT * FROM superstar_sites WHERE id = ?', [siteId]);
   site = rows[0];
 
   if (!site) {
@@ -47,7 +49,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const auth = {
-      username: site.login,
+      username: encodeURIComponent(site.login),
       password: site.password,
     };
 
