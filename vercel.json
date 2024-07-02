@@ -1,7 +1,7 @@
 {
     "functions": {
       "pages/api/generateContent.ts": {
-        "runtime": "nodejs16.x",
+        "runtime": "nodejs18.x",
         "maxDuration": 120
       }
     }
