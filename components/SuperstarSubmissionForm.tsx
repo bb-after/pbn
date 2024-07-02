@@ -147,7 +147,7 @@ const SuperstarSubmissionForm: React.FC<SuperstarFormProps> = ({
     const contentHTML = stateToHTML(editorState.getCurrentContent());
     const urlParams = new URLSearchParams(window.location.search);
     const userToken = urlParams.get("token");
-
+    const superStarSiteId = selectedSite;
     // Parse the comma-separated tags
     const tags = tagInput
       .split(",")
