@@ -1,0 +1,8 @@
+{
+    "functions": {
+      "pages/api/generateContent.ts": {
+        "maxDuration": 120
+      }
+    }
+  }
+  
