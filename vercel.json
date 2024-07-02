@@ -1,6 +1,6 @@
 {
     "functions": {
-      "api/generateContent.ts": {
+      "pages/api/generateContent.ts": {
         "maxDuration": 120
       }
     }
