@@ -23,7 +23,14 @@ const handleRequest = async (req: NextApiRequest, res: NextApiResponse) => {
   try {
     if (req.method === 'GET') {
       const [rows] = await connection.query<RowDataPacket[]>(
-        'SELECT ss.id, domain, GROUP_CONCAT(topic) AS topics FROM superstar_sites ss LEFT JOIN superstar_site_topics sst ON ss.id = sst.superstar_site_id WHERE ss.id = ? GROUP BY ss.id',
+        `SELECT ss.id, domain, login, hosting_site as hosting_site_password,
+              password AS application_password,
+                GROUP_CONCAT(topic) AS topics 
+         FROM superstar_sites ss 
+         LEFT JOIN superstar_site_topics sst 
+         ON ss.id = sst.superstar_site_id 
+         WHERE ss.id = ? 
+         GROUP BY ss.id`,
         [id]
       );
 
@@ -39,12 +46,23 @@ const handleRequest = async (req: NextApiRequest, res: NextApiResponse) => {
 
       }
     } else if (req.method === 'PUT') {
-      const { topics } = req.body;
+      const { topics, wpUsername, wpPassword, wpAppPassword } = req.body;
+      
+      // Update the superstar_sites table with the new login and password information
+      await connection.query(
+        'UPDATE superstar_sites SET login = ?, hosting_site = ?, password = ? WHERE id = ?',
+        [wpUsername, wpPassword, wpAppPassword, id]
+      );
+
+      // Delete existing topics
       await connection.query('DELETE FROM superstar_site_topics WHERE superstar_site_id = ?', [id]);
+      
+      // Insert new topics
       for (const topic of topics) {
         await connection.query('INSERT INTO superstar_site_topics (superstar_site_id, topic) VALUES (?, ?)', [id, topic]);
       }
-      res.status(200).json({ message: 'Topics updated successfully' });
+
+      res.status(200).json({ message: 'Topics and WordPress credentials updated successfully' });
     } else {
       res.setHeader('Allow', ['GET', 'PUT']);
       res.status(405).end(`Method ${req.method} Not Allowed`);
