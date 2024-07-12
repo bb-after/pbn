@@ -8,6 +8,8 @@ import {
   InputLabel,
   FormControl,
   OutlinedInput,
+  Box,
+  Typography,
 } from "@mui/material";
 import LayoutContainer from "../components/LayoutContainer";
 import StyledHeader from "../components/StyledHeader";
@@ -18,6 +20,7 @@ import { formatSuperstarContent } from "utils/formatSuperstarContent";
 const ReactQuill = dynamic(() => import("react-quill"), { ssr: false });
 import "react-quill/dist/quill.snow.css"; // Import styles for ReactQuill
 import router from "next/router";
+import useValidateUserToken from "hooks/useValidateUserToken";
 
 interface SuperstarSite {
   id: number;
@@ -39,6 +42,7 @@ const HomePage = () => {
   const [categories, setCategories] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [author, setAuthor] = useState("");
+  const { isValidUser } = useValidateUserToken();
 
   useEffect(() => {
     const fetchSites = async () => {
@@ -110,6 +114,21 @@ const HomePage = () => {
       alert("Failed to post content.");
     }
   };
+
+  if (!isValidUser) {
+    return (
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        height="100vh"
+      >
+        <Typography variant="h6">
+          Unauthorized access. Please log in.
+        </Typography>
+      </Box>
+    );
+  }
 
   return (
     <LayoutContainer>
