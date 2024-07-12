@@ -15,7 +15,9 @@ import {
   Select,
   MenuItem,
   TablePagination,
+  CircularProgress,
 } from "@mui/material";
+import useValidateUserToken from "../hooks/useValidateUserToken";
 
 const handleDeleteSubmission = async (
   submissionId: number,
@@ -129,6 +131,36 @@ const SuperstarSiteSubmissionsTable = () => {
   const renderHTML = (htmlContent: string) => {
     return { __html: htmlContent };
   };
+
+  const { isLoading, isValidUser } = useValidateUserToken();
+
+  if (isLoading) {
+    return (
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        height="100vh"
+      >
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (!isValidUser) {
+    return (
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        height="100vh"
+      >
+        <Typography variant="h6">
+          Unauthorized access. Please log in.
+        </Typography>
+      </Box>
+    );
+  }
 
   return (
     <div>
