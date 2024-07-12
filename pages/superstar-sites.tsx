@@ -12,11 +12,14 @@ import {
   Chip,
   Box,
   Link,
+  CircularProgress,
+  Typography,
 } from "@mui/material";
 import { useRouter } from "next/router";
 import { styled } from "@mui/system";
 import LayoutContainer from "components/LayoutContainer";
 import StyledHeader from "components/StyledHeader";
+import useValidateUserToken from "hooks/useValidateUserToken";
 
 const colors = [
   "#e57373",
@@ -49,6 +52,7 @@ interface SuperstarSite {
 const SuperstarSites: React.FC = () => {
   const [sites, setSites] = useState<SuperstarSite[]>([]);
   const router = useRouter();
+  const { isLoading, isValidUser } = useValidateUserToken();
 
   useEffect(() => {
     const fetchSites = async () => {
@@ -70,8 +74,10 @@ const SuperstarSites: React.FC = () => {
       }
     };
 
-    fetchSites();
-  }, []);
+    if (isValidUser) {
+      fetchSites();
+    }
+  }, [isValidUser]);
 
   const handleEdit = (id: number) => {
     router.push(`/superstar-sites/${id}/edit`);
@@ -83,9 +89,8 @@ const SuperstarSites: React.FC = () => {
         `/api/get-wp-credentials?siteId=${site.id}`
       );
       const { domain, login, hosting_site } = response.data;
-      console.log("we did it", login);
       if (login == null) {
-        alert("no valid WP credentials found for this blog");
+        alert("No valid WP credentials found for this blog");
         return;
       }
 
@@ -125,6 +130,40 @@ const SuperstarSites: React.FC = () => {
     marginTop: "-5rem",
     marginRight: "2rem",
   });
+
+  if (isLoading) {
+    return (
+      <LayoutContainer>
+        <StyledHeader />
+        <Box
+          display="flex"
+          justifyContent="center"
+          alignItems="center"
+          height="100vh"
+        >
+          <CircularProgress />
+        </Box>
+      </LayoutContainer>
+    );
+  }
+
+  if (!isValidUser) {
+    return (
+      <LayoutContainer>
+        <StyledHeader />
+        <Box
+          display="flex"
+          justifyContent="center"
+          alignItems="center"
+          height="100vh"
+        >
+          <Typography variant="h6">
+            Unauthorized access. Please log in.
+          </Typography>
+        </Box>
+      </LayoutContainer>
+    );
+  }
 
   return (
     <LayoutContainer>
