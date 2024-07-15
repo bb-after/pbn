@@ -30,8 +30,8 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
     
     let whereClauses = ['deleted_at is null']; // Always include the check for non-deleted records
     if (searchQuery) {
-      whereClauses.push('title LIKE ?');
-      queryConfig = [`%${searchQuery}%`];
+      whereClauses.push('(title LIKE ? OR content LIKE ?)');
+      queryConfig = [`%${searchQuery}%`, `%${searchQuery}%`];
     }
     if (userToken) {
       whereClauses.push('pbn_site_submissions.user_token = ?');
