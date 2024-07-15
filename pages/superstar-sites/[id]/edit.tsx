@@ -67,6 +67,7 @@ const EditTopics: React.FC = () => {
         wpUsername,
         wpPassword,
         wpAppPassword,
+        active,
       });
       router.push("/superstar-sites");
     } catch (error) {

@@ -44,7 +44,7 @@ const handleRequest = async (req: NextApiRequest, res: NextApiResponse) => {
       
       // Update the superstar_sites table with the new login and password information
       await connection.query(
-        'UPDATE superstar_sites SET login = ?, hosting_site = ?, password = ?, active = ? WHERE id = ?',
+        'UPDATE superstar_sites SET login = ?, hosting_site = ?, password = ?, active = ?, modified = NOW() WHERE id = ?',
         [wpUsername, wpPassword, wpAppPassword, active, id]
       );
 
