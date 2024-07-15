@@ -182,9 +182,9 @@ const SuperstarSites: React.FC = () => {
           <Button
             variant="contained"
             color="primary"
-            href="/new-superstar-site"
+            href="/superstar-sites/new"
           >
-            New Superstar Site
+            New Site
           </Button>
         </TopRightBox>
 
