@@ -178,6 +178,14 @@ const SuperstarSites: React.FC = () => {
           <Button variant="contained" color="primary" href="/superstar-form">
             Submit Post
           </Button>
+          &nbsp;
+          <Button
+            variant="contained"
+            color="primary"
+            href="/new-superstar-site"
+          >
+            New Superstar Site
+          </Button>
         </TopRightBox>
 
         <Table>
