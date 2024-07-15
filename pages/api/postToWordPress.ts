@@ -137,7 +137,7 @@ export default async function handler(
       const exists: RowDataPacket[] = queryResultExistingArticle as RowDataPacket[];
       if (exists && exists.length > 0) {
           // Handle the case where content has already been uploaded
-          res.status(400).json({ error: 'Content already uploaded to PBN' });
+          res.status(400).json({ error: 'Content already uploaded to PBN', submission_response: exists[0].submission_response });
           return;
       }
 
