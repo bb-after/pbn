@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from "next";
-import mysql from "mysql2/promise";
+import mysql, { RowDataPacket } from "mysql2/promise";
 
 // Database connection setup
 const dbConfig = {
@@ -17,8 +17,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     // Query the database for the user token
-    const [rows] = await connection.execute(
-      'SELECT * FROM users WHERE user_token = ?',
+    const [rows]: [RowDataPacket[], any] = await connection.execute(
+        'SELECT * FROM users WHERE user_token = ?',
       [token]
     );
 
