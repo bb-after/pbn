@@ -8,7 +8,8 @@ const useValidateUserToken = () => {
   useEffect(() => {
     const validateUserToken = async () => {
       const urlParams = new URLSearchParams(window.location.search);
-      const userToken = urlParams.get("token");
+      const urlToken = urlParams.get("token");
+      let userToken = urlToken || localStorage.getItem('usertoken');
 
       if (!userToken) {
         setIsLoading(false);
@@ -17,11 +18,15 @@ const useValidateUserToken = () => {
 
       console.log("token?", userToken);
       try {
-        const response = await axios.get(
-          `/api/validate-user-token?token=${userToken}`
-        );
+        const response = await axios.get(`/api/validate-user-token?token=${userToken}`);
         if (response.data.valid) {
           setIsValidUser(true);
+          localStorage.setItem('usertoken', userToken);
+        } else {
+          setIsValidUser(false);
+          if (!urlToken) {
+            localStorage.removeItem('usertoken');
+          }
         }
       } catch (error) {
         console.error("Error validating user token:", error);
