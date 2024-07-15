@@ -1,8 +1,22 @@
 import React, { useState } from "react";
 import { useRouter } from "next/router";
 import axios from "axios";
-import { Typography, TextField, Button, Container, Box } from "@mui/material";
+import {
+  Typography,
+  TextField,
+  Button,
+  Container,
+  Box,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
+  CircularProgress,
+} from "@mui/material";
 import Autocomplete from "@mui/lab/Autocomplete";
+import useValidateUserToken from "hooks/useValidateUserToken";
+import LayoutContainer from "components/LayoutContainer";
+import StyledHeader from "components/StyledHeader";
 
 interface SuperstarSite {
   id: number;
@@ -23,7 +37,9 @@ const NewSite: React.FC = () => {
   const [wpUsername, setWpUsername] = useState<string>("");
   const [wpPassword, setWpPassword] = useState<string>("");
   const [wpAppPassword, setWpAppPassword] = useState<string>("");
+  const [active, setActive] = useState<string>("1");
   const [errorMessage, setErrorMessage] = useState<string>("");
+  const { isLoading, isValidUser } = useValidateUserToken();
 
   const handleSave = async () => {
     if (!domain.startsWith("https://")) {
@@ -38,6 +54,7 @@ const NewSite: React.FC = () => {
         wpUsername,
         wpPassword,
         wpAppPassword,
+        active: active === "1" ? 1 : 0,
       });
       router.push("/superstar-sites");
     } catch (error) {
@@ -45,6 +62,40 @@ const NewSite: React.FC = () => {
       setErrorMessage("Error saving site. Please try again.");
     }
   };
+
+  if (isLoading) {
+    return (
+      <LayoutContainer>
+        <StyledHeader />
+        <Box
+          display="flex"
+          justifyContent="center"
+          alignItems="center"
+          height="100vh"
+        >
+          <CircularProgress />
+        </Box>
+      </LayoutContainer>
+    );
+  }
+
+  if (!isValidUser) {
+    return (
+      <LayoutContainer>
+        <StyledHeader />
+        <Box
+          display="flex"
+          justifyContent="center"
+          alignItems="center"
+          height="100vh"
+        >
+          <Typography variant="h6">
+            Unauthorized access. Please log in.
+          </Typography>
+        </Box>
+      </LayoutContainer>
+    );
+  }
 
   return (
     <Container>
@@ -106,6 +157,17 @@ const NewSite: React.FC = () => {
           value={wpAppPassword}
           onChange={(e) => setWpAppPassword(e.target.value)}
         />
+        <FormControl fullWidth margin="normal">
+          <InputLabel id="active-label">Status</InputLabel>
+          <Select
+            labelId="active-label"
+            value={active}
+            onChange={(e) => setActive(e.target.value as string)}
+          >
+            <MenuItem value="1">Active</MenuItem>
+            <MenuItem value="0">Inactive</MenuItem>
+          </Select>
+        </FormControl>
         <Box mt={2}>
           <Button variant="contained" color="primary" onClick={handleSave}>
             Save
