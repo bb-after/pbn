@@ -1,7 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import axios from "axios";
-import { Typography, TextField, Button, Container, Box } from "@mui/material";
+import {
+  Typography,
+  TextField,
+  Button,
+  Container,
+  Box,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+} from "@mui/material";
 import Autocomplete from "@mui/lab/Autocomplete";
 
 interface SuperstarSite {
@@ -12,6 +22,7 @@ interface SuperstarSite {
   manual_count: number;
   topics: string[];
   login: string;
+  active: string;
   hosting_site_password: string;
   application_password: string;
 }
@@ -24,6 +35,7 @@ const EditTopics: React.FC = () => {
   const [wpUsername, setWpUsername] = useState<string>("");
   const [wpPassword, setWpPassword] = useState<string>("");
   const [wpAppPassword, setWpAppPassword] = useState<string>("");
+  const [active, setActive] = useState<string>("1");
 
   useEffect(() => {
     if (id) {
@@ -38,6 +50,7 @@ const EditTopics: React.FC = () => {
           setWpUsername(siteData.login || "");
           setWpPassword(siteData.hosting_site_password || "");
           setWpAppPassword(siteData.application_password || "");
+          setActive(siteData.active || "1");
         } catch (error) {
           console.error("Error fetching site:", error);
         }
@@ -108,6 +121,19 @@ const EditTopics: React.FC = () => {
           value={wpAppPassword}
           onChange={(e) => setWpAppPassword(e.target.value)}
         />
+
+        <FormControl fullWidth margin="normal">
+          <InputLabel id="active-label">Status</InputLabel>
+          <Select
+            labelId="active-label"
+            value={active}
+            onChange={(e) => setActive(e.target.value as string)}
+          >
+            <MenuItem value="1">Active</MenuItem>
+            <MenuItem value="0">Inactive</MenuItem>
+          </Select>
+        </FormControl>
+
         <Box mt={2}>
           <Button variant="contained" color="primary" onClick={handleSave}>
             Save

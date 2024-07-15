@@ -8,12 +8,6 @@ const dbConfig = {
   database: process.env.DB_DATABASE,
 };
 
-interface SuperstarSite extends RowDataPacket {
-  id: number;
-  domain: string;
-  topics: string[];
-}
-
 const handleRequest = async (req: NextApiRequest, res: NextApiResponse) => {
   const { id } = req.query;
 
@@ -46,12 +40,12 @@ const handleRequest = async (req: NextApiRequest, res: NextApiResponse) => {
 
       }
     } else if (req.method === 'PUT') {
-      const { topics, wpUsername, wpPassword, wpAppPassword } = req.body;
+      const { topics, wpUsername, wpPassword, wpAppPassword, active } = req.body;
       
       // Update the superstar_sites table with the new login and password information
       await connection.query(
-        'UPDATE superstar_sites SET login = ?, hosting_site = ?, password = ? WHERE id = ?',
-        [wpUsername, wpPassword, wpAppPassword, id]
+        'UPDATE superstar_sites SET login = ?, hosting_site = ?, password = ?, active = ? WHERE id = ?',
+        [wpUsername, wpPassword, wpAppPassword, active, id]
       );
 
       // Delete existing topics
