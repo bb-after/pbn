@@ -1,4 +1,4 @@
-// handleWPLogin.ts
+// handle-wp-login.ts
 import axios from "axios";
 
 interface SuperstarSite {
@@ -51,3 +51,5 @@ export const handleWPLogin = async (site: SuperstarSite) => {
     console.error("Error logging into WordPress:", error);
   }
 };
+
+export default handleWPLogin;
