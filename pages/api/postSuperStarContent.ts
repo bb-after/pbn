@@ -42,7 +42,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     console.log('Fetching active superstar sites...');
-    const [sites]: [SuperstarSite[], any] = await connection.query('SELECT * FROM superstar_sites WHERE active = 1');
+    const [sites]: [SuperstarSite[], any] = await connection.query('SELECT * FROM superstar_sites WHERE active = 1 ORDER BY RAND()');
     console.log(`Fetched ${sites.length} active sites.`);
 
     const tasks = sites.map(async (site) => {

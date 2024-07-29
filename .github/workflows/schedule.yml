@@ -2,20 +2,11 @@ name: Schedule Post to Superstar Sites
 
 on:
   schedule:
-    - cron: "0 0 * * *" # At midnight UTC
-    - cron: "0 6 * * *" # At 6 AM UTC
-    - cron: "0 12 * * *" # At noon UTC
-    - cron: "0 17 * * *" # At 5PM UTC
-
+    - cron: "0 17 * * *" # At 5pm UTC
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Add random delay
-        run: |
-          RANDOM_DELAY=$((RANDOM % 3600)) # Random delay up to 3600 seconds (1 hour)
-          echo "Sleeping for $RANDOM_DELAY seconds..."
-          sleep $RANDOM_DELAY
       - name: Trigger Vercel Function
         run: |
           curl -X POST https://ai.statuscrawl.io/api/postSuperStarContent
