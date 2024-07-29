@@ -2,11 +2,7 @@ name: Schedule Post to Superstar Sites
 
 on:
   schedule:
-    - cron: "0 6 * * *" # At 6 AM UTC
-    - cron: "0 12 * * *" # At noon UTC
-    - cron: "0 14 * * *" # At 2pm UTC
     - cron: "0 17 * * *" # At 5pm UTC
-
 jobs:
   build:
     runs-on: ubuntu-latest
