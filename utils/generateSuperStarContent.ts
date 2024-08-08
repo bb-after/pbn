@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { fetchNews } from '../utils/newsApi';
 import { callOpenAISuperstarVersion } from '../utils/openai';
 import { formatSuperstarContent } from './formatSuperstarContent';
@@ -5,6 +6,68 @@ interface SuperStarContent {
   title: string;
   body: string;
 }
+
+const apiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+
+function getRandomStyle() {
+  const styles = [
+    'cartoon style',
+    'black and white',
+    'sketch',
+    'watercolor',
+    'surreal',
+    'abstract',
+    'synthwave',
+    'impressionist',
+    'minimalist',
+    'vintage',
+    'popart',
+    'fantasy',
+    'pixel art',
+    'line art',
+    'steampunk'
+  ];
+
+  const randomIndex = Math.floor(Math.random() * styles.length);
+  return styles[randomIndex];
+}
+
+function getRandomSize() {
+  const sizes = [
+    '1024x1024',
+    '1792x1024',
+    '1024x1792',
+  ];
+  const randomIndex = Math.floor(Math.random() * sizes.length);
+  return sizes[randomIndex];
+}
+
+const generateDallEImage = async (prompt: any) => {
+  const updatedPrompt = `${prompt}, textless, ${getRandomStyle()}`;
+  const size = getRandomSize();
+
+  console.log('prompt', updatedPrompt);
+  console.log('size', size);
+  try {
+    const response = await axios.post('https://api.openai.com/v1/images/generations', {
+      model: "dall-e-3",
+      prompt: updatedPrompt,
+      n: 1,
+      size: size,
+    }, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    console.log('respsone', response)
+    return response.data.data[0].url;
+  } catch (error) {
+      console.error('Error generating image:', error);
+      throw error;
+    }
+};
 
 export const generateSuperStarContent = async (topic: string, language = 'English'): Promise<SuperStarContent> => {
   console.log('topics', topic);
@@ -22,6 +85,7 @@ export const generateSuperStarContent = async (topic: string, language = 'Englis
   let newsContext = '';
   if (newsSummaries.length > 0) {
     // Combine news summaries into a single string
+    //change to a random value
     newsContext = newsSummaries.join('---------------');
   } else {
     // Use OpenAI's general knowledge to write an article given the topics
@@ -49,9 +113,23 @@ export const generateSuperStarContent = async (topic: string, language = 'Englis
 
   const { content, title } = formatSuperstarContent(response.content, response.seoTitle);
 
+  // Fetch an image URL based on the topic
+  const imageURL = await generateDallEImage(topic);
+
+  // Insert the image between two random line breaks in the content
+  let modifiedContent = content;
+  if (imageURL) {
+    const lines = modifiedContent.split('\n');
+    if (lines.length > 3) {
+      const randomIndex = Math.floor(Math.random() * (lines.length - 1)) + 1;
+      lines.splice(randomIndex, 0, `<br><br><img src="${imageURL}" alt="${topic} image"><br><br>`);
+      modifiedContent = lines.join('\n');
+    }
+  }
+
   // Return both the title and the body
   return {
     title,
-    body: content,
+    body: modifiedContent,
   };
 };
