@@ -42,15 +42,15 @@ function getRandomSize() {
   return sizes[randomIndex];
 }
 
-const generateDallEImage = async (prompt: any) => {
-  const updatedPrompt = `${prompt}, textless, ${getRandomStyle()}`;
+const generateDallEImage = async (topic: string, model: string): Promise<string | null> => {
+  const updatedPrompt = `${topic}, textless, ${getRandomStyle()}`;
   const size = getRandomSize();
 
   console.log('prompt', updatedPrompt);
   console.log('size', size);
   try {
     const response = await axios.post('https://api.openai.com/v1/images/generations', {
-      model: "dall-e-3",
+      model: model,
       prompt: updatedPrompt,
       n: 1,
       size: size,
@@ -113,8 +113,28 @@ export const generateSuperStarContent = async (topic: string, language = 'Englis
 
   const { content, title } = formatSuperstarContent(response.content, response.seoTitle);
 
-  // Fetch an image URL based on the topic
-  const imageURL = await generateDallEImage(topic);
+  let imageURL: string | null = null;
+  try {
+    imageURL = await generateDallEImage(topic, 'dall-e-3');
+  } catch (error: any) {
+    if (error.response?.status === 429) {
+      console.warn('Rate limited on DALL·E 3, trying DALL·E 2.');
+    } else {
+      console.error('DALL·E 3 failed:', error);
+    }
+
+    try {
+      imageURL = await generateDallEImage(topic, 'dall-e-2');
+    } catch (fallbackError: any) {
+      if (fallbackError.response?.status === 429) {
+        console.warn('Rate limited on DALL·E 2, skipping image generation.');
+      } else {
+        console.error('DALL·E 2 failed:', fallbackError);
+      }
+    }
+  }
+
+
 
   // Insert the image between two random line breaks in the content
   let modifiedContent = content;
