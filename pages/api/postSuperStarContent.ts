@@ -66,7 +66,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log(`Selected topic: ${randomTopic}`);
 
       // Generate content for the random topic
-      const { title, body: content } = await generateSuperStarContent(randomTopic);
+      const { title, body: content } = await generateSuperStarContent(randomTopic, site);
       console.log(`Generated content for topic "${randomTopic}": ${title}`);
 
       try {

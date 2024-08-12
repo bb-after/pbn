@@ -70,7 +70,7 @@ async function generateAndPostContent() {
     for (const site of sites) {
       const topic = await getRandomTopic(site.id);
       if (topic) {
-        const { title, body } = await generateSuperStarContent(topic);
+        const { title, body } = await generateSuperStarContent(topic, site);
         await postContentToWordpress(site, title, body);
       }
     }
