@@ -81,9 +81,12 @@ const HomePage = () => {
     event.preventDefault();
     setLoading(true);
     const formattedTopic = topic.replace(/,/g, " ");
+    const siteId = selectedSite;
     try {
       const response = await axios.get(
-        `/api/generateContent?topic=${encodeURIComponent(formattedTopic)}`
+        `/api/generateContent?topic=${encodeURIComponent(
+          formattedTopic
+        )}&siteId=` + siteId
       );
       const { title, body } = response.data;
       setTitle(title);
