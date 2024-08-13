@@ -3,7 +3,7 @@ import axios from 'axios';
 export async function uploadImageToWordpress(imageUrl: string, topic: string, domain: string, auth: { username: string, password: string }) {
   try {
     const imageResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-
+    console.log('image received', imageUrl);
     const formData = new FormData();
     const sanitizedTopic = topic.toLowerCase().replace(/\s+/g, '-');
     const fileName = `${sanitizedTopic}-${Date.now()}.png`;

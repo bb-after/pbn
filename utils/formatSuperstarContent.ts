@@ -1,10 +1,12 @@
 export const formatSuperstarContent = (content: string, seoTitle: string) => {
+  console.log('content before formatting', content);
   // Extract the title if it starts with ### and is followed by quoted text
   let cleanedTitle = seoTitle;
   const titleMatch = seoTitle.match(/###\s*"([^"]+)"/);
   if (titleMatch) {
       cleanedTitle = titleMatch[1];
   } else {
+      // Remove leading and trailing quotes and trim spaces
       cleanedTitle = seoTitle.replace(/^"|"$/g, '').trim();
   }
 
@@ -46,7 +48,9 @@ export const formatSuperstarContent = (content: string, seoTitle: string) => {
   }
 
   // Replace multiple # symbols in a row with <br><br>
-  content = content.replace(/#{2,}/g, '<br><br>');
+  // content = content.replace(/#{2,}/g, '<br><br>');
+  // Remove instances of multiple # symbols with spaces and trim the trailing space if one exists
+  content = content.replace(/#{2,}\s*/g, '');
 
   // Remove any instance of "# " from the body
   content = content.replace(/#\s/g, '');
@@ -61,13 +65,13 @@ export const formatSuperstarContent = (content: string, seoTitle: string) => {
   content = content.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
 
   // Remove "Conclusion" if followed by a word starting with a capital letter and add new paragraph
-  content = content.replace(/\bConclusion\s+(?=[A-Z])/g, '<br><br>');
+  content = content.replace(/\bConclusion\s+(?=[A-Z])/g, '<br>');
 
   // Add paragraphs
   content = addParagraphs(content);
 
   // Remove any instances of multiple line breaks (more than double spaced) with a single line break
-  content = content.replace(/\n{3,}/g, '\n\n');
+  content = content.replace(/\n{3,}/g, '\n');
 
   // Remove leading spaces from the start of each line
   content = content.split('\n').map(line => line.trimStart()).join('\n');
@@ -76,6 +80,9 @@ export const formatSuperstarContent = (content: string, seoTitle: string) => {
   if (!content.endsWith('\n\n')) {
       content += '\n\n';
   }
+
+  // Replace all instances of double newlines with <br><br>
+  content = content.replace(/\n/g, '<br>');
 
   return { content, title: cleanedTitle };
 };
