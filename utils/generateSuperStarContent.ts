@@ -35,8 +35,6 @@ export const generateSuperStarContent = async (topic: string, site: any): Promis
   try {
     // Generate a DALL·E image
     const imageUrl = await generateDalleImage(topic, 'dall-e-3');
-    console.log("WE HAVE AN IMAGE!!!!", imageUrl);
-    console.log("WE AHVE A SITE?", site);
     if (imageUrl) {
 
       const auth = { username: site.login, password: site.password };
@@ -50,10 +48,12 @@ export const generateSuperStarContent = async (topic: string, site: any): Promis
   // Insert the image into the content
   let modifiedContent = content;
   if (uploadedImageUrl) {  
-    const lines = modifiedContent.split('\n');
+    const lines = modifiedContent.split('<br>');
     if (lines.length > 3) {
+        //choose a width between 50 - 100%
+        const randomWidth = Math.floor(Math.random() * 50) + 50;
         const randomIndex = Math.floor(Math.random() * (lines.length - 1)) + 1;
-        lines.splice(randomIndex, 0, `<br><br><img src="${uploadedImageUrl}" alt="${topic} image"><br><br>`);
+        lines.splice(randomIndex, 0, `<br><br><img width="${randomWidth}%" src="${uploadedImageUrl}" alt="${topic} image"><br><br>`);
         modifiedContent = lines.join('\n');
     }
   }
