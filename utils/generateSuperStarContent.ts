@@ -35,8 +35,6 @@ export const generateSuperStarContent = async (topic: string, site: any): Promis
   try {
     // Generate a DALL·E image
     const imageUrl = await generateDalleImage(topic, 'dall-e-3');
-    console.log("WE HAVE AN IMAGE!!!!", imageUrl);
-    console.log("WE AHVE A SITE?", site);
     if (imageUrl) {
 
       const auth = { username: site.login, password: site.password };
