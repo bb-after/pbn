@@ -64,13 +64,32 @@ describe('formatSuperstarContent', () => {
   it('should remove "Conclusion" if followed by a capital letter and add a new paragraph', () => {
     const content = 'This is some content. Conclusion This should start immediately.';
     const result = formatSuperstarContent(content, 'Title');
-    //logDifference('This is some content. <br><br>This should start immediately.\n\n', result.content);
     expect(result.content).toBe('This is some content. <br><br>This should start immediately.\n\n');
   });
 
   it('should extract title correctly from dynamic title', () => {
     const result = formatSuperstarContent('Some content', '### "CES 2023 Insights: Top Tech Trends and Gadgets Reviewed by Marques Brownlee and Walt Mossberg"This title captures the essence of the content, highlights the authority of the reviewers, and includes relevant keywords like CES 2023, tech trends, and gadgets, which are likely to attract search engine traffic.');
     expect(result.title).toBe('CES 2023 Insights: Top Tech Trends and Gadgets Reviewed by Marques Brownlee and Walt Mossberg');
+  });
+
+  it('should remove "##" from the title', () => {
+    const result = formatSuperstarContent('Some content', '## Title with hashes');
+    expect(result.title).toBe('Title with hashes');
+  });
+
+  it('should remove "**" from the title', () => {
+    const result = formatSuperstarContent('Some content', '**Title with asterisks**');
+    expect(result.title).toBe('Title with asterisks');
+  });
+
+  it('should split the title at line breaks and use everything before the first line break', () => {
+    const result = formatSuperstarContent('Some content', 'Title with line break\nSecond line');
+    expect(result.title).toBe('Title with line break');
+  });
+
+  it('should handle a combination of "##", "**", and line breaks in the title', () => {
+    const result = formatSuperstarContent('Some content', '## **Complex Title** with line break\nAnd more text');
+    expect(result.title).toBe('Complex Title with line break');
   });
 
 });

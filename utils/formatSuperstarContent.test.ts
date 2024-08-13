@@ -90,4 +90,25 @@ describe('formatSuperstarContent', () => {
     expect(result.title).toBe('CES 2023 Insights: Top Tech Trends and Gadgets Reviewed by Marques Brownlee and Walt Mossberg');
   });
 
+  it('should remove "##" from the title', () => {
+    const result = formatSuperstarContent('Some content', '## Title with hashes');
+    expect(result.title).toBe('Title with hashes');
+  });
+
+  it('should remove "**" from the title', () => {
+    const result = formatSuperstarContent('Some content', '**Title with asterisks**');
+    expect(result.title).toBe('Title with asterisks');
+  });
+
+  it('should split the title at line breaks and use everything before the first line break', () => {
+    const result = formatSuperstarContent('Some content', 'Title with line break\nSecond line');
+    expect(result.title).toBe('Title with line break');
+  });
+
+  it('should handle a combination of "##", "**", and line breaks in the title', () => {
+    const result = formatSuperstarContent('Some content', '## **Complex Title** with line break\nAnd more text');
+    expect(result.title).toBe('Complex Title with line break');
+  });
+
+
 });
