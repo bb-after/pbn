@@ -48,7 +48,7 @@ export const generateSuperStarContent = async (topic: string, site: any): Promis
   // Insert the image into the content
   let modifiedContent = content;
   if (uploadedImageUrl) {  
-    const lines = modifiedContent.split('\n');
+    const lines = modifiedContent.split('<br>');
     if (lines.length > 3) {
         //choose a width between 50 - 100%
         const randomWidth = Math.floor(Math.random() * 50) + 50;
