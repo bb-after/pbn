@@ -68,7 +68,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     await connection.execute(
       'INSERT INTO superstar_site_submissions (superstar_site_id, title, content, submission_response) VALUES (?, ?, ?, ?)',
-      [siteId, response.title, content, response.link]
+      [siteId, response.title.rendered, content, response.link]
     );
 
     await postToSlack(`Successfully posted content to WordPress for site ${site.domain}.`, SLACK_CHANNEL);
