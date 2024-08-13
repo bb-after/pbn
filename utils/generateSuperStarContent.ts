@@ -50,8 +50,9 @@ export const generateSuperStarContent = async (topic: string, site: any): Promis
   if (uploadedImageUrl) {  
     const lines = modifiedContent.split('\n');
     if (lines.length > 3) {
+        const randomWidth = Math.floor(Math.random() * 51) + 25;
         const randomIndex = Math.floor(Math.random() * (lines.length - 1)) + 1;
-        lines.splice(randomIndex, 0, `<br><br><img src="${uploadedImageUrl}" alt="${topic} image"><br><br>`);
+        lines.splice(randomIndex, 0, `<br><br><img width="${randomWidth}%" src="${uploadedImageUrl}" alt="${topic} image"><br><br>`);
         modifiedContent = lines.join('\n');
     }
   }
