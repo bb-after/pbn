@@ -58,7 +58,6 @@ export async function generateDalleImage(topic: string, dalleVersion: 'dall-e-2'
       }
     );
 
-    console.log('image?', response);
     if (response.data && response.data.data && response.data.data.length > 0) {
       return response.data.data[0].url; // Return the URL of the generated image
     } else {
