@@ -42,10 +42,10 @@ describe('formatSuperstarContent', () => {
     expect(result.content).toBe('Check this <a href="http://example.com">link</a>.<br><br>');
   });
 
-  it('should remove multiple # symbols with spaces from content', () => {
-    const content = 'Data privacy is another area where AI is making substantial contributions. ### This should be removed.';
+  it('should replace multiple # symbols with spaces from content with bolded text', () => {
+    const content = 'Data privacy is another area where AI is making substantial contributions. ### This should be bolded.';
     const result = formatSuperstarContent(content, 'Title');
-    expect(result.content).toBe('Data privacy is another area where AI is making substantial contributions. This should be removed.<br><br>');
+    expect(result.content).toBe('Data privacy is another area where AI is making substantial contributions. <b>This should be bolded.</b><br><br>');
   });
 
   it('should handle double asterisks for bold text', () => {
@@ -88,7 +88,7 @@ describe('formatSuperstarContent', () => {
     `;
     const result = formatSuperstarContent(content, 'Title');
     const expectedContent = `
-    Data privacy is another area where AI is making substantial contributions. <br>Challenges and Ethical Considerations<br>While the integration of AI in cybersecurity offers numerous benefits, <br>The Future of AI in Cybersecurity<br>Looking ahead, the role of AI in cybersecurity is set to expand.<br><br>In conclusion, AI is transforming the cybersecurity landscape.<br><br>`;
+    Data privacy is another area where AI is making substantial contributions. <br><b>Challenges and Ethical Considerations</b><br>While the integration of AI in cybersecurity offers numerous benefits, <br><b>The Future of AI in Cybersecurity</b><br>Looking ahead, the role of AI in cybersecurity is set to expand.<br><br>In conclusion, AI is transforming the cybersecurity landscape.<br><br>`;
     expect(result.content).toBe(expectedContent.trim());
   });
 });

@@ -8,10 +8,11 @@ type PostToWordPressRequest = {
     username: string;
     password: string;
   };
+  categoryId?: number;
   author?: string;
 };
 
-export async function postToWordpress({ title, content, domain, auth, author }: PostToWordPressRequest) {
+export async function postToWordpress({ title, content, domain, auth, categoryId, author }: PostToWordPressRequest) {
 
   try {
     const response = await axios.post(
@@ -20,6 +21,7 @@ export async function postToWordpress({ title, content, domain, auth, author }: 
         title,
         content,
         status: 'publish',
+        categories: [categoryId],
         // author,
       },
       {

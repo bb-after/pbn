@@ -36,12 +36,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const site = sites[0]; // Extract the site information
-
+    const formattedTopic = decodeURIComponent(topic);
     // Call the function to generate content
-    const { title, body } = await generateSuperStarContent(topic, site);
+    const { title, body } = await generateSuperStarContent(formattedTopic, site);
 
     // Send the generated content back as a response
-    res.status(200).json({ success: true, title, body });
+    res.status(200).json({ success: true, title, body, formattedTopic });
   } catch (error: any) {
     // Handle errors and send the error message as a response
     res.status(500).json({ success: false, error: error.message });
