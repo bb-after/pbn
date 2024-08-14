@@ -3,6 +3,7 @@ import mysql, { RowDataPacket } from 'mysql2/promise';
 import { postToWordpress } from '../../utils/postToWordpress';
 import { postToSlack } from '../../utils/postToSlack';
 import { generateSuperStarContent } from '../../utils/generateSuperStarContent';
+import { getOrCreateCategory } from 'utils/categoryUtils';
 
 // This function can run for a maximum of 5 minutes (max on pro plan)
 export const config = {
@@ -69,6 +70,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const { title, body: content } = await generateSuperStarContent(randomTopic, site);
       console.log(`Generated content for topic "${randomTopic}": ${title}`);
 
+      // Ensure the category exists (and get its ID)
+      const categoryId = await getOrCreateCategory(site.domain, randomTopic, auth);
+
       try {
         console.log(`Posting content to WordPress for site ${site.domain}`);
         const response = await postToWordpress({
@@ -76,7 +80,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           content,
           domain: site.domain,
           auth,
+          categoryId: categoryId,
         });
+        
         console.log(`Posted content to WordPress: ${response.link}`);
 
         await connection.execute(
