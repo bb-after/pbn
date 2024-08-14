@@ -48,9 +48,10 @@ export const formatSuperstarContent = (content: string, seoTitle: string) => {
   }
 
   // Replace multiple # symbols in a row with <br><br>
-  // content = content.replace(/#{2,}/g, '<br><br>');
   // Remove instances of multiple # symbols with spaces and trim the trailing space if one exists
-  content = content.replace(/#{2,}\s*/g, '');
+  content = content.replace(/#+\s*(\S[^\n]*)\n/g, '<b>$1</b>\n');
+  // Handle # symbols followed by a word and a line break
+  content = content.replace(/#{2,}\s*(.+)/g, '<b>$1</b>\n');
 
   // Remove any instance of "# " from the body
   content = content.replace(/#\s/g, '');
@@ -64,8 +65,8 @@ export const formatSuperstarContent = (content: string, seoTitle: string) => {
   // Handle double asterisks for bold text
   content = content.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
 
-  // Remove "Conclusion" if followed by a word starting with a capital letter and add new paragraph
-  content = content.replace(/\bConclusion\s+(?=[A-Z])/g, '<br>');
+  // Remove "Conclusion" or "<b>Conclusion</b>" if followed by a word starting with a capital letter or a line break
+  content = content.replace(/(?:<b>)?Conclusion(?:<\/b>)?(?:\s+|\n)/g, '\n');
 
   // Add paragraphs
   content = addParagraphs(content);
