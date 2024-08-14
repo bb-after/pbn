@@ -15,7 +15,7 @@ export async function getOrCreateCategory(domain: string, categoryName: string, 
 
         // If the category doesn't exist, create it
         const newCategoryResponse = await axios.post(`${domain}/wp-json/wp/v2/categories`, { name: categoryName }, { auth });
-        console.log('response???', newCategoryResponse);
+        console.log('response???', newCategoryResponse.status);
         
         return newCategoryResponse.data.id;
     } catch (error) {

@@ -17,6 +17,18 @@ const dbConfig = {
   database: process.env.DB_DATABASE,
 };
 
+// Set up a connection pool
+const pool = mysql.createPool({
+  host: process.env.DB_HOST_NAME,
+  user: process.env.DB_USER_NAME,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_DATABASE,
+  waitForConnections: true,
+  connectionLimit: 200, // Set an appropriate limit based on your application's needs
+  queueLimit: 0
+});
+
+
 const SLACK_CHANNEL = 'superstar-alerts';
 
 interface SuperstarSite extends RowDataPacket {
@@ -39,11 +51,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
-  const connection = await mysql.createConnection(dbConfig);
-
+  const connection = await pool.getConnection();
   try {
     console.log('Fetching active superstar sites...');
-    const [sites]: [SuperstarSite[], any] = await connection.query('SELECT * FROM superstar_sites WHERE active = 1 ORDER BY RAND()');
+    const [sites]: [SuperstarSite[], any] = await connection.query(
+      'SELECT * FROM superstar_sites WHERE active = 1 ORDER BY RAND() limit 15'
+    );
     console.log(`Fetched ${sites.length} active sites.`);
 
     const tasks = sites.map(async (site) => {
@@ -51,7 +64,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       const auth = { username: site.login, password: site.password };
 
-      // Fetch topics for the current site
       const [topics]: [SuperstarSiteTopic[], any] = await connection.query(
         'SELECT topic FROM superstar_site_topics WHERE superstar_site_id = ?',
         [site.id]
@@ -62,15 +74,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return;
       }
 
-      // Select a random topic
       const randomTopic = topics[Math.floor(Math.random() * topics.length)].topic;
       console.log(`Selected topic: ${randomTopic}`);
 
-      // Generate content for the random topic
       const { title, body: content } = await generateSuperStarContent(randomTopic, site);
       console.log(`Generated content for topic "${randomTopic}": ${title}`);
 
-      // Ensure the category exists (and get its ID)
       const categoryId = await getOrCreateCategory(site.domain, randomTopic, auth);
 
       try {
@@ -82,9 +91,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           auth,
           categoryId: categoryId,
         });
-        
-        console.log(`Posted content to WordPress: ${response.link}`);
 
+        console.log(`Posted content to WordPress: ${response.link}`);
+        console.log('response looks like...', response.title);
+
+        // Insert into database
         await connection.execute(
           'INSERT INTO superstar_site_submissions (superstar_site_id, title, content, submission_response) VALUES (?, ?, ?, ?)',
           [site.id, response.title.rendered, content, response.link]
@@ -105,7 +116,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.error('Error fetching sites or posting content:', error);
     res.status(500).json({ message: 'Failed to post content', details: error.message });
   } finally {
-    console.log('Closing database connection.');
-    await connection.end();
+    console.log('Releasing database connection.');
+    connection.release(); // Release the connection back to the pool
   }
 }
+
+
