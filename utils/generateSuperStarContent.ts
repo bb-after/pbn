@@ -54,7 +54,7 @@ export const generateSuperStarContent = async (topic: string, site: any): Promis
         const randomWidth = Math.floor(Math.random() * 50) + 50;
         const randomIndex = Math.floor(Math.random() * (lines.length - 1)) + 1;
         lines.splice(randomIndex, 0, `<br><br><img width="${randomWidth}%" src="${uploadedImageUrl}" alt="${topic} image"><br><br>`);
-        modifiedContent = lines.join('\n');
+        modifiedContent = lines.join('<br>');
     }
   }
 

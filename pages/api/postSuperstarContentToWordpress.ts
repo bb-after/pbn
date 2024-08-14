@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import mysql, { RowDataPacket } from 'mysql2/promise';
 import { postToWordpress } from '../../utils/postToWordpress';
 import { postToSlack } from '../../utils/postToSlack';
+import { getOrCreateCategory } from 'utils/categoryUtils';
 
 const dbConfig = {
   host: process.env.DB_HOST_NAME,
@@ -53,11 +54,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       password: site.password,
     };
 
+    // Ensure the category exists (and get its ID)
+    const categoryId = await getOrCreateCategory(site.domain, tags.split(',')[0], auth);
+
     const response = await postToWordpress({
       title: title,
       content,
       domain: site.domain,
       auth,
+      categoryId: categoryId,
     });
 
     console.log('Response from WordPress:', response);

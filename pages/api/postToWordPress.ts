@@ -3,7 +3,7 @@ import { RowDataPacket } from 'mysql2';
 import mysql from 'mysql2/promise'; // Import the 'promise' version of mysql2
 import axios from 'axios';
 import { getSlugFromUrl, findPostIdBySlug } from '../../utils/urlUtils';
-import { log } from 'console';
+import { getOrCreateCategory } from '../../utils/categoryUtils'; // Import the reusable function
 
 type PostToWordPressRequest = {
     title: string;
@@ -22,31 +22,6 @@ const dbConfig = {
     password: process.env.DB_PASSWORD,
     database: process.env.DB_DATABASE,
 };
-
-  async function ensureCategoryExists(domain: any, categoryName: any, auth: { username: string; password: string; }) {
-    try {
-
-      // Fetch existing categories to check if the desired category already exists
-      const categoriesResponse = await axios.get(`${domain}/wp-json/wp/v2/categories`, 
-        { params: { search: categoryName } 
-      });
-      const existingCategory = categoriesResponse.data.find((cat: { name: string; }) => cat.name.toLowerCase() === categoryName.toLowerCase());
-
-      // If the category exists, return its ID
-      if (existingCategory) {
-        return existingCategory.id;
-      }
-
-      // If the category doesn't exist, create it
-      const newCategoryResponse = await axios.post(`${domain}/wp-json/wp/v2/categories`, { name: categoryName }, { auth });
-      console.log('response???',newCategoryResponse);
-      
-      return newCategoryResponse.data.id;
-    } catch (error) {
-      console.error('Error ensuring category exists:', error);
-      throw new Error('Failed to ensure category exists');
-    }
-  }
 
 export default async function handler(
     req: NextApiRequest,
@@ -147,7 +122,7 @@ export default async function handler(
       };
       
         // Ensure the category exists (and get its ID)
-        const categoryId = await ensureCategoryExists(domain, category, auth);
+        const categoryId = await getOrCreateCategory(domain, category, auth);
 
         // Make a POST request to WordPress using the retrieved credentials
         const response = await axios.post(

@@ -80,19 +80,21 @@ const HomePage = () => {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setLoading(true);
-    const formattedTopic = topic.replace(/,/g, " ");
+    const topics = topic.split(",");
+    const formattedTopics = topics.map((t) => encodeURIComponent(t)).join(",");
     const siteId = selectedSite;
     try {
       const response = await axios.get(
         `/api/generateContent?topic=${encodeURIComponent(
-          formattedTopic
+          formattedTopics
         )}&siteId=` + siteId
       );
-      const { title, body } = response.data;
+      const { title, body, topic } = response.data;
       setTitle(title);
       setContent(body);
       setEditableContent(body);
       setLoading(false);
+      setTags(topic);
     } catch (error: any) {
       console.error("Error generating content:", error);
       alert("There was an error generating content:" + error.message);
