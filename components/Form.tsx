@@ -54,7 +54,7 @@ const Form: React.FC = () => {
   const [isEditingState, setEditingState] = useState(false);
   const [response, setResponse] = useState<string>(""); // Initialize with an empty string
   const [keywords, setKeywords] = useState("");
-  const [gptVersion, setGptVersion] = useState("gpt-3.5-turbo");
+  const [gptVersion, setGptVersion] = useState("gpt-4o-mini");
   const [language, setLanguage] = useState("English");
   const [wordCount, setWordCount] = useState(300);
   const [keywordsToExclude, setKeywordsToExclude] = useState("");
@@ -163,7 +163,7 @@ const Form: React.FC = () => {
 
   useEffect(() => {
     // When the response changes, update the editorState with the new content
-    if (response !== "") {
+    if (response !== "" && typeof response === "string") {
       const blocksFromHTML = convertFromHTML(response);
       const contentState = ContentState.createFromBlockArray(
         blocksFromHTML.contentBlocks,
@@ -286,7 +286,6 @@ const Form: React.FC = () => {
     const numberOfIterations = 1; // Set the desired number of iterations
 
     try {
-      debugger;
       setShowForm(false);
       setLoadingFirstRequest(true);
       // Initial call to openAI to write the article
