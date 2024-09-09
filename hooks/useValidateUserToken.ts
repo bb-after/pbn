@@ -4,6 +4,7 @@ import axios from 'axios';
 const useValidateUserToken = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isValidUser, setIsValidUser] = useState(false);
+  const [token, setToken] = useState<string | null>(null); // Allow both string and null
 
   useEffect(() => {
     const validateUserToken = async () => {
@@ -21,9 +22,11 @@ const useValidateUserToken = () => {
         const response = await axios.get(`/api/validate-user-token?token=${userToken}`);
         if (response.data.valid) {
           setIsValidUser(true);
+          setToken(userToken); // Store the token in state
           localStorage.setItem('usertoken', userToken);
         } else {
           setIsValidUser(false);
+          setToken(null); // Reset token if invalid
           if (!urlToken) {
             localStorage.removeItem('usertoken');
           }
@@ -38,7 +41,7 @@ const useValidateUserToken = () => {
     validateUserToken();
   }, []);
 
-  return { isLoading, isValidUser };
+  return { isLoading, isValidUser, token };
 };
 
 export default useValidateUserToken;
