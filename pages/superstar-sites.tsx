@@ -45,7 +45,7 @@ const SuperstarSites: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   const router = useRouter();
-  const { isLoading, isValidUser } = useValidateUserToken();
+  const { isLoading, isValidUser, token } = useValidateUserToken();
   const [active, setActive] = useState<string>("1");
 
   useEffect(() => {
