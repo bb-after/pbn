@@ -45,7 +45,7 @@ const SuperstarSites: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   const router = useRouter();
-  const { isLoading, isValidUser, token } = useValidateUserToken();
+  const { isLoading, isValidUser } = useValidateUserToken();
   const [active, setActive] = useState<string>("1");
 
   useEffect(() => {
@@ -124,13 +124,20 @@ const SuperstarSites: React.FC = () => {
       <TableContainer component={Paper}>
         <h1>Superstar Sites</h1>
         <TopRightBox>
-          <Button variant="contained" color="primary" href="/superstar">
+          {/* <Button variant="contained" color="primary" href="/superstar">
             New AI Post
+          </Button> */}
+          <Button
+            variant="contained"
+            color="primary"
+            href="/superstar-post-capture-form"
+          >
+            Capture WordPress Post
           </Button>
           &nbsp;
-          <Button variant="contained" color="secondary" href="/superstar-form">
+          {/* <Button variant="contained" color="secondary" href="/superstar-form">
             Submit Post
-          </Button>
+          </Button> */}
           &nbsp;
           <Button
             variant="contained"
