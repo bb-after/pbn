@@ -90,7 +90,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // 5. Respond with success
     return res.status(200).json({ message: 'Submission saved successfully' });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error capturing submission:', error);
 
     // Close the connection in case of error
