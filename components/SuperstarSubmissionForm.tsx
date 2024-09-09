@@ -18,6 +18,7 @@ import {
 import CopyToClipboardButton from "./CopyToClipboardButton"; // Replace with the correct path to your component
 import router from "next/router";
 import superstarSites from "pages/api/superstar-sites";
+import useValidateUserToken from "hooks/useValidateUserToken";
 
 const Editor = dynamic(
   () => import("react-draft-wysiwyg").then((module) => module.Editor),
@@ -91,6 +92,7 @@ const SuperstarSubmissionForm: React.FC<SuperstarFormProps> = ({
     superStarSiteId || undefined
   );
   const [tagInput, setTagInput] = useState<string>(""); // Single string for comma-separated tags
+  const { token } = useValidateUserToken();
 
   useEffect(() => {
     const fetchSuperstarSites = async () => {
@@ -146,7 +148,6 @@ const SuperstarSubmissionForm: React.FC<SuperstarFormProps> = ({
   const postContentToSuperstar = async () => {
     const contentHTML = stateToHTML(editorState.getCurrentContent());
     const urlParams = new URLSearchParams(window.location.search);
-    const userToken = urlParams.get("token");
     const superStarSiteId = selectedSite;
     // Parse the comma-separated tags
     const tags = tagInput
@@ -162,7 +163,9 @@ const SuperstarSubmissionForm: React.FC<SuperstarFormProps> = ({
           title: title,
           content: contentHTML,
           tags: tags,
-          author: client,
+          author: "",
+          userToken: token,
+          clientName: client,
         }),
         headers: {
           "Content-Type": "application/json",
