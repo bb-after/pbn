@@ -27,8 +27,8 @@ const SuperstarFormPage: React.FC = () => {
         }}
       >
         <Typography variant="h5" gutterBottom>
-          <Link href="https://sales.statuscrawl.io">Portal</Link> &raquo; Post
-          an Article to the Superstar
+          <Link href="https://sales.statuscrawl.io">Portal</Link>
+          &raquo; Post an Article to the Superstar Network
         </Typography>
         <SuperstarSubmissionForm
           articleTitle={initialArticleTitle}

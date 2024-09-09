@@ -55,7 +55,7 @@ const SuperstarSiteSubmissionsTable = () => {
   interface User {
     name: string;
     user_token: string; // Adjust this type based on the actual data, e.g., string, number, etc.
-    pbn_count: number;
+    superstar_count: number;
   }
   const [users, setUsers] = useState<User[]>([]);
 
@@ -95,7 +95,7 @@ const SuperstarSiteSubmissionsTable = () => {
     // Function to fetch users
     const fetchUsers = async () => {
       try {
-        const response = await fetch("/api/getUsers");
+        const response = await fetch("/api/getSuperstarUsers");
         const data = await response.json();
         setUsers(data.rows);
       } catch (error) {
@@ -209,7 +209,7 @@ const SuperstarSiteSubmissionsTable = () => {
               </MenuItem>
               {users.map((user, index) => (
                 <MenuItem key={index} value={user.user_token}>
-                  {user.name} ({user.pbn_count})
+                  {user.name} ({user.superstar_count})
                 </MenuItem>
               ))}
             </Select>
