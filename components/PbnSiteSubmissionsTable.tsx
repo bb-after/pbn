@@ -225,12 +225,14 @@ const PbnSiteSubmissionsTable = () => {
                   <TableCell>
                     {expandedRows[submission.id] ? (
                       <div
-                        dangerouslySetInnerHTML={renderHTML(submission.content)}
+                        dangerouslySetInnerHTML={renderHTML(
+                          submission?.content
+                        )}
                       />
                     ) : (
                       <div
                         dangerouslySetInnerHTML={renderHTML(
-                          submission.content.substring(0, 100) + "..."
+                          submission?.content?.substring(0, 100) + "..."
                         )}
                       />
                     )}
