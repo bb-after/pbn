@@ -65,7 +65,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const content = $('.entry-content').html(); // Assuming that content is within a class "entry-content"
     
     if (!title || !content) {
-      return res.status(400).json({ message: 'Unable to scrape post content' });
+    //   return res.status(400).json({ message: 'Unable to scrape post content' });
     }
 
     // 4. Insert the data into the `superstar_site_submissions` table
