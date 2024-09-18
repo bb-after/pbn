@@ -97,6 +97,7 @@ const SuperstarSiteSubmissionsTable = () => {
       try {
         const response = await fetch("/api/getSuperstarUsers");
         const data = await response.json();
+        console.log("users", data);
         setUsers(data.rows);
       } catch (error) {
         console.error("Failed to fetch users:", error);

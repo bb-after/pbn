@@ -28,7 +28,7 @@ const SuperstarPostCaptureForm: React.FC = () => {
     // Function to fetch users
     const fetchUsers = async () => {
       try {
-        const response = await fetch("/api/getUsers");
+        const response = await fetch("/api/getAllUsers");
         const data = await response.json();
         setUsers(data.rows);
 
