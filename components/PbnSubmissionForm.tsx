@@ -15,6 +15,7 @@ import {
   InputLabel,
 } from "@mui/material";
 import CopyToClipboardButton from "./CopyToClipboardButton"; // Replace with the correct path to your component
+import useValidateUserToken from "hooks/useValidateUserToken";
 
 // Dynamically load the RTE component (client-side) to prevent server-side rendering issues
 const Editor = dynamic(
@@ -50,6 +51,7 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
   const handleCategoryChange = (event: SelectChangeEvent) => {
     setCategory(event.target.value as string);
   };
+  const { token } = useValidateUserToken();
 
   useEffect(() => {
     setId(submissionId);
@@ -65,8 +67,6 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
   const postContentToPbn = async () => {
     const contentHTML = stateToHTML(editorState.getCurrentContent());
     const urlParams = new URLSearchParams(window.location.search);
-    const userToken = urlParams.get("token");
-
     try {
       const response = await fetch("/api/postToWordPress", {
         method: "POST",
@@ -74,7 +74,7 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
           title: title,
           clientName: clientName,
           content: contentHTML,
-          userToken: userToken,
+          userToken: token,
           category: category,
           tags: [],
           submissionId: id,
