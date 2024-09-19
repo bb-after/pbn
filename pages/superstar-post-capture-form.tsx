@@ -1,34 +1,24 @@
 // pages/pbn-form.tsx
 import React from "react";
-import { Typography, Link } from "@mui/material";
+import { Typography, Link, Paper, TableContainer } from "@mui/material";
 import SuperstarPostCaptureForm from "../components/SuperstarPostCaptureForm";
+import LayoutContainer from "components/LayoutContainer";
+import StyledHeader from "components/StyledHeader";
 
 const PbnFormPage: React.FC = () => {
   return (
-    <div>
-      <style jsx global>
-        {`
-          body {
-            background: #eee;
-          }
-        `}
-      </style>
+    <LayoutContainer>
+      <StyledHeader />
+      <TableContainer component={Paper} style={{ padding: "1rem" }}>
+        <h1>Superstar Sites</h1>
 
-      <div
-        style={{
-          padding: "2rem",
-          borderRadius: "3px",
-          margin: "2rem",
-          background: "#fff",
-        }}
-      >
         <Typography variant="h5" gutterBottom>
           <Link href="https://sales.statuscrawl.io">Portal</Link> &raquo;
           Capture Superstar Article Submission
         </Typography>
         <SuperstarPostCaptureForm />
-      </div>
-    </div>
+      </TableContainer>
+    </LayoutContainer>
   );
 };
 
