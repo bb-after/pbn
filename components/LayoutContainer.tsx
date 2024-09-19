@@ -11,7 +11,7 @@ const LayoutContainer = ({ children }: LayoutContainerProps) => {
       style={{
         padding: 16,
         margin: "auto",
-        maxWidth: 950,
+        maxWidth: "90%",
         overflow: "auto",
         background: "#ffffff",
       }}

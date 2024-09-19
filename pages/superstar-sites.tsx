@@ -121,7 +121,7 @@ const SuperstarSites: React.FC = () => {
   return (
     <LayoutContainer>
       <StyledHeader />
-      <TableContainer component={Paper}>
+      <TableContainer component={Paper} style={{ padding: "1rem" }}>
         <h1>Superstar Sites</h1>
         <TopRightBox>
           {/* <Button variant="contained" color="primary" href="/superstar">
