@@ -1,81 +1,69 @@
-import React, { useEffect, useState } from 'react';
-import Form from '../components/Form';
-import Image from 'next/image';
-import { useRouter } from 'next/router';
+import React, { useEffect, useState } from "react";
+import Form from "../components/Form";
+import Image from "next/image";
+import { useRouter } from "next/router";
+import LayoutContainer from "components/LayoutContainer";
+import StyledHeader from "components/StyledHeader";
+import { Paper, TableContainer } from "@mui/material";
+import useValidateUserToken from "hooks/useValidateUserToken";
 
 const pageTitle = "PBN'J";
 
 const Home: React.FC = () => {
   const [hasToken, setHasToken] = useState<boolean>(true); // assume token is there initially
   const router = useRouter(); // Use Next.js's router
+  const { token } = useValidateUserToken();
 
-  useEffect(() => {
-    const queryParams = new URLSearchParams(window.location.search);
-    const token = queryParams.get('token');
-
-    if (!token) {
-      setHasToken(false);
-      const timerId = setTimeout(() => {
-        router.push('https://sales.statuscrawl.io/home');
-      }, 3000);
-
-      return () => clearTimeout(timerId); // Clear timeout if component is unmounted
-    }
-  }, [router]);
-
-  if (!hasToken) {
+  if (!token) {
     return (
-      <div style={{ paddingTop: '15rem', fontSize: '2rem', textAlign: 'center', color: 'tomato' }}>
-        No User token (or invalid token) found!<br /><br />
-        You will be redirected to the <a target="_blank" href="https://sales.statuscrawl.io/home">Sales Portal</a> momentarily.<br /><br />Please log in to the Sales Portal and try again.
+      <div
+        style={{
+          paddingTop: "15rem",
+          fontSize: "2rem",
+          textAlign: "center",
+          color: "tomato",
+        }}
+      >
+        No User token (or invalid token) found!
+        <br />
+        <br />
+        You will be redirected to the{" "}
+        <a target="_blank" href="https://sales.statuscrawl.io/home">
+          Sales Portal
+        </a>{" "}
+        momentarily.
+        <br />
+        <br />
+        Please log in to the Sales Portal and try again.
       </div>
     );
   }
 
   return (
-    <div style={{ padding: 16, margin: 'auto', maxWidth: 750, background: '#ffffff' }}>
-      <div style={{ background: '#000', padding: 3 }}>
-      <style jsx global>
-        {`
-          h1 {
-            font-family: 'Bungee Inline', sans-serif;
-            font-weight: 400;
-            font-size: 60px;
-            margin-top: 20px;
-          }
-          body {
-            background: #eee;
-          }
-        `}
-      </style>
-      <Image
-        priority
-        src="/images/sl-logo.png"
-        width={720}
-        height={80}	
-        style={{ objectFit: 'contain' }}
-        alt=""
-      />
+    <LayoutContainer>
+      <StyledHeader />
 
+      <TableContainer component={Paper}>
+        <div
+          style={{
+            padding: "1rem 0 0 1rem",
+          }}
+        >
+          <Image
+            priority
+            src="/images/pbnj.png"
+            height={110}
+            width={110}
+            style={{ marginRight: 30 }}
+            alt=""
+          />
 
-      </div>
-      
-      <div style={{ paddingTop: 20, display: 'flex' }}>
+          <h1>{`${pageTitle}`}</h1>
+        </div>
 
-        <Image
-        priority
-        src="/images/pbnj.png"
-        height={110}
-        width={110}
-        style={{ marginRight: 30 }}
-        alt=""
-      />
-
-        <h1>{`${pageTitle}`}</h1>
-      </div>
-      
-      <Form />
-    </div>
+        <Form />
+      </TableContainer>
+    </LayoutContainer>
   );
 };
 
