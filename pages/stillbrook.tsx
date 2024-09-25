@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   TableContainer,
   Paper,
@@ -10,6 +10,7 @@ import {
   FormControl,
   FormLabel,
 } from "@mui/material";
+import SaveAltIcon from "@mui/icons-material/SaveAlt";
 import LayoutContainer from "components/LayoutContainer";
 import StyledHeader from "components/StyledHeader";
 
@@ -22,9 +23,21 @@ export default function Home() {
   const [keyword, setKeyword] = useState("");
   const [url, setUrl] = useState("");
   const [location, setLocation] = useState("");
+  const [screenshotType, setScreenshotType] = useState("exact_url_match");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<SearchResult | null>(null); // Define the result type
-  const [screenshotType, setScreenshotType] = useState("exact_url_match"); // Default selection
+  const [result, setResult] = useState<SearchResult | null>(null);
+
+  // Clear URL field when it's not needed
+  useEffect(() => {
+    if (
+      !(
+        screenshotType === "exact_url_match" ||
+        screenshotType === "keyword_match"
+      )
+    ) {
+      setUrl("");
+    }
+  }, [screenshotType]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,6 +54,17 @@ export default function Home() {
     setResult(data);
   };
 
+  const handleDownload = () => {
+    if (result && result.screenshot) {
+      const link = document.createElement("a");
+      link.href = result.screenshot;
+      link.download = "screenshot.png";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
   return (
     <LayoutContainer>
       <StyledHeader />
@@ -51,7 +75,7 @@ export default function Home() {
             <div>
               <TextField
                 fullWidth
-                label="Search Term"
+                label="Keyword"
                 type="text"
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
@@ -78,17 +102,17 @@ export default function Home() {
                   control={<Radio />}
                   label="Negative Sentiment"
                 />
-                {/* <FormControlLabel
+                <FormControlLabel
                   value="keyword_match"
                   control={<Radio />}
                   label="Specific Keyword Match"
-                /> */}
+                />
               </RadioGroup>
             </FormControl>
             <br />
-            {screenshotType === "exact_url_match" && (
+            {(screenshotType === "exact_url_match" ||
+              screenshotType === "keyword_match") && (
               <div>
-                <br />
                 <TextField
                   fullWidth
                   label="URL"
@@ -99,11 +123,11 @@ export default function Home() {
                   variant="outlined"
                 />
                 <br />
-                <br />
               </div>
             )}
 
             <div>
+              <br />
               <TextField
                 fullWidth
                 label="Geographic Location"
@@ -127,11 +151,26 @@ export default function Home() {
           </form>
 
           {result && (
-            <div>
+            <div style={{ marginTop: "2rem" }}>
               {result.error ? (
                 <p>{result.error}</p>
               ) : (
-                <img src={result.screenshot} alt="Google search result" />
+                <>
+                  <img
+                    src={result.screenshot}
+                    alt="Google search result"
+                    style={{ maxWidth: "100%", height: "auto" }}
+                  />
+                  <Button
+                    variant="contained"
+                    color="secondary"
+                    startIcon={<SaveAltIcon />}
+                    onClick={handleDownload}
+                    style={{ marginTop: "1rem" }}
+                  >
+                    Download Image
+                  </Button>
+                </>
               )}
             </div>
           )}
