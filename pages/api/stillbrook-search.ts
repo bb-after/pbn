@@ -1,6 +1,10 @@
-import puppeteer, { Page } from 'puppeteer';
+// pages/api/stillbrook-search.ts
+
+import chromium from 'chrome-aws-lambda';
+import puppeteer from 'puppeteer-core'; // Import puppeteer-core directly
 import type { NextApiRequest, NextApiResponse } from 'next';
 import Sentiment from 'sentiment';
+import { Page } from 'puppeteer-core';
 
 interface SearchRequestBody {
   keyword: string;
@@ -35,11 +39,25 @@ export default async function handler(
     return res.status(400).json({ error: 'URL is required for Exact URL Match.' });
   }
 
-  let browser;
+  let browser: puppeteer.Browser | null = null;
   try {
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    let executablePath: string | undefined;
+    if (isProduction) {
+      executablePath = await chromium.executablePath;
+    } else {
+      // In development, use the local puppeteer
+      const puppeteerDev = require('puppeteer');
+      executablePath = puppeteerDev.executablePath();
+    }
+
     browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath,
+      headless: isProduction ? chromium.headless : true,
+      ignoreHTTPSErrors: true,
     });
 
     const page = await browser.newPage();
@@ -201,7 +219,9 @@ export default async function handler(
     console.error('Error while searching:', error);
     res.status(500).json({ error: 'Internal Server Error' });
   } finally {
-    if (browser) await browser.close();
+    if (browser !== null) {
+      await browser.close();
+    }
   }
 }
 
