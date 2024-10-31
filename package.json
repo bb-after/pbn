@@ -29,6 +29,7 @@
     "file-saver": "^2.0.5",
     "framer-motion": "^10.15.0",
     "he": "^1.2.0",
+    "jsonrepair": "^3.9.0",
     "lodash": "^4.17.21",
     "material-icons": "^1.13.9",
     "mysql2": "^3.6.1",

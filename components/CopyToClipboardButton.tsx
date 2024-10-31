@@ -1,17 +1,20 @@
-import React, { useState } from 'react';
-import { Button, Snackbar, IconButton } from '@mui/material';
-import { ContentCopy as ContentCopyIcon, Close as CloseIcon } from '@mui/icons-material';
+import React, { useState } from "react";
+import { Button, Snackbar, IconButton } from "@mui/material";
+import {
+  ContentCopy as ContentCopyIcon,
+  Close as CloseIcon,
+} from "@mui/icons-material";
 
 const CopyToClipboardButton: React.FC<{ text: string }> = ({ text }) => {
   const [isSnackbarOpen, setIsSnackbarOpen] = useState(false);
 
   const handleCopyToClipboard = async () => {
     try {
-        const transformedText = text.replace(/<br\s*\/?>/g, '\n'); // Replace <br> tags with line breaks
-        await navigator.clipboard.writeText(transformedText);
-        setIsSnackbarOpen(true);
+      const transformedText = text.replace(/<br\s*\/?>/g, "\n"); // Replace <br> tags with line breaks
+      await navigator.clipboard.writeText(transformedText);
+      setIsSnackbarOpen(true);
     } catch (error) {
-      console.error('Error copying to clipboard:', error);
+      console.error("Error copying to clipboard:", error);
     }
   };
 
@@ -21,26 +24,30 @@ const CopyToClipboardButton: React.FC<{ text: string }> = ({ text }) => {
 
   return (
     <div>
-        <Button
+      <Button
         startIcon={<ContentCopyIcon />}
         variant="contained"
         color="primary"
         size="small"
         onClick={handleCopyToClipboard}
-        >
+      >
         Copy to Clipboard
-        </Button>
-  
+      </Button>
+
       <Snackbar
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         open={isSnackbarOpen}
         autoHideDuration={3000}
         onClose={handleCloseSnackbar}
         message="Copied to clipboard"
         action={
-<IconButton size="small" color="inherit" onClick={handleCloseSnackbar}>
-  <CloseIcon fontSize="small" />
-</IconButton>
+          <IconButton
+            size="small"
+            color="inherit"
+            onClick={handleCloseSnackbar}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
         }
       />
     </div>
