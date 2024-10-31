@@ -230,3 +230,90 @@ describe('parseResponse function', () => {
 
   })
 });
+
+describe('parseResponse function', () => {
+  it('correctly parses a response wrapped in backticks with json keyword', () => {
+    const response = `\`\`\`json
+{
+    "https://example.com": {
+        "text": "[Example Text]",
+        "sentence": "This is an example sentence with [Example Text]."
+    }
+}
+\`\`\``;
+
+    const parsedResponse = parseResponse(response);
+    expect(parsedResponse).toMatchObject({
+      "https://example.com": {
+        text: "Example Text",
+        sentence: "This is an example sentence with Example Text."
+      }
+    });
+  });
+
+  it('correctly parses a response wrapped in triple backticks without json keyword', () => {
+    const response = `\`\`\`
+{
+    "https://example.com": {
+        "text": "[Example Text]",
+        "sentence": "This is an example sentence with [Example Text]."
+    }
+}
+\`\`\``;
+
+    const parsedResponse = parseResponse(response);
+    expect(parsedResponse).toMatchObject({
+      "https://example.com": {
+        text: "Example Text",
+        sentence: "This is an example sentence with Example Text."
+      }
+    });
+  });
+
+  it('correctly handles a response with backticks and a missing starting brace', () => {
+    const response = `\`\`\`json
+"https://example.com": {
+    "text": "[Example Text]",
+    "sentence": "This is an example sentence with [Example Text]."
+}
+\`\`\``;
+
+    const parsedResponse = parseResponse(response);
+    expect(parsedResponse).toMatchObject({
+      "https://example.com": {
+        text: "Example Text",
+        sentence: "This is an example sentence with Example Text."
+      }
+    });
+  });
+
+  it('correctly parses a valid response without leading or trailing backticks', () => {
+    const response = `{
+      "https://example.com": {
+          "text": "[Example Text]",
+          "sentence": "This is an example sentence with [Example Text]."
+      }
+    }`;
+
+    const parsedResponse = parseResponse(response);
+    expect(parsedResponse).toMatchObject({
+      "https://example.com": {
+        text: "Example Text",
+        sentence: "This is an example sentence with Example Text."
+      }
+    });
+  });
+
+  it('returns the original response when parsing fails due to invalid JSON', () => {
+    const response = 'invalid_response';
+
+    console.error = jest.fn(); // Mocking console.error
+    console.log = jest.fn(); // Mocking console.log
+
+    const parsedResponse = parseResponse(response);
+
+    expect(parsedResponse).toBe(response);
+    expect(console.error).toHaveBeenCalled();
+    expect(console.log).toHaveBeenCalled();
+  });
+});

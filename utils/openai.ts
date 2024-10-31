@@ -34,7 +34,7 @@ function trimKeywords(keywords: string[]): string[] {
 
 const createPromptMessageFromInputs = function(inputData: any) {
     var toneLine = inputData.tone ? `- Write the article with the following tone: ${inputData.tone}.\n\n` : '';
-    var promptMessage = `Write an article approximately, but not exactly, ${inputData.wordCount} words in length, incorporating the following keywords: ${trimKeywords(inputData.keywords).join(', ')}.
+    var promptMessage = `Write an article approximately, but not exactly, ${inputData.wordCount} words in length, incorporating the following keywords: "${trimKeywords(inputData.keywords).join(', ')}".
 
     **Important:** Use each keyword beteen 2 to 5 times, ensuring you do not exceed this limit.
 
@@ -308,47 +308,59 @@ export const callOpenAIRevised = async (inputData: any, openAIResponse: any) => 
 
 };
 
-export const parseResponse = function(response: string)
-{
-    postToSlack(response);
-    // Replace outer single quotes to double quotes
-    let correctedResponse = response.trim().replace(/'([^']+)':/g, '"$1":');
+export const parseResponse = function(response: string) {
+    console.log('response pre formatting?', response);
 
-    // Replace inner single quotes to double quotes, but ensuring we're not inside a word (to account for single quotes in sentences)
+    // Step 1: Remove any leading/trailing backticks and non-JSON intro text.
+    let correctedResponse = response.replace(/```+/g, '');  // Remove multiple backticks.
+    correctedResponse = correctedResponse.replace(/^(Sure, here are the URL formats.*?:)/i, '');  // Remove common intros.
+    
+    // step 1a: check for it starting with the term json.
+    if (correctedResponse.startsWith('json')) {
+        correctedResponse = correctedResponse.replace(/^json/i,'');
+    }
+
+    // Step 2: Replace outer single quotes with double quotes.
+    correctedResponse = correctedResponse.trim().replace(/'([^']+)':/g, '"$1":');
+
+    // Step 3: Replace inner single quotes to double quotes, avoiding those within words.
     correctedResponse = correctedResponse.replace(/: '([^']+)'/g, ': "$1"');
 
-    // Replace line breaks with commas to create a valid JSON format
-    correctedResponse = correctedResponse.replace(/\s{4,}/g, ',');
+    // Step 4: Replace double line breaks or extraneous whitespace with commas.
+    correctedResponse = correctedResponse.replace(/\n\n"/g, ',"'); // Double line breaks replaced by commas between JSON objects.
+    correctedResponse = correctedResponse.replace(/\s{4,}/g, ''); // Long spaces replaced by nothing to format as JSON-like.
 
-    // Replace double line breaks with commas.
-    correctedResponse = correctedResponse.replace(/\n\n"/g, ',"');
-    // Remove square brackets from the 'text' field
+    // Step 5: Remove square brackets around text fields.
     correctedResponse = correctedResponse.replace(/\[(.+?)\]/g, '$1');
 
-    //strip out trailing single quotes or double quotes at the end of the payload.  
-    // sometimes OpenAI returns the response this way.
-    correctedResponse = correctedResponse.replace(/['"]$/, '');
+    // Step 6: Remove trailing commas and misplaced punctuation (e.g., between key-value pairs).
+    // correctedResponse = correctedResponse.replace(/,\s*}/g, '}'); // Remove trailing commas before closing brace.
+    // correctedResponse = correctedResponse.replace(/},\s*}/g, '}}'); // Handle cases with misplaced braces and commas.
+    // correctedResponse = correctedResponse.replace(/,,/g, ','); // Remove any double commas created during the process.
 
-    // Check if correctedResponse starts with a curly brace
+    // Step 7: Ensure the response starts and ends with curly braces if it's a JSON object.
     if (!correctedResponse.startsWith('{')) {
-        
-        // Add curly braces to the start and end of the value
-        correctedResponse = `{${correctedResponse}}`;
-    } 
+        correctedResponse = `{${correctedResponse}`;
+    }
+    if (!correctedResponse.endsWith('}')) {
+        correctedResponse = `${correctedResponse}}`;
+    }
 
+    // Step 8: Parse the corrected response to JSON.
     let parsedResponse: Record<string, {text: string, sentence: string}>;
     try {
         parsedResponse = JSON.parse(correctedResponse);
     } catch (error) {
         console.error("Error parsing the response:", error);
-        console.log('initial response:',response);
-        console.log('corrected response:',correctedResponse);
-        return response;
+        console.log('initial response:', response);
+        console.log('corrected response:', correctedResponse);
+        return response; // Return original response if parsing fails.
     }
 
     return parsedResponse;
+};
 
-}
+
 
 export const bulkReplaceLinks = function(response: any, originalText: string) {
     if (typeof response === 'object') {
@@ -413,8 +425,9 @@ export const bulkReplaceLinks = function(response: any, originalText: string) {
 
         content = replaceHyperLinkInFirstSentenceFallback(content);
         return content;
+    } else {
+        return content;
     }
-
 }
 
 export const replaceHyperLinkInFirstSentenceFallback = function(content: string) {
@@ -456,9 +469,14 @@ export const insertBacklinks = async (backlinkValues: any, openAIResponse: strin
         - Provide the entire sentence in which the phrase occurs to ensure clarity of context.
         - Within the sentence, encapsulate the specific words to be hyperlinked using square brackets.
        
-        Provide the response in this format: 
-        
-        "URL_PLACEHOLDER": {"text": "[selected text]", "sentence": "full sentence containing the selected text"}.
+        ### **Response Format Requirement:**
+        Provide the response strictly in **JSON format**. The response must be a valid JSON object, and it should look like this: 
+        {
+            "URL_PLACEHOLDER": {
+                "text": "[selected text]",
+                "sentence": "full sentence containing the selected text"
+            }
+        }
         
         Note: For each URL, replace the word 'URL_PLACEHOLDER' with the actual URL in the response format.`
         }       

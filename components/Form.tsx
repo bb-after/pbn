@@ -32,6 +32,7 @@ import {
   parseTitleFromArticle,
 } from "../utils/openai";
 import { sendDataToStatusCrawl } from "../utils/statusCrawl";
+import useValidateUserToken from "../hooks/useValidateUserToken";
 
 // Dynamically load the RTE component (client-side) to prevent server-side rendering issues
 const Editor = dynamic(
@@ -41,6 +42,7 @@ const Editor = dynamic(
 const skipOpenAiRevision = process.env.NEXT_PUBLIC_SKIP_OPENAI_REVISION;
 const Form: React.FC = () => {
   const [backlinks, setBacklinks] = useState([""]); // Initial state with one input
+  const [missingBacklinks, setMissingBacklinks] = useState<string[]>([]); // Missing backlinks state
   const [previousResponses, setPreviousResponses] = React.useState<string[]>(
     []
   );
@@ -94,6 +96,11 @@ const Form: React.FC = () => {
     iterations: number,
     remixMode: string
   ) => {
+    if (!token) {
+      console.error("User token not found.");
+      return;
+    }
+
     setRemixModalOpen(false); // Close the modal
 
     // setLoadingFirstRequest(true); // Set loading state to true before the API call
@@ -129,6 +136,13 @@ const Form: React.FC = () => {
             backlinkArray.join(", "),
             hyperlinkedResponse
           );
+
+          // Compare backlinks to identify missing ones
+          const missingBacklinks = backlinkArray.filter(
+            (backlink) => !hyperlinkedResponse.includes(backlink)
+          );
+          setMissingBacklinks(missingBacklinks); // Update state with missing backlinks
+
           setResponse(hyperlinkedResponse);
           addResponseToPreviousResponses(hyperlinkedResponse);
           postToSlack("*Iteration #" + i + "*:" + hyperlinkedResponse);
@@ -138,8 +152,8 @@ const Form: React.FC = () => {
             "Failed to insert backlinks.  Looks like a timeout request.  Please try again."
           );
         } finally {
+          await sendDataToStatusCrawl(inputData, hyperlinkedResponse, token);
           setLoadingThirdRequest(false);
-          await sendDataToStatusCrawl(inputData, hyperlinkedResponse);
         }
       }
     } catch (error) {
@@ -160,6 +174,8 @@ const Form: React.FC = () => {
   const handleEditorStateChange = (newState: EditorState) => {
     setEditorState(newState);
   };
+
+  const { token, isLoading, isValidUser } = useValidateUserToken(); // Destructure the returned object
 
   useEffect(() => {
     // When the response changes, update the editorState with the new content
@@ -304,13 +320,19 @@ const Form: React.FC = () => {
         backlinkArray.join(", "),
         hyperlinkedResponse
       );
-      // ...
+
+      // Compare backlinks to identify missing ones
+      const missingBacklinks = backlinkArray.filter(
+        (backlink) => !hyperlinkedResponse.includes(backlink)
+      );
+      setMissingBacklinks(missingBacklinks); // Update state with missing backlinks
+
       setResponse(hyperlinkedResponse);
       addResponseToPreviousResponses(hyperlinkedResponse);
       setLoadingThirdRequest(false);
       postToSlack(hyperlinkedResponse);
 
-      await sendDataToStatusCrawl(inputData, hyperlinkedResponse);
+      await sendDataToStatusCrawl(inputData, hyperlinkedResponse, token);
     } catch (error) {
       setLoadingFirstRequest(false);
       setLoadingThirdRequest(false);
@@ -378,6 +400,24 @@ const Form: React.FC = () => {
             <FinalLoadingStateComponent />
           ) : (
             <div className="allEditing">
+              {missingBacklinks.length > 0 && (
+                <div className={styles.missingBacklinksWarning}>
+                  <h4>
+                    The content was generated but we were unable to insert all
+                    backlinks. Please review the text below and manually add
+                    your backlinks.
+                  </h4>
+                  <ul>
+                    {missingBacklinks.map((backlink, index) => (
+                      <li key={index}>
+                        <span>{backlink}</span>
+                        <CopyToClipboardButton text={backlink} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               {/* //start display response and response components if not loading */}
               {isEditingState ? (
                 <div>
