@@ -167,52 +167,47 @@ const trimContentToFitTokenLimit = (contentArray: any, maxTokens: number) => {
 /*** openapi code start */
 export const callOpenAI = async (inputData: any) => {
     if (mockData === '1') {
-        console.log('mockData = '+mockData+'.  Returning dummyText');
-        return dummyText;
+      console.log('mockData = ' + mockData + '.  Returning dummyText');
+      return dummyText;
     }
-
-    // Fetch content from URLs
-    let urlContent = '';
-    // const companyName = 'Darius_Fisher';
-    if (inputData.sourceUrl && inputData.sourceUrl !== '') {
-        urlContent = await fetchDataFromURLNew(inputData.sourceUrl);
+  
+    // Use the provided source content or fetch content from URL
+    let sourceContent = inputData.sourceContent || "";
+    if (!sourceContent && inputData.sourceUrl) {
+      sourceContent = await fetchDataFromURLNew(inputData.sourceUrl);
     }
-
-    console.log("url length ", urlContent.length);
-
-    const urlContentChunks = splitUrlContentIntoChunks(urlContent);
-
-    var promptMessage = createPromptMessageFromInputs(inputData);
-
+  
+    console.log("Source content length: ", sourceContent.length);
+    const sourceContentChunks = splitUrlContentIntoChunks(sourceContent);
+  
+    const promptMessage = createPromptMessageFromInputs(inputData);
     const initialGptMessage = [
-        { "role": "system", "content": `I want you write as if you are a proficient SEO and copy writer that speaks and writes fluent ${inputData.language}.` },
-        // { "role": "user", "content": "Assume the reader is already somewhat familiar with the keyword as a subject matter. Do not spend too much time defining or introducing the keyword as a concept or entity"},
-        ...urlContentChunks.map(chunk => ({ "role": "system", "content": chunk })),
-        { "role": "user", "content": promptMessage },
+      { role: "system", content: `I want you to write as if you are a proficient SEO and copywriter that speaks and writes fluent ${inputData.language}.` },
+      ...sourceContentChunks.map(chunk => ({ role: "system", content: chunk })),
+      { role: "user", content: promptMessage },
     ];
-
+  
     const gptMessage = trimContentToFitTokenLimit(initialGptMessage, maxTokens);
     try {
-        const openai = getOpenAIClient();
-        const GPTRequest = async (message: any) => {
-            const response = await openai.chat.completions
-            .create({
-                model: modelType,
-                temperature: 0.8,
-                messages: message,
-            });
-        
-            return response;
-        };
-    
-        const response = GPTRequest(gptMessage);
+      const openai = getOpenAIClient();
+      const GPTRequest = async (message: any) => {
+        const response = await openai.chat.completions.create({
+          model: modelType,
+          temperature: 0.8,
+          messages: message,
+        });
         return response;
-
+      };
+  
+      const response = GPTRequest(gptMessage);
+      return response;
+  
     } catch (error) {
-        console.error('OpenAI API Error:', error);
-        throw new Error('Failed to fetch response from OpenAI API.');
+      console.error('OpenAI API Error:', error);
+      throw new Error('Failed to fetch response from OpenAI API.');
     }
-};
+  };
+  
 
 /*** openapi code start */
 export const callOpenAIToRewriteArticle = async (content: string, inputData: any) => {
