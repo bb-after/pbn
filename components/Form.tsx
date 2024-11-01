@@ -66,6 +66,9 @@ const Form: React.FC = () => {
   const [otherInstructions, setOtherInstructions] = useState("");
   const [isRemixModalOpen, setRemixModalOpen] = useState(false);
   const [isPbnModalOpen, setPbnModalOpen] = useState(false);
+  const [sourceContent, setSourceContent] = useState(""); // Added to hold the pasted content
+  const [useSourceContent, setUseSourceContent] = useState(false); // Determines if source content or URL should be used
+
   //post to pbn modal specific constants
   const [articleTitle, setArticleTitle] = useState("");
   const [pbnModalEditorState, setPbnModalEditorState] = useState(
@@ -91,6 +94,7 @@ const Form: React.FC = () => {
     setPbnModalEditorState(editorStateWithContent); // Assuming you have a state variable for the DraftJS editor
     setPbnModalOpen(true);
   };
+  const { token, isLoading, isValidUser } = useValidateUserToken(); // Destructure the returned object
 
   const handleRemixModalSubmit = async (
     iterations: number,
@@ -174,8 +178,6 @@ const Form: React.FC = () => {
   const handleEditorStateChange = (newState: EditorState) => {
     setEditorState(newState);
   };
-
-  const { token, isLoading, isValidUser } = useValidateUserToken(); // Destructure the returned object
 
   useEffect(() => {
     // When the response changes, update the editorState with the new content
@@ -280,7 +282,8 @@ const Form: React.FC = () => {
     return {
       keywords: keywords.split(","),
       keywordsToExclude: keywordsToExclude.split(","),
-      sourceUrl: sourceUrl,
+      sourceUrl: useSourceContent ? "" : sourceUrl, // Use URL if useSourceContent is false
+      sourceContent: useSourceContent ? sourceContent : "", // Use source content if useSourceContent is true
       tone: tone.join(", "),
       wordCount: wordCount,
       gptVersion: gptVersion,
@@ -358,6 +361,10 @@ const Form: React.FC = () => {
             setKeywords={setKeywords}
             sourceUrl={sourceUrl}
             setSourceUrl={setSourceUrl}
+            sourceContent={sourceContent} // New state for source content
+            setSourceContent={setSourceContent} // New setter for source content
+            useSourceContent={useSourceContent} // New state for determining if source content should be used
+            setUseSourceContent={setUseSourceContent} // Setter for useSourceContent
             keywordsToExclude={keywordsToExclude}
             setKeywordsToExclude={setKeywordsToExclude}
             gptVersion={gptVersion}
