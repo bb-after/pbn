@@ -300,6 +300,10 @@ const Form: React.FC = () => {
     // setLoadingFirstRequest(true); // Set loading state to true before the API call
     const inputData = getInputData();
     const numberOfIterations = 1; // Set the desired number of iterations
+    if (!token) {
+      alert("User token not found.");
+      return;
+    }
 
     try {
       setShowForm(false);

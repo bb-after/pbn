@@ -3,6 +3,16 @@
   padding-bottom: 1rem;
   border-bottom: 1px solid #ccc;
 }
+.missingBacklinksWarning h4 {
+  color: red;
+}
+.missingBacklinksWarning li {
+  margin-top: 25px;
+}
+.missingBacklinksWarning li span {
+  float: left;
+  margin-right: 10px;
+}
 
 .actionBar {
   background-color: #eee;

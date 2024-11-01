@@ -426,6 +426,7 @@ export const bulkReplaceLinks = function(response: any, originalText: string) {
         content = replaceHyperLinkInFirstSentenceFallback(content);
         return content;
     } else {
+        // return if fails to backlink.
         return content;
     }
 }
