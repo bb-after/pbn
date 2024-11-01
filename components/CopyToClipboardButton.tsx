@@ -31,7 +31,7 @@ const CopyToClipboardButton: React.FC<{ text: string }> = ({ text }) => {
         size="small"
         onClick={handleCopyToClipboard}
       >
-        Copy to Clipboard
+        {/* Copy to Clipboard */}
       </Button>
 
       <Snackbar
