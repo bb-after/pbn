@@ -28,6 +28,10 @@ interface ArticleFormProps {
   setKeywordsToExclude: React.Dispatch<React.SetStateAction<string>>;
   sourceUrl: string;
   setSourceUrl: React.Dispatch<React.SetStateAction<string>>;
+  sourceContent: string;
+  setSourceContent: React.Dispatch<React.SetStateAction<string>>;
+  useSourceContent: boolean;
+  setUseSourceContent: React.Dispatch<React.SetStateAction<boolean>>;
   gptVersion: string;
   handleGptVersionChange: (e: SelectChangeEvent) => void;
   handleLanguage: (e: SelectChangeEvent) => void;
@@ -50,6 +54,10 @@ const ArticleForm: React.FC<ArticleFormProps> = ({
   setKeywordsToExclude,
   sourceUrl,
   setSourceUrl,
+  sourceContent,
+  setSourceContent,
+  useSourceContent,
+  setUseSourceContent,
   gptVersion,
   handleGptVersionChange,
   language,
@@ -91,15 +99,40 @@ const ArticleForm: React.FC<ArticleFormProps> = ({
       placeholder="Comma separated"
     />
     <br />
-    <TextField
-      label="Source Url (Optional)"
-      value={sourceUrl}
-      onChange={(e) => setSourceUrl(e.target.value)}
-      fullWidth
-      margin="normal"
-      placeholder="An article that system should use for context"
+    <FormControlLabel
+      control={
+        <Checkbox
+          checked={useSourceContent}
+          onChange={(e) => setUseSourceContent(e.target.checked)}
+        />
+      }
+      label="Use pasted source content instead of a URL"
     />
-    <br />
+    {useSourceContent ? (
+      <TextareaAutosize
+        minRows={4}
+        placeholder="Paste source content here"
+        value={sourceContent}
+        onChange={(e) => setSourceContent(e.target.value)}
+        style={{
+          width: "100%",
+          marginTop: 20,
+          fontFamily: "Roboto",
+          fontWeight: 400,
+          fontSize: "1rem",
+          padding: "0.5rem",
+        }}
+      />
+    ) : (
+      <TextField
+        label="Source Url (Optional)"
+        value={sourceUrl}
+        onChange={(e) => setSourceUrl(e.target.value)}
+        fullWidth
+        margin="normal"
+        placeholder="An article that system should use for context"
+      />
+    )}
     <br />
     <Box>
       <FormControl>
@@ -148,81 +181,27 @@ const ArticleForm: React.FC<ArticleFormProps> = ({
     <FormControl component="fieldset">
       <FormLabel component="legend">Tone</FormLabel>
       <FormGroup>
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={tone.includes("formal")}
-              onChange={handleToneChange}
-              value="formal"
-            />
-          }
-          label="Formal"
-        />
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={tone.includes("informal")}
-              onChange={handleToneChange}
-              value="informal"
-            />
-          }
-          label="Informal"
-        />
-
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={tone.includes("journalistic")}
-              onChange={handleToneChange}
-              value="journalistic"
-            />
-          }
-          label="Journalistic"
-        />
-
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={tone.includes("joyful")}
-              onChange={handleToneChange}
-              value="joyful"
-            />
-          }
-          label="Joyful"
-        />
-
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={tone.includes("optimistic")}
-              onChange={handleToneChange}
-              value="optimistic"
-            />
-          }
-          label="Optimistic"
-        />
-
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={tone.includes("sincere")}
-              onChange={handleToneChange}
-              value="sincere"
-            />
-          }
-          label="Sincere"
-        />
-
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={tone.includes("humorous")}
-              onChange={handleToneChange}
-              value="humorous"
-            />
-          }
-          label="Humorous"
-        />
+        {[
+          "formal",
+          "informal",
+          "journalistic",
+          "joyful",
+          "optimistic",
+          "sincere",
+          "humorous",
+        ].map((toneType) => (
+          <FormControlLabel
+            key={toneType}
+            control={
+              <Checkbox
+                checked={tone.includes(toneType)}
+                onChange={handleToneChange}
+                value={toneType}
+              />
+            }
+            label={toneType.charAt(0).toUpperCase() + toneType.slice(1)}
+          />
+        ))}
       </FormGroup>
     </FormControl>
     <TextareaAutosize
