@@ -132,10 +132,10 @@ const Form: React.FC = () => {
         let hyperlinkedResponse = revisedResponse;
         const backlinkArray = getBacklinkArray(inputData);
         try {
-          // hyperlinkedResponse = await insertBacklinks(
-          //   backlinkArray.join(", "),
-          //   hyperlinkedResponse
-          // );
+          hyperlinkedResponse = await insertBacklinks(
+            backlinkArray.join(", "),
+            hyperlinkedResponse
+          );
 
           // Compare backlinks to identify missing ones
           const missingBacklinks = backlinkArray.filter(
@@ -316,10 +316,10 @@ const Form: React.FC = () => {
       setLoadingThirdRequest(true);
       let hyperlinkedResponse = revisedResponse;
       const backlinkArray = getBacklinkArray(inputData);
-      // hyperlinkedResponse = await insertBacklinks(
-      //   backlinkArray.join(", "),
-      //   hyperlinkedResponse
-      // );
+      hyperlinkedResponse = await insertBacklinks(
+        backlinkArray.join(", "),
+        hyperlinkedResponse
+      );
 
       // Compare backlinks to identify missing ones
       const missingBacklinks = backlinkArray.filter(
@@ -402,7 +402,7 @@ const Form: React.FC = () => {
             <div className="allEditing">
               {missingBacklinks.length > 0 && (
                 <div className={styles.missingBacklinksWarning}>
-                  <h4 color="red">
+                  <h4>
                     The content was generated but we were unable to insert all
                     backlinks. Please review the text below and manually add
                     your backlinks.
