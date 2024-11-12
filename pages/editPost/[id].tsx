@@ -1,16 +1,12 @@
 import { useRouter } from 'next/router';
 import { Link } from '@mui/material';
 import React, { useState, useEffect } from 'react';
-import { EditorState, convertToRaw } from 'draft-js';
-import 'react-draft-wysiwyg/dist/react-draft-wysiwyg.css';
-import { stateFromHTML } from 'draft-js-import-html';
 import StatusLabsHeader from 'components/StatusLabsHeader';
 import PbnSubmissionForm from 'components/PbnSubmissionForm';
 
 export default function EditPost() {
   const router = useRouter();
   const { id } = router.query;
-  const [editorState, setEditorState] = useState(() => EditorState.createEmpty());
   const [articleTitle, setArticleTitle] = useState('');
   const [content, setContent] = useState('');
   const [clientName, setClientName] = useState('');
@@ -34,11 +30,10 @@ export default function EditPost() {
   
       const data = await res.json();
         if (data.content) {
-            const contentState = stateFromHTML(data.content); // Convert HTML to Draft.js ContentState
-            setEditorState(EditorState.createWithContent(contentState));
             setArticleTitle(data.title);
             setClientName(data.client_name);
             setCategories(data.categories);
+            setContent(data.content);
         }
     };
 
