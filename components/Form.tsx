@@ -75,6 +75,7 @@ const Form: React.FC<FormProps> = () => {
   const handlePbnModalOpen = (response: string) => {
     const postTitle = parseTitleFromArticle(response);
     setArticleTitle(postTitle); 
+    setResponse(wrapInParagraphs(normalizeLineBreaks(response)))
     setPbnModalOpen(true);
   };
 
@@ -276,7 +277,6 @@ const Form: React.FC<FormProps> = () => {
         (backlink) => !hyperlinkedResponse.includes(backlink)
       );
       setMissingBacklinks(missingBacklinks);
-
       setResponse(hyperlinkedResponse);
       addResponseToPreviousResponses(hyperlinkedResponse);
       setLoadingThirdRequest(false);

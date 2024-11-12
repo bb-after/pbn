@@ -521,16 +521,31 @@ export const insertBacklinks = async (backlinkValues: any, openAIResponse: strin
 
 }
 
-export const parseTitleFromArticle = function(input: string): string {
-    const textWithLineBreaks = input.replace(/<br\s*\/?>/g, '\n');
-    let sentences = textWithLineBreaks.split(/[.!?]\s+|\n+/); // Split text into sentences
-    let match = sentences.slice(0, 1);
-    if (match && match.length > 0) {
-      return match[0].replace('Title: ','').trim(); // Remove leading/trailing whitespace
+export const parseTitleFromArticle = function (input: string): string {
+    // Attempt to extract text within <p> tags
+    const paragraphMatches = input.match(/<p[^>]*>(.*?)<\/p>/g);
+  
+    let firstTextBlock = '';
+    
+    if (paragraphMatches && paragraphMatches.length > 0) {
+      // Use the content of the first <p> tag
+      firstTextBlock = paragraphMatches[0].replace(/<p[^>]*>|<\/p>/g, '');
     } else {
-      return ''; // No sentence found in the input
+      // If no <p> tags are found, replace <br> tags with line breaks
+      const textWithLineBreaks = input.replace(/<br\s*\/?>/g, '\n');
+      // Split the text into lines based on line breaks
+      firstTextBlock = textWithLineBreaks.split('\n')[0];
     }
-  }
+  
+    // Split the content into sentences based on punctuation
+    const sentences = firstTextBlock.split(/[.!?]\s+/);
+  
+    // Find the first sentence and remove any "Title:" prefix
+    const title = sentences[0] ? sentences[0].replace('Title:', '').trim() : '';
+  
+    return title;
+  };
+  
 
   /*** openapi code start */
 export const callOpenAISuperstarVersion = async (inputData: any) => {
