@@ -1,4 +1,3 @@
-// PbnSubmissionForm.tsx
 import React, { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import {
@@ -22,7 +21,7 @@ interface PbnFormProps {
   clientName?: string;
   categories?: string;
   submissionId?: number;
-  content: string; // Use string instead of EditorState
+  content: string;
   onSubmit: (title: string, content: string) => void;
 }
 
@@ -31,10 +30,11 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
   clientName = "",
   categories = "",
   submissionId,
-  content, // Receive content as a string
+  content,
   onSubmit,
 }) => {
-  const [editorContent, setEditorContent] = useState(content); // Manage editor content as HTML string
+  // State management
+  const [editorContent, setEditorContent] = useState(content); // Independent editor content state
   const [title, setTitle] = useState(articleTitle);
   const [client, setClient] = useState(clientName);
   const [id, setId] = useState(submissionId);
@@ -43,52 +43,43 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
   const [isSubmissionSuccessful, setIsSubmissionSuccessful] = useState(false);
   const { token } = useValidateUserToken();
 
+  // Handle category changes
   const handleCategoryChange = (event: SelectChangeEvent) => {
     setCategory(event.target.value as string);
   };
 
+  // Update state on prop changes
   useEffect(() => {
     setId(submissionId);
     setTitle(articleTitle);
     setClient(clientName);
     setCategory(categories);
-    setEditorContent(content); // Update content if it changes
-  }, [articleTitle, content]);
+    setEditorContent(content); // Reset editor content if `content` prop changes
+  }, [articleTitle, clientName, categories, submissionId, content]);
 
+  // Post content to PBN
   const postContentToPbn = async () => {
     try {
       const response = await fetch("/api/postToWordPress", {
         method: "POST",
         body: JSON.stringify({
-          title: title,
-          clientName: clientName,
+          title,
+          clientName,
           content: editorContent,
           userToken: token,
-          category: category,
+          category,
           tags: [],
           submissionId: id,
         }),
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
       });
 
       if (response.status === 201) {
         const responseData = await response.json();
         setSubmissionUrl(responseData.link);
         setIsSubmissionSuccessful(true);
-      } else if (response.status === 400) {
-        const responseData = await response.json();
-        alert(
-          `Article already uploaded to PBN. Submission response: ${responseData.submission_response}`
-        );
-        setIsSubmissionSuccessful(false);
-      } else if (response.status === 404) {
-        alert("No active blogs found in database");
-        setIsSubmissionSuccessful(false);
       } else {
-        alert("Failed to post article to PBN");
-        setIsSubmissionSuccessful(false);
+        handleError(response);
       }
     } catch (error: any) {
       alert("Request error: " + error.message);
@@ -96,6 +87,21 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
     }
   };
 
+  const handleError = async (response: Response) => {
+    const responseData = await response.json();
+    if (response.status === 400) {
+      alert(
+        `Article already uploaded to PBN. Submission response: ${responseData.submission_response}`
+      );
+    } else if (response.status === 404) {
+      alert("No active blogs found in database");
+    } else {
+      alert("Failed to post article to PBN");
+    }
+    setIsSubmissionSuccessful(false);
+  };
+
+  // Input handlers
   const handleTitleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setTitle(event.target.value);
   };
@@ -116,9 +122,7 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
             fullWidth
             margin="normal"
             value={submissionUrl}
-            InputProps={{
-              readOnly: true,
-            }}
+            InputProps={{ readOnly: true }}
             variant="outlined"
           />
           <CopyToClipboardButton text={submissionUrl} />
@@ -173,21 +177,16 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
               ))}
             </Select>
           </FormControl>
-          <br /> <br />
           <FormControl component="fieldset">
             <FormLabel>Content</FormLabel>
             <JoditEditor
+              key={submissionId || articleTitle} // Unique key for each instance
               value={editorContent}
               onBlur={handleContentChange} // Update content on blur
               onChange={handleContentChange} // Update content on each change
             />
           </FormControl>
-          <br /> <br />
-          <Button
-            onClick={postContentToPbn}
-            variant="contained"
-            color="primary"
-          >
+          <Button onClick={postContentToPbn} variant="contained" color="primary">
             Submit
           </Button>
         </>
