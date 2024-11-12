@@ -1,10 +1,8 @@
 // components/Form.tsx
-import React, { useState, useEffect } from "react";
-import dynamic from "next/dynamic"; // To load the RTE dynamically (client-side)
-import { EditorState, ContentState, convertFromHTML } from "draft-js";
-import "react-draft-wysiwyg/dist/react-draft-wysiwyg.css";
+import React, { useRef, useState, useEffect } from "react";
+import dynamic from "next/dynamic"; // Import dynamic from Next.js
 import { Button, SelectChangeEvent } from "@mui/material";
-import styles from "./styles.module.css"; // Make sure the correct path is used
+import styles from "./styles.module.css";
 import {
   Send,
   ArrowBack,
@@ -14,15 +12,14 @@ import {
   Undo,
   RestartAlt,
 } from "@mui/icons-material";
-import CopyToClipboardButton from "./CopyToClipboardButton"; // Replace with the correct path to your component
-import { stateToHTML } from "draft-js-export-html";
+import CopyToClipboardButton from "./CopyToClipboardButton";
 import PreviousResponseComponent from "./PreviousResponseComponent";
 import RemixModal from "./RemixModal";
 import PbnSubmissionModal from "./PbnSubmissionModal";
 import { postToSlack } from "../utils/postToSlack";
 import Step1LoadingStateComponent from "./Step1LoadingState";
 import FinalLoadingStateComponent from "./FinalLoadingState";
-import ArticleForm from "./ArticleForm"; // Adjust the path as needed
+import ArticleForm from "./ArticleForm";
 import {
   callOpenAI,
   callOpenAIToRewriteArticle,
@@ -34,27 +31,30 @@ import {
 import { sendDataToStatusCrawl } from "../utils/statusCrawl";
 import useValidateUserToken from "../hooks/useValidateUserToken";
 
-// Dynamically load the RTE component (client-side) to prevent server-side rendering issues
-const Editor = dynamic(
-  () => import("react-draft-wysiwyg").then((module) => module.Editor),
-  { ssr: false }
-);
-const skipOpenAiRevision = process.env.NEXT_PUBLIC_SKIP_OPENAI_REVISION;
-const Form: React.FC = () => {
-  const [backlinks, setBacklinks] = useState([""]); // Initial state with one input
-  const [missingBacklinks, setMissingBacklinks] = useState<string[]>([]); // Missing backlinks state
-  const [previousResponses, setPreviousResponses] = React.useState<string[]>(
-    []
-  );
+// Dynamically import JoditEditor to prevent SSR issues
+const JoditEditor = dynamic(() => import("jodit-react"), { ssr: false });
+
+interface FormProps {
+  onSubmit: (content: string) => void;
+}
+
+const Form: React.FC<FormProps> = () => {
+  const editor = useRef(null);  // Reference to Jodit editor instance
+  const [content, setContent] = useState('');  // State for editor content
+  const [response, setResponse] = useState<string>(""); // Initialize with an empty string
+  const [articleTitle, setArticleTitle] = useState<string>(""); // State for article title
+  const [backlinks, setBacklinks] = useState([""]); // State to hold list of backlinks
+  const [previousResponses, setPreviousResponses] = useState<string[]>([]);
+  const [missingBacklinks, setMissingBacklinks] = useState<string[]>([]);
+
   const [iterationCount, setIterationCount] = useState(0);
   const [iterationTotal, setIterationTotal] = useState(0);
-  // const [isLoading, setIsLoading] = useState(false);
   const [isLoadingFirstRequest, setLoadingFirstRequest] = useState(false);
   const [isLoadingSecondRequest, setLoadingSecondRequest] = useState(false);
   const [isLoadingThirdRequest, setLoadingThirdRequest] = useState(false);
   const [showForm, setShowForm] = useState(true);
   const [isEditingState, setEditingState] = useState(false);
-  const [response, setResponse] = useState<string>(""); // Initialize with an empty string
+
   const [keywords, setKeywords] = useState("");
   const [gptVersion, setGptVersion] = useState("gpt-4o-mini");
   const [language, setLanguage] = useState("English");
@@ -69,31 +69,16 @@ const Form: React.FC = () => {
   const [sourceContent, setSourceContent] = useState(""); // Added to hold the pasted content
   const [useSourceContent, setUseSourceContent] = useState(false); // Determines if source content or URL should be used
 
-  //post to pbn modal specific constants
-  const [articleTitle, setArticleTitle] = useState("");
-  const [pbnModalEditorState, setPbnModalEditorState] = useState(
-    EditorState.createEmpty()
-  );
-
   const handleRemixModalOpen = () => {
     setRemixModalOpen(true);
   };
 
   const handlePbnModalOpen = (response: string) => {
     const postTitle = parseTitleFromArticle(response);
-    // Convert the response HTML to DraftJS ContentState
-    const blocksFromHTML = convertFromHTML(response);
-    const contentState = ContentState.createFromBlockArray(
-      blocksFromHTML.contentBlocks,
-      blocksFromHTML.entityMap
-    );
-
-    const editorStateWithContent = EditorState.createWithContent(contentState);
-    // Update the component state with the post title and editor state
-    setArticleTitle(postTitle); // Assuming you have a state variable for article title
-    setPbnModalEditorState(editorStateWithContent); // Assuming you have a state variable for the DraftJS editor
+    setArticleTitle(postTitle); 
     setPbnModalOpen(true);
   };
+
   const { token, isLoading, isValidUser } = useValidateUserToken(); // Destructure the returned object
 
   const handleRemixModalSubmit = async (
@@ -107,7 +92,6 @@ const Form: React.FC = () => {
 
     setRemixModalOpen(false); // Close the modal
 
-    // setLoadingFirstRequest(true); // Set loading state to true before the API call
     const inputData = getInputData();
     setIterationTotal(iterations);
     const mode = remixMode;
@@ -117,7 +101,6 @@ const Form: React.FC = () => {
         setShowForm(false);
         setLoadingFirstRequest(true);
 
-        // Initial call to openAI to write the article
         const firstResponse =
           mode !== "generate"
             ? await callOpenAIToRewriteArticle(response, inputData)
@@ -125,71 +108,34 @@ const Form: React.FC = () => {
 
         setLoadingFirstRequest(false);
 
-        // Second call to openAI, this time to re-write it as if not written by AI.
         const revisedResponse = await callOpenAIRevised(
           inputData,
           firstResponse
         );
 
-        // Modify hyperlinkedResponse as needed
         setLoadingThirdRequest(true);
         let hyperlinkedResponse = revisedResponse;
         const backlinkArray = getBacklinkArray(inputData);
-        try {
-          // hyperlinkedResponse = await insertBacklinks(
-          //   backlinkArray.join(", "),
-          //   hyperlinkedResponse
-          // );
 
-          // Compare backlinks to identify missing ones
-          const missingBacklinks = backlinkArray.filter(
-            (backlink) => !hyperlinkedResponse.includes(backlink)
-          );
-          setMissingBacklinks(missingBacklinks); // Update state with missing backlinks
+        const missingBacklinks = backlinkArray.filter(
+          (backlink) => !hyperlinkedResponse.includes(backlink)
+        );
+        setMissingBacklinks(missingBacklinks); // Update state with missing backlinks
 
-          setResponse(hyperlinkedResponse);
-          addResponseToPreviousResponses(hyperlinkedResponse);
-          postToSlack("*Iteration #" + i + "*:" + hyperlinkedResponse);
-        } catch (error) {
-          setResponse("");
-          alert(
-            "Failed to insert backlinks.  Looks like a timeout request.  Please try again."
-          );
-        } finally {
-          await sendDataToStatusCrawl(inputData, hyperlinkedResponse, token);
-          setLoadingThirdRequest(false);
-        }
+        setResponse(hyperlinkedResponse);
+        addResponseToPreviousResponses(hyperlinkedResponse);
+        postToSlack("*Iteration #" + i + "*:" + hyperlinkedResponse);
+        await sendDataToStatusCrawl(inputData, hyperlinkedResponse, token);
+        setLoadingThirdRequest(false);
       }
     } catch (error) {
-      setLoadingFirstRequest(true);
+      setLoadingFirstRequest(false);
       setLoadingThirdRequest(false);
     } finally {
       setIterationCount(0);
       setIterationTotal(0);
     }
   };
-
-  const [editorState, setEditorState] = useState<EditorState>(
-    // Create an initial EditorState with an empty ContentState
-    EditorState.createEmpty()
-  );
-
-  // Handle RTE changes
-  const handleEditorStateChange = (newState: EditorState) => {
-    setEditorState(newState);
-  };
-
-  useEffect(() => {
-    // When the response changes, update the editorState with the new content
-    if (response !== "" && typeof response === "string") {
-      const blocksFromHTML = convertFromHTML(response);
-      const contentState = ContentState.createFromBlockArray(
-        blocksFromHTML.contentBlocks,
-        blocksFromHTML.entityMap
-      );
-      setEditorState(EditorState.createWithContent(contentState));
-    }
-  }, [response]);
 
   const handleToneChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const { value } = event.target;
@@ -200,7 +146,7 @@ const Form: React.FC = () => {
     );
   };
 
-  const addResponseToPreviousResponses = function (response: string) {
+  const addResponseToPreviousResponses = (response: string) => {
     if (response !== "" && !previousResponses.includes(response)) {
       setPreviousResponses((prevResponses) => [...prevResponses, response]);
     }
@@ -230,44 +176,47 @@ const Form: React.FC = () => {
     setResponse(lastResponse);
     setShowForm(false);
   };
-
+  const normalizeLineBreaks = (htmlContent: string) => {
+    return htmlContent.replace(/(<br\s*\/?>\s*){2,}/g, "");
+  };
+  
   const openEditor = () => {
+    setContent(normalizeLineBreaks(response));
     setEditingState(true);
   };
   const closeRTE = () => {
     setEditingState(false);
   };
 
-  const saveEditor = (newContent: string) => {
+  const saveEditor = () => {
+    setResponse(content);
     setEditingState(false);
-    setResponse(newContent); // Update the response state with the new content
   };
 
   function downloadContent(filename: string, content: string) {
-    const blob = new Blob([content], { type: "text/html" }); // Create a blob with the content
+    const blob = new Blob([content], { type: "text/html" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); // Create an anchor tag to trigger the download
+    const a = document.createElement("a");
     a.href = url;
     a.download = filename;
     a.click();
-
-    URL.revokeObjectURL(url); // Clean up the object URL
+    URL.revokeObjectURL(url);
   }
 
   function downloadAllContent(filename: string, previousResponses: string[]) {
     let combinedContent = "";
     previousResponses.reverse().forEach((prevResponse, index) => {
-      const version = `<strong>Version ${index + 1}:</strong><br>`; // Generate the version number
-      combinedContent += `${version}\n${prevResponse}<br><br>`; // Combine version and response with line breaks
+      const version = `<strong>Version ${index + 1}:</strong><br>`;
+      combinedContent += `${version}\n${prevResponse}<br><br>`;
     });
 
-    const blob = new Blob([combinedContent], { type: "text/html" }); // Create a blob with the combined content
+    const blob = new Blob([combinedContent], { type: "text/html" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); // Create an anchor tag to trigger the download
+    const a = document.createElement("a");
     a.href = url;
     a.download = filename;
     a.click();
-    URL.revokeObjectURL(url); // Clean up the object URL
+    URL.revokeObjectURL(url);
   }
 
   const handleGptVersionChange = (event: SelectChangeEvent) => {
@@ -278,31 +227,24 @@ const Form: React.FC = () => {
     setLanguage(event.target.value as string);
   };
 
-  const getInputData = function () {
-    return {
-      keywords: keywords.split(","),
-      keywordsToExclude: keywordsToExclude.split(","),
-      sourceUrl: useSourceContent ? "" : sourceUrl, // Use URL if useSourceContent is false
-      sourceContent: useSourceContent ? sourceContent : "", // Use source content if useSourceContent is true
-      tone: tone.join(", "),
-      wordCount: wordCount,
-      gptVersion: gptVersion,
-      articleCount: articleCount,
-      otherInstructions: otherInstructions,
-      language: language,
-      // Dynamically generate backlinks properties
-      ...backlinks.reduce<Record<string, string>>((acc, _, index) => {
-        acc[`backlink${index + 1}`] = backlinks[index];
-        return acc;
-      }, {}),
-    };
-  };
+  const getInputData = () => ({
+    keywords: keywords.split(","),
+    keywordsToExclude: keywordsToExclude.split(","),
+    sourceUrl: useSourceContent ? "" : sourceUrl,
+    sourceContent: useSourceContent ? sourceContent : "",
+    tone: tone.join(", "),
+    wordCount,
+    gptVersion,
+    articleCount,
+    otherInstructions,
+    language,
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // setLoadingFirstRequest(true); // Set loading state to true before the API call
     const inputData = getInputData();
-    const numberOfIterations = 1; // Set the desired number of iterations
+    const numberOfIterations = 1;
+
     if (!token) {
       alert("User token not found.");
       return;
@@ -311,28 +253,19 @@ const Form: React.FC = () => {
     try {
       setShowForm(false);
       setLoadingFirstRequest(true);
-      // Initial call to openAI to write the article
+
       const firstResponse = await callOpenAI(inputData);
-      // ...
       setLoadingFirstRequest(false);
 
-      // Second call to openAI, this time to re-write it as if not written by AI.
       const revisedResponse = await callOpenAIRevised(inputData, firstResponse);
-
-      // Modify hyperlinkedResponse as needed
       setLoadingThirdRequest(true);
       let hyperlinkedResponse = revisedResponse;
       const backlinkArray = getBacklinkArray(inputData);
-      // hyperlinkedResponse = await insertBacklinks(
-      //   backlinkArray.join(", "),
-      //   hyperlinkedResponse
-      // );
 
-      // Compare backlinks to identify missing ones
       const missingBacklinks = backlinkArray.filter(
         (backlink) => !hyperlinkedResponse.includes(backlink)
       );
-      setMissingBacklinks(missingBacklinks); // Update state with missing backlinks
+      setMissingBacklinks(missingBacklinks);
 
       setResponse(hyperlinkedResponse);
       addResponseToPreviousResponses(hyperlinkedResponse);
@@ -346,10 +279,16 @@ const Form: React.FC = () => {
     }
   };
 
+  // const config = {
+  //   readonly: false,
+  //   height: 400,
+  //   toolbar: true,
+  //   buttons: ["bold", "italic", "underline", "link", "source"],
+  // };
+
   return (
     <div className={styles.formWrapper}>
       {showForm ? (
-        // ArticleForm component and previous responses
         <div className="formBobby">
           <ArticleForm
             handleSubmit={handleSubmit}
@@ -361,25 +300,23 @@ const Form: React.FC = () => {
             setKeywords={setKeywords}
             sourceUrl={sourceUrl}
             setSourceUrl={setSourceUrl}
-            sourceContent={sourceContent} // New state for source content
-            setSourceContent={setSourceContent} // New setter for source content
-            useSourceContent={useSourceContent} // New state for determining if source content should be used
-            setUseSourceContent={setUseSourceContent} // Setter for useSourceContent
+            sourceContent={sourceContent}
+            setSourceContent={setSourceContent}
+            useSourceContent={useSourceContent}
+            setUseSourceContent={setUseSourceContent}
             keywordsToExclude={keywordsToExclude}
             setKeywordsToExclude={setKeywordsToExclude}
             gptVersion={gptVersion}
             handleGptVersionChange={handleGptVersionChange}
             language={language}
             handleLanguage={handleLanguage}
-            backlinks={backlinks}
-            setBacklinks={setBacklinks}
             tone={tone}
             handleToneChange={handleToneChange}
             otherInstructions={otherInstructions}
-            setOtherInstructions={setOtherInstructions}
+            setOtherInstructions={setOtherInstructions} 
+            backlinks={backlinks}
+            setBacklinks={setBacklinks} 
           />
-
-          {/* Check for Previous Responses and display back button + the responses */}
           {previousResponses.length > 0 && (
             <div>
               <br />
@@ -395,10 +332,8 @@ const Form: React.FC = () => {
           )}
         </div>
       ) : (
-        // Response zone
         <div className="response">
-          {(isLoadingFirstRequest || isLoadingThirdRequest) &&
-          iterationCount > 0 ? (
+          {(isLoadingFirstRequest || isLoadingThirdRequest) && iterationCount > 0 ? (
             <div className={styles.iterationCount}>
               Remixing {iterationCount} / {iterationTotal}
             </div>
@@ -428,15 +363,14 @@ const Form: React.FC = () => {
                   </ul>
                 </div>
               )}
-
-              {/* //start display response and response components if not loading */}
               {isEditingState ? (
                 <div>
-                  <Editor
-                    editorState={editorState}
-                    onEditorStateChange={handleEditorStateChange}
-                    wrapperClassName="rich-editor-wrapper"
-                    editorClassName="rich-editor"
+                  <JoditEditor
+                    ref={editor}
+                    value={content}
+                    // config={config}
+                    onBlur={(newContent) => setContent(newContent)}
+                    onChange={(newContent) => setContent(newContent)}
                   />
                   <Button
                     size="small"
@@ -452,15 +386,12 @@ const Form: React.FC = () => {
                     size="small"
                     variant="contained"
                     startIcon={<Edit />}
-                    onClick={() =>
-                      saveEditor(stateToHTML(editorState.getCurrentContent()))
-                    }
+                    onClick={saveEditor}
                   >
                     Save Content
                   </Button>
                 </div>
               ) : (
-                // display Response and action bar components
                 <div className="responseAndActions">
                   <Button
                     size="small"
@@ -479,13 +410,10 @@ const Form: React.FC = () => {
                   >
                     Start Over
                   </Button>
-                  {/* Response Start */}
                   <div
                     className={styles.pbnjResults}
                     dangerouslySetInnerHTML={{ __html: response }}
                   ></div>
-                  {/* Response End */}
-                  {/* Action Bar Start */}
                   <div className={styles.actionBar}>
                     <Button
                       size="small"
@@ -549,16 +477,12 @@ const Form: React.FC = () => {
                       Post article to PBN
                     </Button>
                   </div>
-                  {/* Action Bar End */}
                 </div>
               )}
             </div>
           )}
         </div>
-        //end of loading check + response and response components
       )}
-
-      {/* Show previous responses */}
       {previousResponses
         .slice()
         .reverse()
@@ -594,13 +518,11 @@ const Form: React.FC = () => {
             </div>
           </div>
         ))}
-
       <PbnSubmissionModal
         isOpen={isPbnModalOpen}
         onClose={() => setPbnModalOpen(false)}
-        articleTitle={articleTitle}
-        pbnModalEditorState={editorState} // Pass the editor state here
-      />
+        articleTitle={articleTitle} 
+        content={response} />
     </div>
   );
 };
