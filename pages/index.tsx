@@ -13,7 +13,7 @@ const Home: React.FC = () => {
   const [hasToken, setHasToken] = useState<boolean>(true); // assume token is there initially
   const router = useRouter(); // Use Next.js's router
   const { token } = useValidateUserToken();
-
+  
   if (!token) {
     return (
       <div

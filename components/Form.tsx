@@ -35,7 +35,6 @@ import useValidateUserToken from "../hooks/useValidateUserToken";
 const JoditEditor = dynamic(() => import("jodit-react"), { ssr: false });
 
 interface FormProps {
-  onSubmit: (content: string) => void;
 }
 
 const Form: React.FC<FormProps> = () => {
