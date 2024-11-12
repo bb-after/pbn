@@ -12,6 +12,7 @@ export default function EditPost() {
   const { id } = router.query;
   const [editorState, setEditorState] = useState(() => EditorState.createEmpty());
   const [articleTitle, setArticleTitle] = useState('');
+  const [content, setContent] = useState('');
   const [clientName, setClientName] = useState('');
   const [categories, setCategories] = useState('');
   const [submissionId, setSubmissionId] = useState<number | undefined>(undefined);
@@ -54,7 +55,7 @@ export default function EditPost() {
         <h1><Link href="/pbn-site-submissions">PBN Sites</Link>&raquo;Edit PBN Post</h1>
         <PbnSubmissionForm 
             articleTitle={articleTitle} // Pass articleTitle as a prop
-            pbnModalEditorState={editorState} // Pass pbnModalEditorState as a prop
+            content={content}
             clientName={clientName}
             categories={categories}
             submissionId={submissionId}

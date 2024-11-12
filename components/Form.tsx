@@ -177,11 +177,17 @@ const Form: React.FC<FormProps> = () => {
     setShowForm(false);
   };
   const normalizeLineBreaks = (htmlContent: string) => {
-    return htmlContent.replace(/(<br\s*\/?>\s*){2,}/g, "");
+    return htmlContent.replace(/(<br\s*\/?>\s*){2,}/g, "</p><p>");
+    // return htmlContent.replace(/<br\s*\/?>/g, "\n\n");
+  };
+  const wrapInParagraphs = (htmlContent: string) => {
+    return `<p>${htmlContent.replace(/\n/g, "</p><p>")}</p>`;
   };
   
+  
+  
   const openEditor = () => {
-    setContent(normalizeLineBreaks(response));
+    setContent(wrapInParagraphs(normalizeLineBreaks(response)));
     setEditingState(true);
   };
   const closeRTE = () => {
@@ -238,6 +244,11 @@ const Form: React.FC<FormProps> = () => {
     articleCount,
     otherInstructions,
     language,
+    // Dynamically generate backlinks properties
+    ...backlinks.reduce<Record<string, string>>((acc, _, index) => {
+      acc[`backlink${index + 1}`] = backlinks[index];
+      return acc;
+    }, {}),
   });
 
   const handleSubmit = async (e: React.FormEvent) => {

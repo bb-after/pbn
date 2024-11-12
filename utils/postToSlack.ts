@@ -1,5 +1,5 @@
 export const postToSlack = async (message: string, channel?: string) => {
-  const SLACK_WEBHOOK_URL = process.env.NEXT_PUBLIC_SLACK_WEBHOOK_URL;
+  const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
 
   if (!SLACK_WEBHOOK_URL) {
     console.error("Slack Webhook URL is missing.");
