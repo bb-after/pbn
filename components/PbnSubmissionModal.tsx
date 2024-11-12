@@ -1,26 +1,15 @@
-import React, { useState } from 'react';
-import { EditorState } from 'draft-js'; // Import EditorState from draft-js
-
-import {
-  Modal,
-  Backdrop,
-  Fade,
-  Button,
-} from '@mui/material';
-
-// Import your PbnForm component
+import React from 'react';
+import { Modal, Backdrop, Fade, Button } from '@mui/material';
 import PbnSubmissionForm from './PbnSubmissionForm';
 
 interface PbnModalProps {
   isOpen: boolean;
   onClose: () => void;
-  articleTitle: string; // Pass the article title as a prop
-  pbnModalEditorState: EditorState; // Pass the DraftJS editor state as a prop
+  articleTitle: string;
+  content: string; // Accept content as a string instead of EditorState
 }
 
-const PbnSubmissionModal: React.FC<PbnModalProps> = ({ isOpen, onClose, articleTitle, pbnModalEditorState }) => {
-  // You can define any modal-specific state or props here
-
+const PbnSubmissionModal: React.FC<PbnModalProps> = ({ isOpen, onClose, articleTitle, content }) => {
   return (
     <Modal
       open={isOpen}
@@ -46,17 +35,14 @@ const PbnSubmissionModal: React.FC<PbnModalProps> = ({ isOpen, onClose, articleT
           }}
         >
           <h2>Post Article to PBN</h2>
-
-
-        <PbnSubmissionForm 
-            articleTitle={articleTitle} // Pass articleTitle as a prop
-            pbnModalEditorState={pbnModalEditorState} // Pass pbnModalEditorState as a prop
-            onSubmit={function (title: string, content: string): void {
-              throw new Error('Function not implemented.');
-            } }        />
-
+          <PbnSubmissionForm 
+            articleTitle={articleTitle}
+            content={content} // Pass content as a string
+            onSubmit={(title: string, content: string) => {
+              console.log("Submitted:", title, content); // Implement actual submit function here
+            }}
+          />
           <br /> <br />
-
           <Button onClick={onClose} variant="outlined" color="secondary">
             Cancel
           </Button>

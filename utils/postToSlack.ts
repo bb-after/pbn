@@ -1,6 +1,13 @@
 export const postToSlack = async (message: string, channel?: string) => {
+  const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
+
+  if (!SLACK_WEBHOOK_URL) {
+    console.error("Slack Webhook URL is missing.");
+    return;
+  }
+
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/slackNotification`, {
+    const response = await fetch(SLACK_WEBHOOK_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
