@@ -9,6 +9,7 @@ import StyledHeader from "components/StyledHeader";
 const PbnFormPage: React.FC = () => {
   // Define any initial values for the props if needed
   const initialArticleTitle = "";
+  const content = "";
   const initialEditorState = EditorState.createEmpty();
 
   return (
@@ -22,7 +23,7 @@ const PbnFormPage: React.FC = () => {
         </Typography>
         <PbnSubmissionForm
           articleTitle={initialArticleTitle}
-          pbnModalEditorState={initialEditorState}
+          content={content}
           onSubmit={function (title: string, content: string): void {
             throw new Error("Function not implemented.");
           }}
