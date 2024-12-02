@@ -30,16 +30,16 @@ import {
 } from "../utils/openai";
 import { sendDataToStatusCrawl } from "../utils/statusCrawl";
 import useValidateUserToken from "../hooks/useValidateUserToken";
+import axios from "axios";
 
 // Dynamically import JoditEditor to prevent SSR issues
 const JoditEditor = dynamic(() => import("jodit-react"), { ssr: false });
 
-interface FormProps {
-}
+interface FormProps {}
 
 const Form: React.FC<FormProps> = () => {
-  const editor = useRef(null);  // Reference to Jodit editor instance
-  const [content, setContent] = useState('');  // State for editor content
+  const editor = useRef(null); // Reference to Jodit editor instance
+  const [content, setContent] = useState(""); // State for editor content
   const [response, setResponse] = useState<string>(""); // Initialize with an empty string
   const [articleTitle, setArticleTitle] = useState<string>(""); // State for article title
   const [backlinks, setBacklinks] = useState([""]); // State to hold list of backlinks
@@ -55,7 +55,7 @@ const Form: React.FC<FormProps> = () => {
   const [isEditingState, setEditingState] = useState(false);
 
   const [keywords, setKeywords] = useState("");
-  const [gptVersion, setGptVersion] = useState("gpt-4o-mini");
+  const [engine, setEngine] = useState("gpt-4o-mini");
   const [language, setLanguage] = useState("English");
   const [wordCount, setWordCount] = useState(300);
   const [keywordsToExclude, setKeywordsToExclude] = useState("");
@@ -74,8 +74,8 @@ const Form: React.FC<FormProps> = () => {
 
   const handlePbnModalOpen = (response: string) => {
     const postTitle = parseTitleFromArticle(response);
-    setArticleTitle(postTitle); 
-    setResponse(wrapInParagraphs(normalizeLineBreaks(response)))
+    setArticleTitle(postTitle);
+    setResponse(wrapInParagraphs(normalizeLineBreaks(response)));
     setPbnModalOpen(true);
   };
 
@@ -183,9 +183,7 @@ const Form: React.FC<FormProps> = () => {
   const wrapInParagraphs = (htmlContent: string) => {
     return `<p>${htmlContent.replace(/\n/g, "</p><p>")}</p>`;
   };
-  
-  
-  
+
   const openEditor = () => {
     setContent(wrapInParagraphs(normalizeLineBreaks(response)));
     setEditingState(true);
@@ -225,8 +223,8 @@ const Form: React.FC<FormProps> = () => {
     URL.revokeObjectURL(url);
   }
 
-  const handleGptVersionChange = (event: SelectChangeEvent) => {
-    setGptVersion(event.target.value as string);
+  const handleEngineChange = (event: SelectChangeEvent) => {
+    setEngine(event.target.value as string);
   };
 
   const handleLanguage = (event: SelectChangeEvent) => {
@@ -240,7 +238,7 @@ const Form: React.FC<FormProps> = () => {
     sourceContent: useSourceContent ? sourceContent : "",
     tone: tone.join(", "),
     wordCount,
-    gptVersion,
+    engine,
     articleCount,
     otherInstructions,
     language,
@@ -262,15 +260,30 @@ const Form: React.FC<FormProps> = () => {
     }
 
     try {
+      debugger;
       setShowForm(false);
       setLoadingFirstRequest(true);
 
-      const firstResponse = await callOpenAI(inputData);
+      const firstResponse = await axios.post("/api/generate-article", {
+        wordCount,
+        keywords,
+        keywordsToExclude,
+        sourceUrl,
+        sourceContent,
+        useSourceContent,
+        engine,
+        language,
+        backlinks,
+        tone,
+        otherInstructions,
+      });
+
+      // const firstResponse = await callOpenAI(inputData);
       setLoadingFirstRequest(false);
 
-      const revisedResponse = await callOpenAIRevised(inputData, firstResponse);
+      // const revisedResponse = await callOpenAIRevised(inputData, firstResponse);
       setLoadingThirdRequest(true);
-      let hyperlinkedResponse = revisedResponse;
+      let hyperlinkedResponse = firstResponse.data.content;
       const backlinkArray = getBacklinkArray(inputData);
 
       const missingBacklinks = backlinkArray.filter(
@@ -316,16 +329,16 @@ const Form: React.FC<FormProps> = () => {
             setUseSourceContent={setUseSourceContent}
             keywordsToExclude={keywordsToExclude}
             setKeywordsToExclude={setKeywordsToExclude}
-            gptVersion={gptVersion}
-            handleGptVersionChange={handleGptVersionChange}
+            engine={engine}
+            handleEngineChange={handleEngineChange}
             language={language}
             handleLanguage={handleLanguage}
             tone={tone}
             handleToneChange={handleToneChange}
             otherInstructions={otherInstructions}
-            setOtherInstructions={setOtherInstructions} 
+            setOtherInstructions={setOtherInstructions}
             backlinks={backlinks}
-            setBacklinks={setBacklinks} 
+            setBacklinks={setBacklinks}
           />
           {previousResponses.length > 0 && (
             <div>
@@ -343,7 +356,8 @@ const Form: React.FC<FormProps> = () => {
         </div>
       ) : (
         <div className="response">
-          {(isLoadingFirstRequest || isLoadingThirdRequest) && iterationCount > 0 ? (
+          {(isLoadingFirstRequest || isLoadingThirdRequest) &&
+          iterationCount > 0 ? (
             <div className={styles.iterationCount}>
               Remixing {iterationCount} / {iterationTotal}
             </div>
@@ -531,8 +545,9 @@ const Form: React.FC<FormProps> = () => {
       <PbnSubmissionModal
         isOpen={isPbnModalOpen}
         onClose={() => setPbnModalOpen(false)}
-        articleTitle={articleTitle} 
-        content={response} />
+        articleTitle={articleTitle}
+        content={response}
+      />
     </div>
   );
 };
