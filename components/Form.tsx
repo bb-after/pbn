@@ -23,7 +23,6 @@ import ArticleForm from "./ArticleForm";
 import {
   callOpenAI,
   callOpenAIToRewriteArticle,
-  callOpenAIRevised,
   insertBacklinks,
   getBacklinkArray,
   parseTitleFromArticle,
@@ -108,13 +107,8 @@ const Form: React.FC<FormProps> = () => {
 
         setLoadingFirstRequest(false);
 
-        const revisedResponse = await callOpenAIRevised(
-          inputData,
-          firstResponse
-        );
-
         setLoadingThirdRequest(true);
-        let hyperlinkedResponse = revisedResponse;
+        let hyperlinkedResponse = firstResponse;
         const backlinkArray = getBacklinkArray(inputData);
 
         const missingBacklinks = backlinkArray.filter(
