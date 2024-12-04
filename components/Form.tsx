@@ -21,8 +21,6 @@ import Step1LoadingStateComponent from "./Step1LoadingState";
 import FinalLoadingStateComponent from "./FinalLoadingState";
 import ArticleForm from "./ArticleForm";
 import {
-  callOpenAI,
-  callOpenAIToRewriteArticle,
   insertBacklinks,
   getBacklinkArray,
   parseTitleFromArticle,
@@ -111,8 +109,23 @@ const Form: React.FC<FormProps> = () => {
 
         // Process backlinks
         setLoadingThirdRequest(true);
-        let hyperlinkedResponse = articleContent;
         const backlinkArray = getBacklinkArray(inputData);
+        let hyperlinkedResponse;
+
+        try {
+          const { data } = await axios.post("/api/insert-backlinks", {
+            backlinkArray,
+            articleContent,
+          });
+
+          hyperlinkedResponse = data.content || articleContent; // Fallback to original content if `data.content` is missing
+        } catch (error) {
+          console.warn(
+            "Backlink insertion failed, using original content:",
+            error
+          );
+          hyperlinkedResponse = articleContent; // Fallback to original content on error
+        }
 
         const missingBacklinks = backlinkArray.filter(
           (backlink) => !hyperlinkedResponse.includes(backlink)
@@ -277,36 +290,48 @@ const Form: React.FC<FormProps> = () => {
         otherInstructions,
       });
 
-      // const firstResponse = await callOpenAI(inputData);
+      const articleContent = firstResponse.data.content;
       setLoadingFirstRequest(false);
 
-      // const revisedResponse = await callOpenAIRevised(inputData, firstResponse);
+      // Insert backlinks into the content
       setLoadingThirdRequest(true);
-      let hyperlinkedResponse = firstResponse.data.content;
       const backlinkArray = getBacklinkArray(inputData);
+      let hyperlinkedResponse;
 
+      try {
+        const { data } = await axios.post("/api/insert-backlinks", {
+          backlinkArray,
+          articleContent,
+        });
+
+        hyperlinkedResponse = data.content || articleContent; // Fallback to original content if `data.content` is missing
+      } catch (error) {
+        console.warn(
+          "Backlink insertion failed, using original content:",
+          error
+        );
+        hyperlinkedResponse = articleContent; // Fallback to original content on error
+      }
+
+      // Check for missing backlinks
       const missingBacklinks = backlinkArray.filter(
         (backlink) => !hyperlinkedResponse.includes(backlink)
       );
-      setMissingBacklinks(missingBacklinks);
+      setMissingBacklinks(missingBacklinks); // Update state with missing backlinks
+
       setResponse(hyperlinkedResponse);
       addResponseToPreviousResponses(hyperlinkedResponse);
+
       setLoadingThirdRequest(false);
       postToSlack(hyperlinkedResponse);
 
       await sendDataToStatusCrawl(inputData, hyperlinkedResponse, token);
     } catch (error) {
+      console.error("Error during article generation:", error);
       setLoadingFirstRequest(false);
       setLoadingThirdRequest(false);
     }
   };
-
-  // const config = {
-  //   readonly: false,
-  //   height: 400,
-  //   toolbar: true,
-  //   buttons: ["bold", "italic", "underline", "link", "source"],
-  // };
 
   return (
     <div className={styles.formWrapper}>
