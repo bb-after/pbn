@@ -198,19 +198,37 @@ export const callOpenAIToRewriteArticle = async (content: string, inputData: any
 };
 
 
+export const bulkReplaceLinks = (content: string): string => {
+  if (!content || typeof content !== 'string') {
+    console.error("Invalid content provided.");
+    return content;
+  }
+
+  // Regex to match [Text](URL) pattern
+  const linkPattern = /\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g;
+
+  // Replace each match with the desired hyperlink format
+  const updatedContent = content.replace(linkPattern, (match, text, url) => {
+    return `<a href="${url}" target="_blank">${text}</a>`;
+  });
+
+  return updatedContent;
+};
+
+
 // Insert Backlinks
-export const insertBacklinks = async (backlinkValues: string[], openAIResponse: string) => {
+export const insertBacklinks = async (backlinkValues: string[], openAIResponse: string): Promise<string> => {
   if (backlinkValues.length < 1) {
     console.log('No backlinks provided. Returning original response.');
-    return openAIResponse;
+    return openAIResponse || "";
   }
 
   const prompt = `Add the following backlinks into the content: ${backlinkValues.join(', ')}`;
 
-  const gptMessage = [
+  const gptMessage = trimContentToFitTokenLimit([
     { role: 'user', content: openAIResponse },
     { role: 'user', content: prompt },
-  ];
+  ], maxTokens);
 
   try {
     const openai = getOpenAIClient();
@@ -220,12 +238,19 @@ export const insertBacklinks = async (backlinkValues: string[], openAIResponse: 
       temperature: 0.8,
     });
 
-    return response.choices[0].message.content;
-  } catch (error) {
+    // Ensure `content` is a string or fallback to the original response
+    const generatedContent = response.choices[0]?.message?.content || openAIResponse;
+
+    // Call bulkReplaceLinks with a guaranteed string
+    const hyperLinkReplacementText = bulkReplaceLinks(generatedContent);
+
+    return hyperLinkReplacementText;
+  } catch (error: any) {
     console.error('OpenAI API Error:', error.message || error);
-    throw new Error('Failed to insert backlinks with OpenAI API.');
+    return openAIResponse || "";
   }
 };
+
 
 // Parse Title from Article
 export const parseTitleFromArticle = (input: string): string => {
