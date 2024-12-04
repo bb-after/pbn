@@ -150,7 +150,12 @@ const ArticleForm: React.FC<ArticleFormProps> = ({
           >
             <MenuItem value={"gpt-4o-mini"}>GPT 4.0 Mini (faster)</MenuItem>
             <MenuItem value={"gpt-4"}>GPT 4 (more advanced, slower)</MenuItem>
-            <MenuItem value={"claude"}>Claude</MenuItem>
+            <MenuItem value={"claude-3-5-sonnet-20241022"}>
+              Claude 3.5 Sonnet (more intelligent)
+            </MenuItem>
+            <MenuItem value={"claude-3-5-haiku-20241022"}>
+              Claude 3.5 Haiku (faster)
+            </MenuItem>
           </Select>
         </FormControl>
       </Box>
