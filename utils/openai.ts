@@ -92,7 +92,7 @@ export const callOpenAI = async (inputData: any) => {
 
       console.log('OpenAI Response:', response.choices[0].message.content);
       return response.choices[0].message.content;
-    } catch (error) {
+    } catch (error: any) {
       console.error('OpenAI API Error:', error.message || error);
       throw new Error('Failed to fetch response from OpenAI API.');
     }
@@ -159,7 +159,7 @@ export const callOpenAIToRewriteArticle = async (content: string, inputData: any
 
       console.log('Rewritten Article (OpenAI):', response.choices[0].message.content);
       return response.choices[0].message.content;
-    } catch (error) {
+    } catch (error: any) {
       console.error('OpenAI API Error:', error.message || error);
       throw new Error('Failed to rewrite article with OpenAI API.');
     }
