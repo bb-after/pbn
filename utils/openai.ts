@@ -3,9 +3,20 @@ import axios from 'axios';
 
 // Constants
 const modelType = process.env.NEXT_PUBLIC_GPT_ENGINE || 'gpt-4'; // Default to GPT-4
+const anthropicModelType = process.env.NEXT_PUBLIC_ANTHROPIC_ENGINE || 'claude-3-5-sonnet-20241022'; // Default to GPT-4
 const mockData = process.env.NEXT_PUBLIC_USE_MOCK_DATA === '1';
 const skipOpenAiRevision = process.env.NEXT_PUBLIC_SKIP_OPENAI_REVISION === '1';
 const maxTokens = 16000;
+const maxAnthropicTokens = 8192;
+
+const getAnthropicApiKey = (): string => {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('Missing Anthropic API Key in environment variables.');
+  }
+  return apiKey;
+};
+
 
 // OpenAI Client Initialization
 const getOpenAIClient = (() => {
@@ -89,28 +100,33 @@ export const callOpenAI = async (inputData: any) => {
   } else if (engine === 'claude') {
     const anthropicApiKey = validateAnthropicKey();
     try {
+      const apiKey = getAnthropicApiKey();
+      const messages = [
+        { role: 'user', content: promptMessage },
+      ];
       const response = await axios.post(
-        'https://api.anthropic.com/v1/completions',
+        'https://api.anthropic.com/v1/messages',
         {
-          model: 'claude-v1',
-          prompt: `\n\nHuman: ${promptMessage}\n\nAssistant:`,
-          max_tokens_to_sample: maxTokens,
-          temperature: 0.8,
+          model: anthropicModelType,
+          max_tokens: maxAnthropicTokens,
+          messages: messages,
         },
         {
           headers: {
-            Authorization: `Bearer ${anthropicApiKey}`,
-            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'content-type': 'application/json',
+            'anthropic-version': '2023-06-01',
           },
         }
       );
-
-      console.log('Claude Response:', response.data.completion);
-      return response.data.completion;
-    } catch (error) {
-      console.error('Claude API Error:', error.message || error);
-      throw new Error('Failed to fetch response from Claude API.');
+  
+      console.log('Anthropic API Response:', response.data);
+      return response.data.content[0].text;
+    } catch (error: any) {
+      console.error('Anthropic API Error:', error.response?.data || error.message || error);
+      throw new Error('Failed to fetch response from Anthropic API.');
     }
+  
   }
 
   throw new Error(`Unsupported AI engine: ${engine}`);
