@@ -110,7 +110,7 @@ const Form: React.FC<FormProps> = () => {
         // Process backlinks
         setLoadingThirdRequest(true);
         const backlinkArray = getBacklinkArray(inputData);
-        let hyperlinkedResponse;
+        let hyperlinkedResponse: string;
 
         try {
           const { data } = await axios.post("/api/insert-backlinks", {
@@ -296,7 +296,7 @@ const Form: React.FC<FormProps> = () => {
       // Insert backlinks into the content
       setLoadingThirdRequest(true);
       const backlinkArray = getBacklinkArray(inputData);
-      let hyperlinkedResponse;
+      let hyperlinkedResponse: string;
 
       try {
         const { data } = await axios.post("/api/insert-backlinks", {
