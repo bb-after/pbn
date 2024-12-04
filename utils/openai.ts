@@ -3,7 +3,6 @@ import axios from 'axios';
 
 // Constants
 const modelType = process.env.NEXT_PUBLIC_GPT_ENGINE || 'gpt-4'; // Default to GPT-4
-const anthropicModelType = process.env.NEXT_PUBLIC_ANTHROPIC_ENGINE || 'claude-3-5-sonnet-20241022'; // Default to GPT-4
 const mockData = process.env.NEXT_PUBLIC_USE_MOCK_DATA === '1';
 const skipOpenAiRevision = process.env.NEXT_PUBLIC_SKIP_OPENAI_REVISION === '1';
 const maxTokens = 16000;
@@ -67,14 +66,14 @@ export const callOpenAI = async (inputData: any) => {
     return `Mocked response based on input: ${JSON.stringify(inputData)}`;
   }
 
-  const { engine = 'openai', sourceContent = '', sourceUrl } = inputData;
+  const { engine = 'gpt-4o-mini', sourceContent = '', sourceUrl } = inputData;
 
   const keywords = Array.isArray(inputData.keywords) ? inputData.keywords : [inputData.keywords];
   const keywordsToExclude = Array.isArray(inputData.keywordsToExclude) ? inputData.keywordsToExclude : [inputData.keywordsToExclude];
 
   const promptMessage = `Write an article approximately ${inputData.wordCount} words long, incorporating these keywords: "${keywords.join(', ')}". Avoid: "${keywordsToExclude.join(', ')}". Use a ${inputData.tone} tone.`;
 
-  if (engine === 'openai' || engine === 'gpt-4') {
+  if (engine === 'gpt-4o-mini' || engine === 'gpt-4') {
     const gptMessage = trimContentToFitTokenLimit(
       [
         { role: 'system', content: `Write as a professional SEO expert fluent in ${inputData.language}.` },
@@ -86,7 +85,7 @@ export const callOpenAI = async (inputData: any) => {
     try {
       const openai = getOpenAIClient();
       const response = await openai.chat.completions.create({
-        model: modelType,
+        model: engine,
         messages: gptMessage,
         temperature: 0.8,
       });
@@ -97,7 +96,7 @@ export const callOpenAI = async (inputData: any) => {
       console.error('OpenAI API Error:', error.message || error);
       throw new Error('Failed to fetch response from OpenAI API.');
     }
-  } else if (engine === 'claude') {
+  } else if (engine.match(/claude-/)) {
     const anthropicApiKey = validateAnthropicKey();
     try {
       const apiKey = getAnthropicApiKey();
@@ -107,7 +106,7 @@ export const callOpenAI = async (inputData: any) => {
       const response = await axios.post(
         'https://api.anthropic.com/v1/messages',
         {
-          model: anthropicModelType,
+          model: engine,
           max_tokens: maxAnthropicTokens,
           messages: messages,
         },
@@ -142,24 +141,59 @@ const validateAnthropicKey = () => {
 export const callOpenAIToRewriteArticle = async (content: string, inputData: any) => {
   const promptMessage = `Rewrite the following article to be unique, engaging, and conversational: "${content}"`;
 
-  const gptMessage = [
-    { role: 'system', content: 'Act as a high-level SEO expert and copywriter.' },
-    { role: 'user', content: promptMessage },
-  ];
+  const { engine = 'gpt-4o-mini' } = inputData;
 
-  try {
-    const openai = getOpenAIClient();
-    const response = await openai.chat.completions.create({
-      model: modelType,
-      messages: gptMessage,
-      temperature: 0.8,
-    });
+  if (engine === 'gpt-4o-mini' || engine === 'gpt-4') {
+    const gptMessage = trimContentToFitTokenLimit([
+      { role: 'system', content: 'Act as a high-level SEO expert and copywriter.' },
+      { role: 'user', content: promptMessage },
+    ], maxTokens);
 
-    console.log('Rewritten Article:', response.choices[0].message.content);
-    return response.choices[0].message.content;
-  } catch (error) {
-    console.error('OpenAI API Error:', error.message || error);
-    throw new Error('Failed to rewrite article with OpenAI API.');
+    try {
+      const openai = getOpenAIClient();
+      const response = await openai.chat.completions.create({
+        model: engine,
+        messages: gptMessage,
+        temperature: 0.8,
+      });
+
+      console.log('Rewritten Article (OpenAI):', response.choices[0].message.content);
+      return response.choices[0].message.content;
+    } catch (error) {
+      console.error('OpenAI API Error:', error.message || error);
+      throw new Error('Failed to rewrite article with OpenAI API.');
+    }
+  } else if (engine.match(/claude-/)) {
+    const anthropicApiKey = getAnthropicApiKey();
+    const messages = [
+      { role: 'user', content: promptMessage },
+    ];
+
+    try {
+      const response = await axios.post(
+        'https://api.anthropic.com/v1/messages',
+        {
+          model: engine,
+          max_tokens: maxAnthropicTokens,
+          messages: messages,
+        },
+        {
+          headers: {
+            'x-api-key': anthropicApiKey,
+            'content-type': 'application/json',
+            'anthropic-version': '2023-06-01',
+          },
+        }
+      );
+
+      console.log('Rewritten Article (Claude):', response.data.content[0].text);
+      return response.data.content[0].text;
+    } catch (error: any) {
+      console.error('Anthropic API Error:', error.response?.data || error.message || error);
+      throw new Error('Failed to rewrite article with Claude API.');
+    }
+  } else {
+    throw new Error(`Unsupported AI engine: ${engine}`);
   }
 };
 

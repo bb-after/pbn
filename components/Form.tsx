@@ -48,7 +48,6 @@ const Form: React.FC<FormProps> = () => {
   const [iterationCount, setIterationCount] = useState(0);
   const [iterationTotal, setIterationTotal] = useState(0);
   const [isLoadingFirstRequest, setLoadingFirstRequest] = useState(false);
-  const [isLoadingSecondRequest, setLoadingSecondRequest] = useState(false);
   const [isLoadingThirdRequest, setLoadingThirdRequest] = useState(false);
   const [showForm, setShowForm] = useState(true);
   const [isEditingState, setEditingState] = useState(false);
@@ -90,25 +89,29 @@ const Form: React.FC<FormProps> = () => {
     }
 
     setRemixModalOpen(false); // Close the modal
-
     const inputData = getInputData();
     setIterationTotal(iterations);
     const mode = remixMode;
+
     try {
       for (let i = 1; i <= iterations; i++) {
         setIterationCount(i);
         setShowForm(false);
         setLoadingFirstRequest(true);
 
-        const firstResponse =
-          mode !== "generate"
-            ? await callOpenAIToRewriteArticle(response, inputData)
-            : await callOpenAI(inputData);
+        // Send request to backend endpoint instead of calling OpenAI directly
+        const firstResponse = await axios.post("/api/remix-article", {
+          mode,
+          inputData,
+          response: mode !== "generate" ? response : null,
+        });
 
+        const articleContent = firstResponse.data.content;
         setLoadingFirstRequest(false);
 
+        // Process backlinks
         setLoadingThirdRequest(true);
-        let hyperlinkedResponse = firstResponse;
+        let hyperlinkedResponse = articleContent;
         const backlinkArray = getBacklinkArray(inputData);
 
         const missingBacklinks = backlinkArray.filter(
@@ -118,11 +121,15 @@ const Form: React.FC<FormProps> = () => {
 
         setResponse(hyperlinkedResponse);
         addResponseToPreviousResponses(hyperlinkedResponse);
-        postToSlack("*Iteration #" + i + "*:" + hyperlinkedResponse);
+
+        // Optional: Post result to Slack or other integrations
+        postToSlack(`*Iteration #${i}*:\n${hyperlinkedResponse}`);
         await sendDataToStatusCrawl(inputData, hyperlinkedResponse, token);
+
         setLoadingThirdRequest(false);
       }
     } catch (error) {
+      console.error("Error during Remix Modal Submit:", error);
       setLoadingFirstRequest(false);
       setLoadingThirdRequest(false);
     } finally {
@@ -246,7 +253,6 @@ const Form: React.FC<FormProps> = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const inputData = getInputData();
-    const numberOfIterations = 1;
 
     if (!token) {
       alert("User token not found.");
@@ -254,7 +260,6 @@ const Form: React.FC<FormProps> = () => {
     }
 
     try {
-      debugger;
       setShowForm(false);
       setLoadingFirstRequest(true);
 
