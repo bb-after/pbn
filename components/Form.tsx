@@ -21,25 +21,22 @@ import Step1LoadingStateComponent from "./Step1LoadingState";
 import FinalLoadingStateComponent from "./FinalLoadingState";
 import ArticleForm from "./ArticleForm";
 import {
-  callOpenAI,
-  callOpenAIToRewriteArticle,
-  callOpenAIRevised,
   insertBacklinks,
   getBacklinkArray,
   parseTitleFromArticle,
 } from "../utils/openai";
 import { sendDataToStatusCrawl } from "../utils/statusCrawl";
 import useValidateUserToken from "../hooks/useValidateUserToken";
+import axios from "axios";
 
 // Dynamically import JoditEditor to prevent SSR issues
 const JoditEditor = dynamic(() => import("jodit-react"), { ssr: false });
 
-interface FormProps {
-}
+interface FormProps {}
 
 const Form: React.FC<FormProps> = () => {
-  const editor = useRef(null);  // Reference to Jodit editor instance
-  const [content, setContent] = useState('');  // State for editor content
+  const editor = useRef(null); // Reference to Jodit editor instance
+  const [content, setContent] = useState(""); // State for editor content
   const [response, setResponse] = useState<string>(""); // Initialize with an empty string
   const [articleTitle, setArticleTitle] = useState<string>(""); // State for article title
   const [backlinks, setBacklinks] = useState([""]); // State to hold list of backlinks
@@ -49,13 +46,12 @@ const Form: React.FC<FormProps> = () => {
   const [iterationCount, setIterationCount] = useState(0);
   const [iterationTotal, setIterationTotal] = useState(0);
   const [isLoadingFirstRequest, setLoadingFirstRequest] = useState(false);
-  const [isLoadingSecondRequest, setLoadingSecondRequest] = useState(false);
   const [isLoadingThirdRequest, setLoadingThirdRequest] = useState(false);
   const [showForm, setShowForm] = useState(true);
   const [isEditingState, setEditingState] = useState(false);
 
   const [keywords, setKeywords] = useState("");
-  const [gptVersion, setGptVersion] = useState("gpt-4o-mini");
+  const [engine, setEngine] = useState("gpt-4o-mini");
   const [language, setLanguage] = useState("English");
   const [wordCount, setWordCount] = useState(300);
   const [keywordsToExclude, setKeywordsToExclude] = useState("");
@@ -74,8 +70,8 @@ const Form: React.FC<FormProps> = () => {
 
   const handlePbnModalOpen = (response: string) => {
     const postTitle = parseTitleFromArticle(response);
-    setArticleTitle(postTitle); 
-    setResponse(wrapInParagraphs(normalizeLineBreaks(response)))
+    setArticleTitle(postTitle);
+    setResponse(wrapInParagraphs(normalizeLineBreaks(response)));
     setPbnModalOpen(true);
   };
 
@@ -91,31 +87,45 @@ const Form: React.FC<FormProps> = () => {
     }
 
     setRemixModalOpen(false); // Close the modal
-
     const inputData = getInputData();
     setIterationTotal(iterations);
     const mode = remixMode;
+
     try {
       for (let i = 1; i <= iterations; i++) {
         setIterationCount(i);
         setShowForm(false);
         setLoadingFirstRequest(true);
 
-        const firstResponse =
-          mode !== "generate"
-            ? await callOpenAIToRewriteArticle(response, inputData)
-            : await callOpenAI(inputData);
+        // Send request to backend endpoint instead of calling OpenAI directly
+        const firstResponse = await axios.post("/api/remix-article", {
+          mode,
+          inputData,
+          response: mode !== "generate" ? response : null,
+        });
 
+        const articleContent = firstResponse.data.content;
         setLoadingFirstRequest(false);
 
-        const revisedResponse = await callOpenAIRevised(
-          inputData,
-          firstResponse
-        );
-
+        // Process backlinks
         setLoadingThirdRequest(true);
-        let hyperlinkedResponse = revisedResponse;
         const backlinkArray = getBacklinkArray(inputData);
+        let hyperlinkedResponse: string;
+
+        try {
+          const { data } = await axios.post("/api/insert-backlinks", {
+            backlinkArray,
+            articleContent,
+          });
+
+          hyperlinkedResponse = data.content || articleContent; // Fallback to original content if `data.content` is missing
+        } catch (error) {
+          console.warn(
+            "Backlink insertion failed, using original content:",
+            error
+          );
+          hyperlinkedResponse = articleContent; // Fallback to original content on error
+        }
 
         const missingBacklinks = backlinkArray.filter(
           (backlink) => !hyperlinkedResponse.includes(backlink)
@@ -124,11 +134,15 @@ const Form: React.FC<FormProps> = () => {
 
         setResponse(hyperlinkedResponse);
         addResponseToPreviousResponses(hyperlinkedResponse);
-        postToSlack("*Iteration #" + i + "*:" + hyperlinkedResponse);
+
+        // Optional: Post result to Slack or other integrations
+        postToSlack(`*Iteration #${i}*:\n${hyperlinkedResponse}`);
         await sendDataToStatusCrawl(inputData, hyperlinkedResponse, token);
+
         setLoadingThirdRequest(false);
       }
     } catch (error) {
+      console.error("Error during Remix Modal Submit:", error);
       setLoadingFirstRequest(false);
       setLoadingThirdRequest(false);
     } finally {
@@ -183,9 +197,7 @@ const Form: React.FC<FormProps> = () => {
   const wrapInParagraphs = (htmlContent: string) => {
     return `<p>${htmlContent.replace(/\n/g, "</p><p>")}</p>`;
   };
-  
-  
-  
+
   const openEditor = () => {
     setContent(wrapInParagraphs(normalizeLineBreaks(response)));
     setEditingState(true);
@@ -225,8 +237,8 @@ const Form: React.FC<FormProps> = () => {
     URL.revokeObjectURL(url);
   }
 
-  const handleGptVersionChange = (event: SelectChangeEvent) => {
-    setGptVersion(event.target.value as string);
+  const handleEngineChange = (event: SelectChangeEvent) => {
+    setEngine(event.target.value as string);
   };
 
   const handleLanguage = (event: SelectChangeEvent) => {
@@ -240,7 +252,7 @@ const Form: React.FC<FormProps> = () => {
     sourceContent: useSourceContent ? sourceContent : "",
     tone: tone.join(", "),
     wordCount,
-    gptVersion,
+    engine,
     articleCount,
     otherInstructions,
     language,
@@ -254,7 +266,6 @@ const Form: React.FC<FormProps> = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const inputData = getInputData();
-    const numberOfIterations = 1;
 
     if (!token) {
       alert("User token not found.");
@@ -265,36 +276,62 @@ const Form: React.FC<FormProps> = () => {
       setShowForm(false);
       setLoadingFirstRequest(true);
 
-      const firstResponse = await callOpenAI(inputData);
+      const firstResponse = await axios.post("/api/generate-article", {
+        wordCount,
+        keywords,
+        keywordsToExclude,
+        sourceUrl,
+        sourceContent,
+        useSourceContent,
+        engine,
+        language,
+        backlinks,
+        tone,
+        otherInstructions,
+      });
+
+      const articleContent = firstResponse.data.content;
       setLoadingFirstRequest(false);
 
-      const revisedResponse = await callOpenAIRevised(inputData, firstResponse);
+      // Insert backlinks into the content
       setLoadingThirdRequest(true);
-      let hyperlinkedResponse = revisedResponse;
       const backlinkArray = getBacklinkArray(inputData);
+      let hyperlinkedResponse: string;
 
+      try {
+        const { data } = await axios.post("/api/insert-backlinks", {
+          backlinkArray,
+          articleContent,
+        });
+
+        hyperlinkedResponse = data.content || articleContent; // Fallback to original content if `data.content` is missing
+      } catch (error) {
+        console.warn(
+          "Backlink insertion failed, using original content:",
+          error
+        );
+        hyperlinkedResponse = articleContent; // Fallback to original content on error
+      }
+
+      // Check for missing backlinks
       const missingBacklinks = backlinkArray.filter(
         (backlink) => !hyperlinkedResponse.includes(backlink)
       );
-      setMissingBacklinks(missingBacklinks);
+      setMissingBacklinks(missingBacklinks); // Update state with missing backlinks
+
       setResponse(hyperlinkedResponse);
       addResponseToPreviousResponses(hyperlinkedResponse);
+
       setLoadingThirdRequest(false);
       postToSlack(hyperlinkedResponse);
 
       await sendDataToStatusCrawl(inputData, hyperlinkedResponse, token);
     } catch (error) {
+      console.error("Error during article generation:", error);
       setLoadingFirstRequest(false);
       setLoadingThirdRequest(false);
     }
   };
-
-  // const config = {
-  //   readonly: false,
-  //   height: 400,
-  //   toolbar: true,
-  //   buttons: ["bold", "italic", "underline", "link", "source"],
-  // };
 
   return (
     <div className={styles.formWrapper}>
@@ -316,16 +353,16 @@ const Form: React.FC<FormProps> = () => {
             setUseSourceContent={setUseSourceContent}
             keywordsToExclude={keywordsToExclude}
             setKeywordsToExclude={setKeywordsToExclude}
-            gptVersion={gptVersion}
-            handleGptVersionChange={handleGptVersionChange}
+            engine={engine}
+            handleEngineChange={handleEngineChange}
             language={language}
             handleLanguage={handleLanguage}
             tone={tone}
             handleToneChange={handleToneChange}
             otherInstructions={otherInstructions}
-            setOtherInstructions={setOtherInstructions} 
+            setOtherInstructions={setOtherInstructions}
             backlinks={backlinks}
-            setBacklinks={setBacklinks} 
+            setBacklinks={setBacklinks}
           />
           {previousResponses.length > 0 && (
             <div>
@@ -343,7 +380,8 @@ const Form: React.FC<FormProps> = () => {
         </div>
       ) : (
         <div className="response">
-          {(isLoadingFirstRequest || isLoadingThirdRequest) && iterationCount > 0 ? (
+          {(isLoadingFirstRequest || isLoadingThirdRequest) &&
+          iterationCount > 0 ? (
             <div className={styles.iterationCount}>
               Remixing {iterationCount} / {iterationTotal}
             </div>
@@ -531,8 +569,9 @@ const Form: React.FC<FormProps> = () => {
       <PbnSubmissionModal
         isOpen={isPbnModalOpen}
         onClose={() => setPbnModalOpen(false)}
-        articleTitle={articleTitle} 
-        content={response} />
+        articleTitle={articleTitle}
+        content={response}
+      />
     </div>
   );
 };
