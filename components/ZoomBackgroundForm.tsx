@@ -13,7 +13,16 @@ import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import { Link, Box } from "@mui/material";
 
-type BackgroundStyle = "goldenGate" | "library" | "arcade" | "techHub";
+type BackgroundStyle =
+  | "goldenGate"
+  | "library"
+  | "arcade"
+  | "techHub"
+  | "manhattan"
+  | "botanicalGarden"
+  | "coastalOffice"
+  | "vintagePrintshop"
+  | "jazzLounge";
 
 type ZoomBackgroundFormProps = {
   onSubmit: (data: {
@@ -58,6 +67,31 @@ function ZoomBackgroundForm({
         label: "Modern Tech Hub",
         prompt:
           "A sleek, modern tech workspace with holographic displays and minimal design. A floating digital display (10% frame) mounted high right shows '${companyName} & ${clientName}' in clean, modern typography. Subtle blue ambient lighting creates professional atmosphere. 10% frame, mounted high right corner.",
+      },
+      manhattan: {
+        label: "Manhattan Skyline",
+        prompt:
+          "A sophisticated view of the Manhattan skyline at dusk with iconic skyscrapers and ambient city lights. A tasteful Art Deco-inspired plaque (10% frame) mounted high right displays '${companyName} & ${clientName}' in elegant gilt lettering against dark bronze. City lights create professional atmosphere. 10% frame, mounted high right corner. we want a 16:9 image.",
+      },
+      botanicalGarden: {
+        label: "Botanical Garden",
+        prompt:
+          "An elegant indoor botanical garden with tropical plants and a glass ceiling showing blue sky. A verdant living wall frame (10% frame) mounted high right displays '${companyName} & ${clientName}' in natural, organic typography integrated with small flowering vines. Natural daylight creates fresh atmosphere. 10% frame, mounted high right corner. we want a 16:9 image.",
+      },
+      coastalOffice: {
+        label: "Coastal Office",
+        prompt:
+          "A modern coastal office space with floor-to-ceiling windows overlooking ocean waves. A floating glass panel (10% frame) mounted high right displays '${companyName} & ${clientName}' in clean, maritime-inspired typography. Ocean light creates calming atmosphere. 10% frame, mounted high right corner. we want a 16:9 image.",
+      },
+      vintagePrintshop: {
+        label: "Vintage Printshop",
+        prompt:
+          "A characterful vintage printshop with letterpress machines and wood type specimens. A hand-carved wooden sign (10% frame) mounted high right displays '${companyName} & ${clientName}' in traditional letterpress styling. Warm workshop lighting creates authentic atmosphere. 10% frame, mounted high right corner. we want a 16:9 image.",
+      },
+      jazzLounge: {
+        label: "Jazz Lounge",
+        prompt:
+          "An upscale jazz lounge with rich leather seating and subtle stage lighting. A backlit art deco marquee (10% frame) mounted high right displays '${companyName} & ${clientName}' in sophisticated jazz-age typography. Ambient stage lights create intimate atmosphere. 10% frame, mounted high right corner. we want a 16:9 image.",
       },
     };
 
@@ -114,6 +148,11 @@ function ZoomBackgroundForm({
               library: { label: "Classic Library" },
               arcade: { label: "Retro Arcade" },
               techHub: { label: "Modern Tech Hub" },
+              manhattan: { label: "Manhattan Skyline" },
+              botanicalGarden: { label: "Botanical Garden" },
+              coastalOffice: { label: "Coastal Office" },
+              vintagePrintshop: { label: "Vintage Printshop" },
+              jazzLounge: { label: "Jazz Lounge" },
             }).map(([key, { label }]) => (
               <MenuItem key={key} value={key}>
                 {label}
@@ -142,24 +181,22 @@ function ZoomBackgroundForm({
                 mt: 2,
               }}
             >
-              <KeyboardArrowDownIcon sx={{ mr: 0.5 }} />
               Edit prompt (optional)
             </Link>
           ) : (
             <>
-              <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 2 }}>
-                <Link
-                  component="button"
-                  onClick={() => setIsPromptVisible(false)}
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                  }}
-                >
-                  <KeyboardArrowUpIcon sx={{ mr: 0.5 }} />
-                  Hide prompt editor
-                </Link>
-              </Box>
+              <Link
+                component="button"
+                onClick={() => setIsPromptVisible(false)}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                <KeyboardArrowUpIcon sx={{ mr: 0.5 }} />
+                Hide prompt editor
+              </Link>
+
               <TextField
                 fullWidth
                 label="Prompt"
