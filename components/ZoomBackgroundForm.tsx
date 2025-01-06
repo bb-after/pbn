@@ -12,6 +12,9 @@ import Image from "next/image";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import { Link, Box } from "@mui/material";
+
+type BackgroundStyle = "goldenGate" | "library" | "arcade" | "techHub";
+
 type ZoomBackgroundFormProps = {
   onSubmit: (data: {
     company: string;
@@ -27,7 +30,7 @@ function ZoomBackgroundForm({ onSubmit, isLoading }: ZoomBackgroundFormProps) {
   const [isPromptVisible, setIsPromptVisible] = useState<boolean>(false);
 
   const [selectedStyle, setSelectedStyle] =
-    useState<"goldenGate">("goldenGate");
+    useState<BackgroundStyle>("goldenGate");
   const [prompt, setPrompt] = useState<string>("");
   useEffect(() => {
     const BACKGROUND_STYLES = {
@@ -95,7 +98,9 @@ function ZoomBackgroundForm({ onSubmit, isLoading }: ZoomBackgroundFormProps) {
             id="style-select"
             value={selectedStyle}
             label="Background Style"
-            onChange={(e) => setSelectedStyle(e.target.value)}
+            onChange={(e) =>
+              setSelectedStyle(e.target.value as BackgroundStyle)
+            }
             fullWidth
             sx={{ mb: 2 }}
           >
