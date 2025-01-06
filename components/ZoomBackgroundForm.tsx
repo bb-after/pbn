@@ -22,9 +22,14 @@ type ZoomBackgroundFormProps = {
     prompt: string;
   }) => void;
   isLoading: boolean;
+  error?: string | null; // Added this line
 };
 
-function ZoomBackgroundForm({ onSubmit, isLoading }: ZoomBackgroundFormProps) {
+function ZoomBackgroundForm({
+  onSubmit,
+  isLoading,
+  error,
+}: ZoomBackgroundFormProps) {
   const [company, setCompany] = useState<string>("Status Labs");
   const [clientName, setClientName] = useState<string>("");
   const [isPromptVisible, setIsPromptVisible] = useState<boolean>(false);
@@ -171,17 +176,6 @@ function ZoomBackgroundForm({ onSubmit, isLoading }: ZoomBackgroundFormProps) {
           )}
         </>
 
-        {/* <TextField
-          fullWidth
-          label="Prompt"
-          margin="normal"
-          multiline
-          rows={4}
-          variant="outlined"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Prompt will be generated based on selected style"
-        /> */}
         <Button
           type="submit"
           variant="contained"
@@ -285,7 +279,11 @@ export default function Home() {
     <main className="container mx-auto py-8">
       <h1 className="text-3xl font-bold mb-6">Zoom Background Generator</h1>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <ZoomBackgroundForm onSubmit={handleSubmit} isLoading={isLoading} />
+        <ZoomBackgroundForm
+          onSubmit={handleSubmit}
+          isLoading={isLoading}
+          error={error}
+        />
         {error && <p className="text-red-500">{error}</p>}
         {backgroundUrl && (
           <ZoomBackgroundDisplay

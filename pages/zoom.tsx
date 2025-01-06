@@ -49,12 +49,7 @@ export default function Home() {
   return (
     <LayoutContainer>
       <StyledHeader />
-      <ZoomBackgroundForm
-        onSubmit={handleSubmit}
-        isLoading={isLoading}
-        error={error}
-      />
-      {error && <p className="text-red-500">{error}</p>}
+      <ZoomBackgroundForm />
       {backgroundUrl && <ZoomBackgroundDisplay imageUrl={backgroundUrl} />}
     </LayoutContainer>
   );
