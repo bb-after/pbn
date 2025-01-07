@@ -254,7 +254,7 @@ function ZoomBackgroundDisplay({
         alt="Generated Zoom Background"
         width={1920}
         height={1080}
-        style={{ width: "20%", height: "auto" }}
+        style={{ width: "40%", height: "auto" }}
       />
       <div className="mt-4">
         <Button
@@ -271,7 +271,14 @@ function ZoomBackgroundDisplay({
 }
 
 export default function Home() {
-  const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null);
+  // const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null);
+  const [backgrounds, setBackgrounds] = useState<
+    Array<{
+      imageUrl: string;
+      clientName: string;
+    }>
+  >([]);
+
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [currentClientName, setCurrentClientName] = useState<string>("");
@@ -287,7 +294,6 @@ export default function Home() {
   }) => {
     setIsLoading(true);
     setError(null);
-    setCurrentClientName(clientName); // Store the client name when submitting
 
     try {
       const res = await fetch("/api/generateZoomBackground", {
@@ -301,7 +307,13 @@ export default function Home() {
       const result = await res.json();
 
       if (res.ok) {
-        setBackgroundUrl(result.imageUrl);
+        setBackgrounds((prev) => [
+          ...prev,
+          {
+            imageUrl: result.imageUrl,
+            clientName: clientName,
+          },
+        ]);
       } else {
         setError(result.error);
       }
@@ -316,18 +328,23 @@ export default function Home() {
     <main className="container mx-auto py-8">
       <h1 className="text-3xl font-bold mb-6">Zoom Background Generator</h1>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <ZoomBackgroundForm
-          onSubmit={handleSubmit}
-          isLoading={isLoading}
-          error={error}
-        />
-        {error && <p className="text-red-500">{error}</p>}
-        {backgroundUrl && (
-          <ZoomBackgroundDisplay
-            imageUrl={backgroundUrl}
-            clientName={currentClientName}
+        <div>
+          <ZoomBackgroundForm
+            onSubmit={handleSubmit}
+            isLoading={isLoading}
+            error={error}
           />
-        )}
+          {error && <p className="text-red-500">{error}</p>}
+        </div>
+        <div className="space-y-8">
+          {[...backgrounds].reverse().map((background, index) => (
+            <ZoomBackgroundDisplay
+              key={index}
+              imageUrl={background.imageUrl}
+              clientName={background.clientName}
+            />
+          ))}
+        </div>
       </div>
     </main>
   );
