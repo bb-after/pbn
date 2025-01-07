@@ -32,7 +32,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         image_request: {
           prompt: prompt,
           style: 'photographic',
-          aspect_ratio: 'ASPECT_9_16',
+          aspect_ratio: 'ASPECT_16_9',
           model: 'V_2',
         //   height: 576,
         },
