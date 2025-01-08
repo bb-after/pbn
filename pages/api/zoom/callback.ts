@@ -37,6 +37,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       
   } catch (error: unknown) {
     console.error('Error fetching Zoom access token:', error instanceof Error ? error.message : String(error));
-    res.status(500).json({ error: 'Failed to get Zoom access token' + error.message });
+    res.status(500).json({ error: 'Failed to get Zoom access token' + (error instanceof Error ? error.message : String(error)) });
   }
 }
