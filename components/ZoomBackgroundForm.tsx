@@ -97,6 +97,56 @@ function ZoomBackgroundForm({
         prompt:
           "An upscale jazz lounge with rich leather seating and subtle stage lighting. A backlit art deco marquee (10% frame) mounted high right displays '${companyName} & ${clientName}' in sophisticated jazz-age typography. Ambient stage lights create intimate atmosphere. 10% frame, mounted high right corner.",
       },
+      parisianCafe: {
+        label: "Parisian Café",
+        prompt:
+          "A charming Parisian café with wrought iron furniture and cobblestone streets. A hand-painted chalkboard sign (10% frame) mounted high right displays '${companyName} & ${clientName}' in elegant cursive lettering. Warm evening light creates a cozy atmosphere. 10% frame, mounted high right corner.",
+      },
+      futuristicCity: {
+        label: "Futuristic City",
+        prompt:
+          "A high-tech futuristic cityscape with towering glass buildings and flying vehicles. A neon holographic panel (10% frame) mounted high right displays '${companyName} & ${clientName}' in sleek, glowing typography. Futuristic lighting creates an advanced atmosphere. 10% frame, mounted high right corner.",
+      },
+      mountainRetreat: {
+        label: "Mountain Retreat",
+        prompt:
+          "A tranquil mountain lodge with a stone fireplace and large windows overlooking snow-capped peaks. A carved wooden plaque (10% frame) mounted high right displays '${companyName} & ${clientName}' in rustic typography. Soft firelight creates a warm, inviting atmosphere. 10% frame, mounted high right corner.",
+      },
+      artGallery: {
+        label: "Contemporary Art Gallery",
+        prompt:
+          "A minimalist contemporary art gallery with large abstract paintings and polished floors. A sleek metal plaque (10% frame) mounted high right displays '${companyName} & ${clientName}' in modern sans-serif typography. Bright white lighting creates a clean atmosphere. 10% frame, mounted high right corner.",
+      },
+      rooftopBar: {
+        label: "Rooftop Bar",
+        prompt:
+          "A stylish rooftop bar with string lights, cozy seating, and a view of the city skyline. A neon bar sign (10% frame) mounted high right displays '${companyName} & ${clientName}' in bold, glowing letters. Evening lights create a vibrant atmosphere. 10% frame, mounted high right corner.",
+      },
+      desertOasis: {
+        label: "Desert Oasis",
+        prompt:
+          "A serene desert oasis with palm trees, a reflective water pool, and warm sand dunes. A carved stone frame (10% frame) mounted high right displays '${companyName} & ${clientName}' in elegant desert-themed typography. Golden hour lighting creates a calm atmosphere. 10% frame, mounted high right corner.",
+      },
+      spaceStation: {
+        label: "Space Station",
+        prompt:
+          "A futuristic space station with large windows overlooking Earth and glowing control panels. A digital interface panel (10% frame) mounted high right displays '${companyName} & ${clientName}' in futuristic, geometric typography. Cool ambient lighting creates a cosmic atmosphere. 10% frame, mounted high right corner.",
+      },
+      tropicalBeach: {
+        label: "Tropical Beach",
+        prompt:
+          "A tropical beach with white sand, turquoise water, and palm trees. A driftwood sign (10% frame) mounted high right displays '${companyName} & ${clientName}' in handwritten script. Golden sunlight creates a relaxing atmosphere. 10% frame, mounted high right corner.",
+      },
+      industrialLoft: {
+        label: "Industrial Loft",
+        prompt:
+          "A modern industrial loft with exposed brick walls and large factory-style windows. A metal wall-mounted sign (10% frame) mounted high right displays '${companyName} & ${clientName}' in bold industrial typography. Warm Edison bulb lighting creates a stylish atmosphere. 10% frame, mounted high right corner.",
+      },
+      enchantedForest: {
+        label: "Enchanted Forest",
+        prompt:
+          "A magical enchanted forest with glowing mushrooms and softly lit trees. A mystical wooden frame (10% frame) mounted high right displays '${companyName} & ${clientName}' in whimsical calligraphy. Soft moonlight creates a dreamy atmosphere. 10% frame, mounted high right corner.",
+      },
     };
 
     if (selectedStyle) {
@@ -132,7 +182,6 @@ function ZoomBackgroundForm({
             ))}
           </Select>
         </FormControl>
-        <br />
         <TextField
           fullWidth
           label="Client Name"
@@ -166,6 +215,16 @@ function ZoomBackgroundForm({
               coastalOffice: { label: "Coastal Office" },
               vintagePrintshop: { label: "Vintage Printshop" },
               jazzLounge: { label: "Jazz Lounge" },
+              parisianCafe: { label: "Parisian Café" },
+              futuristicCity: { label: "Futuristic City" },
+              mountainRetreat: { label: "Mountain Retreat" },
+              artGallery: { label: "Contemporary Art Gallery" },
+              rooftopBar: { label: "Rooftop Bar" },
+              desertOasis: { label: "Desert Oasis" },
+              spaceStation: { label: "Space Station" },
+              tropicalBeach: { label: "Tropical Beach" },
+              industrialLoft: { label: "Industrial Loft" },
+              enchantedForest: { label: "Enchanted Forest" },
             }).map(([key, { label }]) => (
               <MenuItem key={key} value={key}>
                 {label}
@@ -437,7 +496,13 @@ export default function Home() {
 
   return (
     <main className="container mx-auto py-8">
-      <h1 className="text-3xl font-bold mb-6">Zoom Background Generator</h1>
+      <h3 className="text-3xl font-bold">Zoom Backdrop</h3>
+      <div className="block text-gray-500 text-base font-normal">
+        Create custom, memorable Zoom backgrounds personalized for your next
+        prospect or client call.
+      </div>
+      <br />
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         <div>
           <ZoomBackgroundForm
@@ -447,7 +512,8 @@ export default function Home() {
           />
           {error && <p className="text-red-500">{error}</p>}
         </div>
-        <div className="space-y-8">
+        <br />
+        <div className="mb-space-y-8">
           {[...backgrounds].reverse().map((background, index) => (
             <ZoomBackgroundDisplay
               key={index}
