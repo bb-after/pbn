@@ -110,6 +110,9 @@ const StyledHeader = () => {
           <Link href="/superstar-post-capture-form" className="link">
             Capture Wordpress Post
           </Link>
+          <Link href="/zoom" className="link">
+            Zoom Backdrop
+          </Link>
         </div>
       </nav>
     </>
