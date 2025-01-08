@@ -1,17 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, ReactNode } from "react";
 import {
   TextField,
   Button,
   FormControl,
-  FormLabel,
   Select,
   MenuItem,
   InputLabel,
 } from "@mui/material";
 import Image from "next/image";
-import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
-import { Link, Box } from "@mui/material";
+import { Link } from "@mui/material";
+import { useZoomBackground } from "../hooks/useZoomBackground"; // Make sure the path is correct
+import { useRouter } from "next/router";
 
 type BackgroundStyle =
   | "goldenGate"
@@ -46,6 +46,10 @@ function ZoomBackgroundForm({
   const [selectedStyle, setSelectedStyle] =
     useState<BackgroundStyle>("goldenGate");
   const [prompt, setPrompt] = useState<string>("");
+
+  const router = useRouter();
+  const { query } = router;
+
   useEffect(() => {
     const BACKGROUND_STYLES = {
       goldenGate: {
@@ -71,27 +75,27 @@ function ZoomBackgroundForm({
       manhattan: {
         label: "Manhattan Skyline",
         prompt:
-          "A sophisticated view of the Manhattan skyline at dusk with iconic skyscrapers and ambient city lights. A tasteful Art Deco-inspired plaque (10% frame) mounted high right displays '${companyName} & ${clientName}' in elegant gilt lettering against dark bronze. City lights create professional atmosphere. 10% frame, mounted high right corner. we want a 16:9 image.",
+          "A sophisticated view of the Manhattan skyline at dusk with iconic skyscrapers and ambient city lights. A tasteful Art Deco-inspired plaque (10% frame) mounted high right displays '${companyName} & ${clientName}' in elegant gilt lettering against dark bronze. City lights create professional atmosphere. 10% frame, mounted high right corner.",
       },
       botanicalGarden: {
         label: "Botanical Garden",
         prompt:
-          "An elegant indoor botanical garden with tropical plants and a glass ceiling showing blue sky. A verdant living wall frame (10% frame) mounted high right displays '${companyName} & ${clientName}' in natural, organic typography integrated with small flowering vines. Natural daylight creates fresh atmosphere. 10% frame, mounted high right corner. we want a 16:9 image.",
+          "An elegant indoor botanical garden with tropical plants and a glass ceiling showing blue sky. A verdant living wall frame (10% frame) mounted high right displays '${companyName} & ${clientName}' in natural, organic typography integrated with small flowering vines. Natural daylight creates fresh atmosphere. 10% frame, mounted high right corner.",
       },
       coastalOffice: {
         label: "Coastal Office",
         prompt:
-          "A modern coastal office space with floor-to-ceiling windows overlooking ocean waves. A floating glass panel (10% frame) mounted high right displays '${companyName} & ${clientName}' in clean, maritime-inspired typography. Ocean light creates calming atmosphere. 10% frame, mounted high right corner. we want a 16:9 image.",
+          "A modern coastal office space with floor-to-ceiling windows overlooking ocean waves. A floating glass panel (10% frame) mounted high right displays '${companyName} & ${clientName}' in clean, maritime-inspired typography. Ocean light creates calming atmosphere. 10% frame, mounted high right corner.",
       },
       vintagePrintshop: {
         label: "Vintage Printshop",
         prompt:
-          "A characterful vintage printshop with letterpress machines and wood type specimens. A hand-carved wooden sign (10% frame) mounted high right displays '${companyName} & ${clientName}' in traditional letterpress styling. Warm workshop lighting creates authentic atmosphere. 10% frame, mounted high right corner. we want a 16:9 image.",
+          "A characterful vintage printshop with letterpress machines and wood type specimens. A hand-carved wooden sign (10% frame) mounted high right displays '${companyName} & ${clientName}' in traditional letterpress styling. Warm workshop lighting creates authentic atmosphere. 10% frame, mounted high right corner.",
       },
       jazzLounge: {
         label: "Jazz Lounge",
         prompt:
-          "An upscale jazz lounge with rich leather seating and subtle stage lighting. A backlit art deco marquee (10% frame) mounted high right displays '${companyName} & ${clientName}' in sophisticated jazz-age typography. Ambient stage lights create intimate atmosphere. 10% frame, mounted high right corner. we want a 16:9 image.",
+          "An upscale jazz lounge with rich leather seating and subtle stage lighting. A backlit art deco marquee (10% frame) mounted high right displays '${companyName} & ${clientName}' in sophisticated jazz-age typography. Ambient stage lights create intimate atmosphere. 10% frame, mounted high right corner.",
       },
     };
 
@@ -129,6 +133,15 @@ function ZoomBackgroundForm({
           </Select>
         </FormControl>
         <br />
+        <TextField
+          fullWidth
+          label="Client Name"
+          margin="normal"
+          required
+          variant="outlined"
+          value={clientName}
+          onChange={(e) => setClientName(e.target.value)}
+        />
         <br />
         <FormControl fullWidth>
           <InputLabel id="style-label">Background Style</InputLabel>
@@ -160,15 +173,6 @@ function ZoomBackgroundForm({
             ))}
           </Select>
         </FormControl>
-        <TextField
-          fullWidth
-          label="Client Name"
-          margin="normal"
-          required
-          variant="outlined"
-          value={clientName}
-          onChange={(e) => setClientName(e.target.value)}
-        />
         <br />
         <>
           {!isPromptVisible ? (
@@ -236,6 +240,11 @@ function ZoomBackgroundDisplay({
   imageUrl,
   clientName,
 }: ZoomBackgroundDisplayProps) {
+  const [isSetting, setIsSetting] = useState(false);
+  const [message, setMessage] = useState<ReactNode | null>(null);
+
+  const { setZoomBackground } = useZoomBackground();
+
   const handleDownload = async () => {
     try {
       window.location.href = `/api/downloadZoomImage?imageUrl=${encodeURIComponent(
@@ -243,6 +252,95 @@ function ZoomBackgroundDisplay({
       )}&clientName=${encodeURIComponent(clientName)}`;
     } catch (error) {
       console.error("Download failed:", error);
+    }
+  };
+
+  const redirectToZoomOAuth = () => {
+    const clientId = process.env.NEXT_PUBLIC_ZOOM_CLIENT_ID;
+    const redirectUri = encodeURIComponent(
+      `${process.env.NEXT_PUBLIC_BASE_URL}/zoom/callback`
+    ); // Note: This will be a new page, not an API route
+    const scope = encodeURIComponent("user:read write:virtual_background");
+    const authUrl = `https://zoom.us/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}`;
+    alert(authUrl);
+    // Open popup
+    const popup = window.open(
+      authUrl,
+      "Zoom OAuth",
+      "width=600,height=700,left=200,top=100"
+    );
+
+    // Listen for messages from popup
+    window.addEventListener(
+      "message",
+      async (event) => {
+        if (
+          event.origin === window.location.origin &&
+          event.data.type === "ZOOM_AUTH_SUCCESS"
+        ) {
+          console.log("!!!!!!event.data", event.data);
+          if (popup) popup.close();
+          localStorage.setItem("zoom_access_token", event.data.accessToken);
+          localStorage.setItem("zoom_refresh_token", event.data.refreshToken);
+
+          // Retry setting the background
+          handleSetZoomBackground(imageUrl);
+        }
+      },
+      false
+    );
+  };
+
+  const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
+
+  const handleSetZoomBackground = async (imageUrl: string) => {
+    setCurrentImageUrl(imageUrl); // Store current image URL
+    setIsSetting(true);
+    setMessage(null);
+
+    let accessToken = localStorage.getItem("zoom_access_token");
+
+    if (!accessToken) {
+      redirectToZoomOAuth();
+      setIsSetting(false);
+      return false;
+    }
+
+    try {
+      const success = await setZoomBackground(imageUrl);
+      if (success) {
+        setMessage(
+          <div className="mt-4 p-4 bg-gray-50 rounded-md">
+            <h3 className="font-medium mb-2">
+              Image Successfully Uploaded! To use your new background:
+            </h3>
+            <ol className="list-decimal pl-5 space-y-1">
+              <li>Quit Zoom</li>
+              <li>
+                <a
+                  href="zoommtg://zoom.us/launch"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Relaunch Zoom
+                </a>
+              </li>
+              <li>
+                Click your profile picture → Settings → Backgrounds & Effects →
+                Virtual backgrounds
+              </li>
+              <li>Click + and select your new background</li>
+            </ol>
+          </div>
+        );
+      } else {
+        setMessage("Failed to set Zoom background.");
+      }
+    } catch (error) {
+      console.error("Error setting Zoom background:", error);
+      setMessage("An error occurred.");
+    } finally {
+      setIsSetting(false);
     }
   };
 
@@ -265,6 +363,21 @@ function ZoomBackgroundDisplay({
         >
           Download Background
         </Button>
+      </div>
+      <div className="mt-4">
+        <Button
+          color="secondary"
+          variant="contained"
+          onClick={(e) => handleSetZoomBackground(imageUrl)}
+          disabled={isSetting}
+        >
+          {isSetting ? "Setting..." : "Set as Zoom Background"}
+        </Button>
+        {message && (
+          <>
+            <p>{message}</p>
+          </>
+        )}
       </div>
     </div>
   );
