@@ -260,9 +260,7 @@ function ZoomBackgroundDisplay({
     const redirectUri = encodeURIComponent(
       `${process.env.NEXT_PUBLIC_BASE_URL}/zoom/callback`
     ); // Note: This will be a new page, not an API route
-    const scope = encodeURIComponent("user:read write:virtual_background");
     const authUrl = `https://zoom.us/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}`;
-    alert(authUrl);
     // Open popup
     const popup = window.open(
       authUrl,
