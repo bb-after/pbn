@@ -12,6 +12,7 @@ import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import { Link } from "@mui/material";
 import { useZoomBackground } from "../hooks/useZoomBackground"; // Make sure the path is correct
 import { useRouter } from "next/router";
+import useValidateUserToken from "../hooks/useValidateUserToken";
 
 type BackgroundStyle =
   | "goldenGate"
@@ -49,6 +50,7 @@ function ZoomBackgroundForm({
 
   const router = useRouter();
   const { query } = router;
+  const { token } = useValidateUserToken();
 
   useEffect(() => {
     const BACKGROUND_STYLES = {
@@ -301,11 +303,27 @@ function ZoomBackgroundDisplay({
 }: ZoomBackgroundDisplayProps) {
   const [isSetting, setIsSetting] = useState(false);
   const [message, setMessage] = useState<ReactNode | null>(null);
-
   const { setZoomBackground } = useZoomBackground();
+  const { token } = useValidateUserToken();
+
+  const logAction = async (
+    action: "download" | "set_as_background" | "set_as_background_failed"
+  ) => {
+    try {
+      await fetch("/api/logZoomAction", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userToken: token, action, imageUrl }),
+      });
+    } catch (error) {
+      console.error("Failed to log action:", error);
+    }
+  };
 
   const handleDownload = async () => {
     try {
+      await logAction("download");
+
       window.location.href = `/api/downloadZoomImage?imageUrl=${encodeURIComponent(
         imageUrl
       )}&clientName=${encodeURIComponent(clientName)}`;
@@ -365,7 +383,9 @@ function ZoomBackgroundDisplay({
 
     try {
       const success = await setZoomBackground(imageUrl);
+
       if (success) {
+        await logAction("set_as_background");
         setMessage(
           <div className="mt-4 p-4 bg-gray-50 rounded-md">
             <h3 className="font-medium mb-2">
@@ -394,6 +414,8 @@ function ZoomBackgroundDisplay({
         setMessage("Failed to set Zoom background.");
       }
     } catch (error) {
+      await logAction("set_as_background_failed");
+
       console.error("Error setting Zoom background:", error);
       setMessage("An error occurred.");
     } finally {
@@ -452,7 +474,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [currentClientName, setCurrentClientName] = useState<string>("");
-
+  const { token } = useValidateUserToken();
   const handleSubmit = async ({
     company,
     clientName,
@@ -484,8 +506,33 @@ export default function Home() {
             clientName: clientName,
           },
         ]);
+        try {
+          await fetch("/api/logZoomAction", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userToken: token,
+              action: "image_search",
+              imageUrl: result.imageUrl,
+            }),
+          });
+        } catch (error) {
+          console.error("Failed to log action:", error);
+        }
       } else {
         setError(result.error);
+        try {
+          await fetch("/api/logZoomAction", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userToken: token,
+              action: "image_search_failed",
+            }),
+          });
+        } catch (error) {
+          console.error("Failed to log action:", error);
+        }
       }
     } catch (err) {
       setError("Error generating background.");

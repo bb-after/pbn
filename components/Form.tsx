@@ -75,7 +75,7 @@ const Form: React.FC<FormProps> = () => {
     setPbnModalOpen(true);
   };
 
-  const { token, isLoading, isValidUser } = useValidateUserToken(); // Destructure the returned object
+  const { token } = useValidateUserToken(); // Destructure the returned object
 
   const handleRemixModalSubmit = async (
     iterations: number,
