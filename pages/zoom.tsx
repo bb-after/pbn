@@ -1,9 +1,13 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import ZoomBackgroundForm from "components/ZoomBackgroundForm";
 import { ZoomBackgroundDisplay } from "components/ZoomBackgroundDisplay";
 import LayoutContainer from "components/LayoutContainer";
 import StyledHeader from "components/StyledHeader";
+import useValidateUserToken from "hooks/useValidateUserToken";
+import CircularProgress from "@mui/material/CircularProgress";
+import Box from "@mui/material/Box";
+import Typography from "@mui/material/Typography";
 
 export async function generateZoomBackground(
   formData: FormData
@@ -29,22 +33,56 @@ export async function generateZoomBackground(
 
 export default function Home() {
   const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { token, isLoading } = useValidateUserToken();
 
-  const handleSubmit = async (formData: FormData) => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const imageUrl = await generateZoomBackground(formData);
-      setBackgroundUrl(imageUrl);
-    } catch (err) {
-      setError("Failed to generate background. Please try again.");
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  if (isLoading) {
+    return (
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        height="100vh"
+      >
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (!token) {
+    return (
+      <Box
+        position="fixed"
+        top={0}
+        left={0}
+        width="100%"
+        height="100%"
+        bgcolor="rgba(0, 0, 0, 0.7)"
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        zIndex={9999}
+      >
+        <Box
+          bgcolor="white"
+          padding="20px"
+          borderRadius="8px"
+          textAlign="center"
+          boxShadow="0 4px 12px rgba(0, 0, 0, 0.1)"
+        >
+          <Typography variant="h6" gutterBottom>
+            User token not found
+          </Typography>
+          <Typography variant="body1">
+            Please re-log in via{" "}
+            <a href="https://sales.statuscrawl.io" style={{ color: "blue" }}>
+              sales.statuscrawl.io
+            </a>{" "}
+            and try again.
+          </Typography>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <LayoutContainer>
