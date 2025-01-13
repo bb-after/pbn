@@ -3,16 +3,17 @@ import { addMonths, format } from 'date-fns';
 
 // Create a new deal in HubSpot with the provided deal data
 async function createDealInHubSpot(dealData: {
-  parentDealId: Number;
+  parentDealId: number;
   amount: any;
   dealName: string;
   closeDate: string; // ISO string
   originalDealName: string;
-  dealOwner: Number;
+  dealOwner: number;
   // ... add any other deal properties you need
 }) {
-    console.log('amount', dealData.amount);
-    console.log('dealOwner', dealData.dealOwner);
+  console.log('amount', dealData.amount);
+  console.log('dealOwner', dealData.dealOwner);
+
   const response = await fetch('https://api.hubapi.com/crm/v3/objects/deals', {
     method: 'POST',
     headers: {
@@ -27,7 +28,7 @@ async function createDealInHubSpot(dealData: {
         original_deal_id: dealData.parentDealId,
         original_deal_name: dealData.originalDealName,
         hubspot_owner_id: dealData.dealOwner,
-        dealtype: 'existingbusiness',//existing business value on hubspot backend
+        dealtype: 'existingbusiness', // "Existing Business" value
         dealstage: process.env.HUBSPOT_UPCOMING_RENEWAL_STAGE_ID,
         // ... any other properties (e.g., pipeline, etc.)
       },
@@ -78,9 +79,9 @@ async function getExistingDealsInMonth(originalDealId: number, renewalDate: Date
         {
           filters: [
             {
-                propertyName: 'original_deal_id',
-                operator: 'EQ',
-                value: originalDealId,
+              propertyName: 'original_deal_id',
+              operator: 'EQ',
+              value: originalDealId,
             },
             {
               propertyName: 'closedate',
@@ -155,17 +156,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Invalid closeDate format' });
     }
 
-    // Decide how many new deals to create
-    const numberOfRenewals = contractTerm === '1' ? 3 : 1;
+    // If contractTerm === '1', create 3 renewals (1 month apart). Otherwise, create 1 renewal at originalCloseDate + contractTerm months
+    let renewalsToCreate: Date[] = [];
+
+    if (contractTerm === '1') {
+      // Create 3 monthly renewals
+      renewalsToCreate = [1, 2, 3].map((monthsToAdd) =>
+        addMonths(originalCloseDate, monthsToAdd)
+      );
+    } else {
+      // Create 1 renewal after contractTerm months
+      const termNumber = parseInt(contractTerm, 10);
+      if (Number.isNaN(termNumber) || termNumber < 1) {
+        return res
+          .status(400)
+          .json({ error: `Invalid contractTerm: ${contractTerm}.` });
+      }
+      renewalsToCreate = [addMonths(originalCloseDate, termNumber)];
+    }
 
     // Keep track of the deals we create successfully
     const createdDeals: any[] = [];
-    let skippedDeals: any[] = []; // to store any deals that we skip due to existing duplicates
+    const skippedDeals: any[] = []; // to store any deals that we skip due to existing duplicates
 
     // Create each renewal deal
-    for (let i = 1; i <= numberOfRenewals; i++) {
-      const renewalCloseDate = addMonths(originalCloseDate, i);
-
+    for (const renewalCloseDate of renewalsToCreate) {
       // Fetch existing deals for this month
       const existingDeals = await getExistingDealsInMonth(
         finalParentDealId,
@@ -174,17 +189,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       if (existingDeals.length > 0) {
         // Log details about existing deals
-        console.log(
-          `Skipping creation — deals already exist in ${format(
-            renewalCloseDate,
-            'MMMM yyyy'
-          )}. Found:`
-        );
+        const monthYear = format(renewalCloseDate, 'MMMM yyyy');
+        console.log(`Skipping creation — deals already exist in ${monthYear}. Found:`);
         console.log(JSON.stringify(existingDeals, null, 2));
 
         // Optionally capture these in an array to include them in the response
         skippedDeals.push({
-          month: format(renewalCloseDate, 'MMMM yyyy'),
+          month: monthYear,
           existingDeals,
         });
         continue;
