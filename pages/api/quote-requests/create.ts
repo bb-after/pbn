@@ -124,7 +124,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // (Optional) check your custom webhook secret from HubSpot or any source
-    const hubspotSecret = req.headers['HUBSPOT_QUOTE_REQUEST_WEBHOOK_SECRET'];
+    const hubspotSecret = req.headers['hubspot_quote_request_webhook_secret'];
     if (!hubspotSecret || hubspotSecret !== process.env.HUBSPOT_QUOTE_REQUEST_WEBHOOK_SECRET) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
