@@ -177,10 +177,24 @@ async function createThreadRun({
   }): Promise<void> {
     const url = `https://api.openai.com/v1/threads/${threadId}/messages`;
     
-    // Create the stringified payload first
-    const payload = JSON.stringify({
+    // Log the exact version of Node being used
+    console.log('Node version:', process.version);
+    
+    const payload = {
       "role": "user",
       "content": userMessage
+    };
+    
+    // Log the exact request being sent
+    console.log('Request details:', {
+      url,
+      method: 'POST',
+      headers: {
+        'OpenAI-Beta': 'assistants=v2',
+        'Content-Type': 'application/json'
+        // Omitting Authorization for security
+      },
+      payload
     });
   
     try {
@@ -191,20 +205,26 @@ async function createThreadRun({
           Authorization: `Bearer ${process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID}`,
           'Content-Type': 'application/json',
         },
-        body: payload,
+        body: JSON.stringify(payload),
       });
 
+      // Log the raw response before parsing
+      const rawResponse = await response.text();
+      console.log('Raw response:', rawResponse);
+
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('OpenAI Send Message error:', errorText);
-        throw new Error(`Failed to send message to thread: ${errorText}`);
+        console.error('OpenAI Send Message error:', rawResponse);
+        throw new Error(`Failed to send message to thread: ${rawResponse}`);
       }
-    } catch (error) {
-      console.error('Full error in sendMessageToThread:', error);
+    } catch (error: unknown) {
+      console.error('Full error details:', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        nodeVersion: process.version
+      });
       throw error;
     }
 }
-
   
   
 
