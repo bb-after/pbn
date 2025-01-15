@@ -73,7 +73,7 @@ async function getHubSpotFilePaths(fileIds: string[]): Promise<string[]> {
 }
 
 // Function to create the Slack message with deal data
-function createSlackMessage(assistantReply: string, dealData: DealData): string {
+function createSlackMessage(assistantReply: string, dealData: DealData, screenshotSection: string): string {
     const dealSummary = `
   *New Quote Request Details:*
   • *HubSpot Deal:* https://app.hubspot.com/contacts/24444832/record/0-3/${dealData.hs_object_id}
@@ -82,6 +82,7 @@ function createSlackMessage(assistantReply: string, dealData: DealData): string 
   • *Timeline:* ${dealData.timeline || 'N/A'}
   • *Location:* ${dealData.location || 'N/A'}
   • *Additional Notes:* ${dealData.notes_on_quotes || 'N/A'}
+  • *Screenshots:* ${screenshotSection}
   
   *AI Response:*
   ${formatForSlack(assistantReply)}
@@ -176,10 +177,7 @@ async function createThreadRun({
     userMessage: string;
   }): Promise<void> {
     const url = `https://api.openai.com/v1/threads/${threadId}/messages`;
-    
-    // Log the exact version of Node being used
-    console.log('Node version:', process.version);
-    
+        
     const payload = {
       "role": "user",
       "content": userMessage
@@ -188,12 +186,6 @@ async function createThreadRun({
     // Log the exact request being sent
     console.log('Request details:', {
       url,
-      method: 'POST',
-      headers: {
-        'OpenAI-Beta': 'assistants=v2',
-        'Content-Type': 'application/json'
-        // Omitting Authorization for security
-      },
       payload
     });
   
@@ -308,7 +300,7 @@ ${screenshotSection}
     });
 
     // Format the message for Slack with deal data
-    const slackMessage = createSlackMessage(assistantReply, dealData);
+    const slackMessage = createSlackMessage(assistantReply, dealData, screenshotSection);
 
 
     // 5) Post the assistant's reply to Slack
