@@ -89,65 +89,7 @@ function createSlackMessage(assistantReply: string, dealData: DealData): string 
   
     return dealSummary.trim();
   }
-  
-/**
- * 2. OpenAI Assistants API: Send a message
- *    Reference: https://platform.openai.com/docs/assistants/overview
- *    
- *    Key points:
- *    - You must already have created an Assistant (so you have the `assistant_id`).
- *    - Optionally, you may pass a `conversation_id` to continue or retrieve a specific conversation.
- *    - Body includes your user messages. The API returns the assistant’s reply.
- */
-async function sendMessageToOpenAIAssistant({
-  assistantId,
-  threadId,
-  userMessage,
-}: {
-  assistantId: string;
-  threadId?: string;
-  userMessage: string;
-}): Promise<string> {
-  // The typical endpoint (in preview) is:
-  // POST https://api.openai.com/v1/assistants/{assistant_id}/messages
-  // with a JSON body that includes your conversation and user input.
 
-//   const url = `https://api.openai.com/v1/assistants/${assistantId}/messages`;
-  const url = `https://api.openai.com/v1/threads/${threadId}/messages`;
-
-  const payload = {
-    role: 'user',
-    content: userMessage,
-  };
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'OpenAI-Beta': 'assistants=v2', // Important for enabling the v2 feature
-      Authorization: `Bearer ${process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID}`, // Ensure secrecy
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('OpenAI Assistants API error:', errorText);
-    throw new Error('Failed to get response from OpenAI Assistants API');
-  }
-
-  const data = await response.json();
-  console.log('Response from /threads/{thread_id}/messages:', data);
-
-  const assistantContent =
-    data?.content?.[0]?.text.value ?? 'No content returned';
-    console.log('!?!?!!?', assistantContent);
-
-    return assistantContent;
-}
-
-/*
-*/
 async function createThreadRun({
     threadId,
     assistantId,
@@ -198,7 +140,7 @@ async function createThreadRun({
       if (runStatus.status === 'completed') {
         // Get the latest message
         const messagesResponse = await fetch(
-          `https://api.openai.com/v1/threads/${threadId}/messages`,
+          `https://api.openai.com/v1/threads/${threadId}/messages?run_id=${runId}`,
           {
             headers: {
               'OpenAI-Beta': 'assistants=v2',
@@ -235,7 +177,7 @@ async function createThreadRun({
   }): Promise<void> {
     const url = `https://api.openai.com/v1/threads/${threadId}/messages`;
     const payload = {
-      role: 'user',
+      role: "user",
       content: userMessage,
     };
   
@@ -324,17 +266,12 @@ ${screenshotSection}
     const assistantId = process.env.OPENAI_ASSISTANT_ID || 'YOUR_ASSISTANT_ID';
     const threadId = process.env.OPENAI_THREAD_ID; // optional
 
-    // 4) Send the message to the Assistants API
-    // const assistantReply = await sendMessageToOpenAIAssistant({
-    //   assistantId,
-    //   threadId,
-    //   userMessage: userMessage.trim(),
-    // });
-        // Send the message to the thread
-        await sendMessageToThread({
-            threadId: threadId || '',
-            userMessage: userMessage.trim(),
-          });
+
+    // Send the message to the thread
+    await sendMessageToThread({
+        threadId: threadId || '',
+        userMessage: userMessage.trim(),
+        });
       
 
     const assistantReply = await createThreadRun({
