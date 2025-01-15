@@ -176,27 +176,35 @@ async function createThreadRun({
     userMessage: string;
   }): Promise<void> {
     const url = `https://api.openai.com/v1/threads/${threadId}/messages`;
-    const payload = {
-      role: "user",
-      content: userMessage,
-    };
-  
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'OpenAI-Beta': 'assistants=v2',
-        Authorization: `Bearer ${process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
+    
+    // Create the stringified payload first
+    const payload = JSON.stringify({
+      "role": "user",
+      "content": userMessage
     });
   
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('OpenAI Send Message error:', errorText);
-      throw new Error('Failed to send message to thread');
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'OpenAI-Beta': 'assistants=v2',
+          Authorization: `Bearer ${process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID}`,
+          'Content-Type': 'application/json',
+        },
+        body: payload,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('OpenAI Send Message error:', errorText);
+        throw new Error(`Failed to send message to thread: ${errorText}`);
+      }
+    } catch (error) {
+      console.error('Full error in sendMessageToThread:', error);
+      throw error;
     }
-  }
+}
+
   
   
 
