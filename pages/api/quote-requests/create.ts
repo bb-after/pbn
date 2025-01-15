@@ -1,6 +1,40 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { postToSlack } from 'utils/postToSlack';
 
+type DealData = {
+    hs_object_id: Number;
+    keyword: string;
+    referral: string;
+    timeline: string;
+    location: string;
+    notes_on_quotes: string;
+  };
+  
+  // Function to format OpenAI's markdown for Slack
+  function formatForSlack(text: string): string {
+    // Convert markdown headers (###, ##, #) to bold
+    text = text.replace(/^###\s+(.+)$/gm, '*$1*');
+    text = text.replace(/^##\s+(.+)$/gm, '*$1*');
+    text = text.replace(/^#\s+(.+)$/gm, '*$1*');
+  
+    // Convert markdown bold (**text**) to Slack bold
+    text = text.replace(/\*\*(.*?)\*\*/g, '*$1*');
+  
+    // Convert markdown italics (*text*) to Slack italics (if needed)
+    text = text.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '_$1_');
+  
+    // Convert markdown lists to Slack lists
+    text = text.replace(/^\s*-\s+/gm, '• ');
+    text = text.replace(/^\s*\d\.\s+/gm, '$& ');
+  
+    // Convert markdown code blocks (if any)
+    text = text.replace(/```[\s\S]*?```/g, (match) => {
+      return '```' + match.slice(3, -3).trim() + '```';
+    });
+  
+    return text;
+  }
+  
 /**
  * 1. HubSpot Files API: Retrieve Private File Paths
  */
@@ -38,6 +72,24 @@ async function getHubSpotFilePaths(fileIds: string[]): Promise<string[]> {
   return filePaths;
 }
 
+// Function to create the Slack message with deal data
+function createSlackMessage(assistantReply: string, dealData: DealData): string {
+    const dealSummary = `
+  *New Quote Request Details:*
+  • *HubSpot Deal:* https://app.hubspot.com/contacts/24444832/record/0-3/${dealData.hs_object_id}
+  • *Keywords:* ${dealData.keyword || 'N/A'}
+  • *Referral:* ${dealData.referral || 'N/A'}
+  • *Timeline:* ${dealData.timeline || 'N/A'}
+  • *Location:* ${dealData.location || 'N/A'}
+  • *Additional Notes:* ${dealData.notes_on_quotes || 'N/A'}
+  
+  *AI Response:*
+  ${formatForSlack(assistantReply)}
+  `;
+  
+    return dealSummary.trim();
+  }
+  
 /**
  * 2. OpenAI Assistants API: Send a message
  *    Reference: https://platform.openai.com/docs/assistants/overview
@@ -49,33 +101,29 @@ async function getHubSpotFilePaths(fileIds: string[]): Promise<string[]> {
  */
 async function sendMessageToOpenAIAssistant({
   assistantId,
-  conversationId,
+  threadId,
   userMessage,
 }: {
   assistantId: string;
-  conversationId?: string;
+  threadId?: string;
   userMessage: string;
 }): Promise<string> {
   // The typical endpoint (in preview) is:
   // POST https://api.openai.com/v1/assistants/{assistant_id}/messages
   // with a JSON body that includes your conversation and user input.
 
-  const url = `https://api.openai.com/v1/assistants/${assistantId}/messages`;
+//   const url = `https://api.openai.com/v1/assistants/${assistantId}/messages`;
+  const url = `https://api.openai.com/v1/threads/${threadId}/messages`;
 
   const payload = {
-    // If you have a conversation ID, include it:
-    conversation_id: conversationId,
-    messages: [
-      {
-        role: 'user',
-        content: userMessage,
-      },
-    ],
+    role: 'user',
+    content: userMessage,
   };
 
   const response = await fetch(url, {
     method: 'POST',
     headers: {
+      'OpenAI-Beta': 'assistants=v2', // Important for enabling the v2 feature
       Authorization: `Bearer ${process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID}`, // Ensure secrecy
       'Content-Type': 'application/json',
     },
@@ -89,29 +137,126 @@ async function sendMessageToOpenAIAssistant({
   }
 
   const data = await response.json();
-  /**
-   * The response shape (as of early preview) might look something like:
-   * {
-   *   "id": "...",
-   *   "object": "assistant.message",
-   *   "created": 1686801234,
-   *   "choices": [
-   *     {
-   *       "index": 0,
-   *       "message": {
-   *         "role": "assistant",
-   *         "content": "..."
-   *       }
-   *     }
-   *   ]
-   * }
-   */
-  const assistantContent =
-    data?.choices?.[0]?.message?.content ?? 'No content returned';
+  console.log('Response from /threads/{thread_id}/messages:', data);
 
-  return assistantContent;
+  const assistantContent =
+    data?.content?.[0]?.text.value ?? 'No content returned';
+    console.log('!?!?!!?', assistantContent);
+
+    return assistantContent;
 }
 
+/*
+*/
+async function createThreadRun({
+    threadId,
+    assistantId,
+  }: {
+    threadId: string;
+    assistantId: string;
+  }): Promise<string> {
+    // Create the run
+    const createRunResponse = await fetch(
+      `https://api.openai.com/v1/threads/${threadId}/runs`,
+      {
+        method: 'POST',
+        headers: {
+          'OpenAI-Beta': 'assistants=v2',
+          Authorization: `Bearer ${process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          assistant_id: assistantId,
+        }),
+      }
+    );
+  
+    if (!createRunResponse.ok) {
+      throw new Error('Failed to create run');
+    }
+  
+    const runData = await createRunResponse.json();
+    const runId = runData.id;
+  
+    // Poll the run status until it's completed
+    while (true) {
+      const runStatusResponse = await fetch(
+        `https://api.openai.com/v1/threads/${threadId}/runs/${runId}`,
+        {
+          headers: {
+            'OpenAI-Beta': 'assistants=v2',
+            Authorization: `Bearer ${process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID}`,
+          },
+        }
+      );
+  
+      if (!runStatusResponse.ok) {
+        throw new Error('Failed to check run status');
+      }
+  
+      const runStatus = await runStatusResponse.json();
+      if (runStatus.status === 'completed') {
+        // Get the latest message
+        const messagesResponse = await fetch(
+          `https://api.openai.com/v1/threads/${threadId}/messages`,
+          {
+            headers: {
+              'OpenAI-Beta': 'assistants=v2',
+              Authorization: `Bearer ${process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID}`,
+            },
+          }
+        );
+  
+        if (!messagesResponse.ok) {
+          throw new Error('Failed to fetch messages');
+        }
+  
+        const messages = await messagesResponse.json();
+        // Get the first message (most recent) from the assistant
+        const lastAssistantMessage = messages.data.find(
+          (message: any) => message.role === 'assistant'
+        );
+        return lastAssistantMessage?.content[0]?.text?.value || 'No response received';
+      } else if (runStatus.status === 'failed') {
+        throw new Error(`Run failed: ${runStatus.last_error?.message || 'Unknown error'}`);
+      }
+  
+      // Wait before polling again
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+  
+  async function sendMessageToThread({
+    threadId,
+    userMessage,
+  }: {
+    threadId: string;
+    userMessage: string;
+  }): Promise<void> {
+    const url = `https://api.openai.com/v1/threads/${threadId}/messages`;
+    const payload = {
+      role: 'user',
+      content: userMessage,
+    };
+  
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'OpenAI-Beta': 'assistants=v2',
+        Authorization: `Bearer ${process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+  
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('OpenAI Send Message error:', errorText);
+      throw new Error('Failed to send message to thread');
+    }
+  }
+  
+  
 
 /**
  * 3. Main Handler
@@ -129,22 +274,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // 1) Extract data from HubSpot's payload
-    //    Adjust names for real property keys
-    const {
-      keyword,
-      referral,
-      timeline,
-      location,
-      notes_on_quotes,
-      screenshotFileIds,
-    } = req.body;
-
-    // 2) Retrieve file paths from HubSpot (if any screenshots are private)
+    // 1) Extract deal data
+    const dealData: DealData = {
+        hs_object_id: req.body.hs_object_id,
+        keyword: req.body.keyword,
+        referral: req.body.referral,
+        timeline: req.body.timeline,
+        location: req.body.location,
+        notes_on_quotes: req.body.notes_on_quotes,
+        };
+      
+    // Before creating the screenshot paths, filter out empty values
+    const screenshotFileIds = [
+        req.body.quote_request_image_1, 
+        req.body.quote_attachment__2, 
+        req.body.quote_attachment__3
+    ].filter(Boolean);  // This removes null, undefined, empty strings, and falsy values
+    
+    console.log('screenshotFileIds', screenshotFileIds);
+    // 2) Retrieve screenshot paths from HubSpot (if any screenshots are private)
     let screenshotPaths: string[] = [];
-    if (Array.isArray(screenshotFileIds) && screenshotFileIds.length > 0) {
+    if (screenshotFileIds.length > 0) {
       screenshotPaths = await getHubSpotFilePaths(screenshotFileIds);
     }
+    
 
     // Format screenshot info for the prompt
     const screenshotSection = screenshotPaths.length
@@ -156,35 +309,51 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // 3) Construct the user message (prompt) for the assistant
     const userMessage = `
 Here is the information for the quote request we need to generate:
-Keyword(s): ${keyword ?? 'N/A'}
-Referral: ${referral ?? 'N/A'}
-Timeline: ${timeline ?? 'N/A'}
-Location: ${location ?? 'N/A'}
-Notes on Quotes: ${notes_on_quotes ?? 'N/A'}
+Keyword(s): ${dealData.keyword ?? 'N/A'}
+Referral: ${dealData.referral ?? 'N/A'}
+Timeline: ${dealData.timeline ?? 'N/A'}
+Location: ${dealData.location ?? 'N/A'}
+Notes on Quotes: ${dealData.notes_on_quotes ?? 'N/A'}
 
 Screenshots of Search Result Ranking:
 ${screenshotSection}
 `;
 
+
     // Assistant and conversation IDs from env or config
     const assistantId = process.env.OPENAI_ASSISTANT_ID || 'YOUR_ASSISTANT_ID';
-    const conversationId = process.env.OPENAI_CONVERSATION_ID; // optional
+    const threadId = process.env.OPENAI_THREAD_ID; // optional
 
     // 4) Send the message to the Assistants API
-    const assistantReply = await sendMessageToOpenAIAssistant({
-      assistantId,
-      conversationId,
-      userMessage: userMessage.trim(),
+    // const assistantReply = await sendMessageToOpenAIAssistant({
+    //   assistantId,
+    //   threadId,
+    //   userMessage: userMessage.trim(),
+    // });
+        // Send the message to the thread
+        await sendMessageToThread({
+            threadId: threadId || '',
+            userMessage: userMessage.trim(),
+          });
+      
+
+    const assistantReply = await createThreadRun({
+        threadId: threadId || '',
+        assistantId,
     });
+
+    // Format the message for Slack with deal data
+    const slackMessage = createSlackMessage(assistantReply, dealData);
+
 
     // 5) Post the assistant's reply to Slack
     const slackChannel = '#quote-requests-v2'; // or #channel-name
-    await postToSlack(assistantReply, slackChannel);
+    await postToSlack(slackMessage, slackChannel, process.env.SLACK_QUOTE_REQUESTS_WEBHOOK_URL);
     // Return success response
     return res.status(200).json({
       status: 'success',
       message: 'Quote request processed.',
-      assistantReply,
+      assistantReply: assistantReply,
     });
   } catch (error: any) {
     console.error('Error in /quote-requests/create:', error);
