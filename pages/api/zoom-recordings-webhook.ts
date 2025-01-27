@@ -7,7 +7,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
-  const zoomWebhookSecret = process.env.ZOOM_WEBHOOK_SECRET;
+  const zoomWebhookSecret = process.env.ZOOM_RECORDING_WEBHOOK_SECRET;
   if (!zoomWebhookSecret) {
     return res.status(500).json({ message: 'Zoom webhook secret not configured' });
   }
