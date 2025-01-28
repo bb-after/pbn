@@ -34,30 +34,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({ message: 'Zoom webhook secret not configured' });
   }
 
-  const signature = req.headers['x-zm-signature'] as string;
-  const timestamp = req.headers['x-zm-request-timestamp'] as string;
-  console.log('rawBody?', req);
-  const payload = await getRawBody(req);
-  console.log('payload?', payload);
+    // Get the signature and timestamp from the headers
+    const signature = req.headers['x-zm-signature'] as string;
+    const timestamp = req.headers['x-zm-request-timestamp'] as string;
+  
+    // Directly access the parsed body (Next.js automatically parses JSON requests)
+    const payload = req.body;
+    console.log('Received payload:', payload);
+  
+    // Build the message to verify the signature
+    const message = `v0:${timestamp}:${JSON.stringify(payload)}`;
+    const hash = crypto.createHmac('sha256', zoomWebhookSecret).update(message).digest('hex');
+    const expectedSignature = `v0=${hash}`;
+  
+    // Check if the signatures match
+    if (signature !== expectedSignature) {
+      return res.status(401).json({ message: 'Invalid signature' });
+    }
 
-  const message = `v0:${timestamp}:${payload}`;
-  const hash = crypto.createHmac('sha256', zoomWebhookSecret).update(message).digest('hex');
-  const expectedSignature = `v0=${hash}`;
-
-  if (signature !== expectedSignature) {
-    return res.status(401).json({ message: 'Invalid signature' });
-  }
-
-  const event = JSON.parse(payload);
-
+  const event = payload; 
+  console.log('Event data:', event);
+  // Handle other event types here
+  console.log('Received Zoom event:', event);
+  
   if (event.event === 'endpoint.url_validation') {
     const plainToken = event.payload.plainToken;
     const encryptedToken = crypto.createHmac('sha256', zoomWebhookSecret).update(plainToken).digest('hex');
     return res.status(200).json({ plainToken, encryptedToken });
   }
 
-  // Handle other event types here
-  console.log('Received Zoom event:', event);
 
     // Handle transcript events
 if (event.event === 'recording.transcript_completed') {
@@ -81,21 +86,3 @@ if (event.event === 'recording.transcript_completed') {
     
   res.status(200).json({ message: 'Webhook received' });
 }
-
-async function getRawBody(req: NextApiRequest): Promise<string> {
-  return new Promise((resolve) => {
-    let body = '';
-    req.on('data', (chunk) => {
-      body += chunk.toString();
-    });
-    req.on('end', () => {
-      resolve(body);
-    });
-  });
-}
-
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
