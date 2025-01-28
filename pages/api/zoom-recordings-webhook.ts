@@ -67,8 +67,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Handle transcript events
 if (event.event === 'recording.transcript_completed') {
     const meetingTopic = event.payload.object.topic;
-    const transcriptUrl = event.payload.object.download_url;
-    const downloadToken = event.payload.object.download_token;
+    const transcriptUrl = event.payload.object.share_url;
+    const downloadToken = event.payload.download_token;
     console.log('ready to download...');
     console.log('meetingTopic = '+meetingTopic);
     console.log('transcriptURL = '+transcriptUrl);
