@@ -53,7 +53,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
   const event = payload; 
-  console.log('Event data:', event);
+
   // Handle other event types here
   console.log('Received Zoom event:', event);
   
@@ -68,7 +68,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 if (event.event === 'recording.transcript_completed') {
     const meetingTopic = event.payload.object.topic;
     const transcriptUrl = event.payload.object.share_url;
-    const downloadToken = event.payload.download_token;
+    const downloadToken = event.download_token;
     console.log('ready to download...');
     console.log('meetingTopic = '+meetingTopic);
     console.log('transcriptURL = '+transcriptUrl);
