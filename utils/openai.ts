@@ -8,7 +8,7 @@ const skipOpenAiRevision = process.env.NEXT_PUBLIC_SKIP_OPENAI_REVISION === '1';
 const maxTokens = 16000;
 const maxAnthropicTokens = 8192;
 
-const getAnthropicApiKey = (): string => {
+export const getAnthropicApiKey = (): string => {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error('Missing Anthropic API Key in environment variables.');
@@ -16,6 +16,38 @@ const getAnthropicApiKey = (): string => {
   return apiKey;
 };
 
+export async function getClientNameFromTranscript(transcript: string): Promise<string> {
+  try {
+    const apiKey = getAnthropicApiKey();
+    const promptMessage = `Given the following transcript, identify and return only the client's name. If you can't determine a specific client name, return "Uncategorized".  Format the client name in bold: **Client Name**.\n\nTranscript:\n${transcript}\n\n`;
+    const messages = [
+      { role: 'user', content: promptMessage },
+    ];
+    const response = await axios.post(
+      'https://api.anthropic.com/v1/messages',
+      {
+        model: 'claude-2',
+        max_tokens: 100,
+        messages: messages,
+      },
+      {
+        headers: {
+          'x-api-key': apiKey,
+          'content-type': 'application/json',
+          'anthropic-version': '2023-06-01',
+        },
+      }
+    );
+
+    console.log('Anthropic API Response:', response.data);
+    const clientName = response.data.content[0].text.trim();
+    const match = clientName.match(/\*\*(.*?)\*\*/); 
+    return match ? match[1] : "Uncategorized";
+  } catch (error: any) {
+    console.error('Anthropic API Error:', error.response?.data || error.message || error);
+    throw new Error('Failed to fetch response from Anthropic API.');
+  }
+}
 
 // OpenAI Client Initialization
 const getOpenAIClient = (() => {
