@@ -1,15 +1,15 @@
 {
     "functions": {
-      "api/generateContent.ts": {
+      "pages/api/generateContent.ts": {
         "maxDuration": 120
       },
-      "api/dialpad-transcripts.ts": {
+      "pages/api/dialpad-transcripts.ts": {
         "maxDuration": 300
       }
     },
     "crons": [
       {
-        "path": "/api/dialpad-transcripts",
+        "path": "pages/api/dialpad-transcripts",
         "schedule": "0 0,12 * * *"
       }
     ]
