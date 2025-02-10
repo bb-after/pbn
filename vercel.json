@@ -9,7 +9,7 @@
     },
     "crons": [
       {
-        "path": "pages/api/dialpad-transcripts",
+        "path": "/api/dialpad-transcripts",
         "schedule": "0 0,12 * * *"
       }
     ]
