@@ -2,6 +2,10 @@
     "functions": {
       "pages/api/generateContent.ts": {
         "maxDuration": 120
+      },
+      "pages/api/dialpad-transcripts.ts": {
+        "schedule": "0 0,12 * * *",
+        "maxDuration": 300
       }
     }
   }
