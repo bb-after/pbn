@@ -88,7 +88,7 @@ export async function createGoogleDoc(title: string, content: string) {
     });
 
     // Log the response to check the structure
-    console.log('Document creation response:', res.data);
+    // console.log('Document creation response:', res.data);
 
     // Ensure documentId exists in the response
     const documentId = res.data.documentId;
