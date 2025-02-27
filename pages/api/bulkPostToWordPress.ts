@@ -1,8 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { RowDataPacket } from 'mysql2';
-import mysql from 'mysql2/promise';
+import * as mysql from 'mysql2/promise';
 import axios from 'axios';
-import { getSlugFromUrl, findPostIdBySlug } from '../../utils/urlUtils';
 import { getOrCreateCategory } from '../../utils/categoryUtils';
 
 // Add timeout to axios requests
