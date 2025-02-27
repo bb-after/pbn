@@ -105,18 +105,59 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
             return;
           }
           
-          // Split content by new lines, handling different line endings
-          const rows = csvContent.split(/\r?\n/).filter(row => row.trim() !== '');
+          // We need to parse the CSV properly to handle quoted content with newlines
+          // First, identify where actual CSV rows end by tracking quote state
+          const csvRows: string[] = [];
+          let currentRow = '';
+          let inQuotes = false;
           
-          if (rows.length < 2) { // Need at least header and one data row
+          for (let i = 0; i < csvContent.length; i++) {
+            const char = csvContent[i];
+            
+            // Handle quotes
+            if (char === '"') {
+              if (i + 1 < csvContent.length && csvContent[i + 1] === '"') {
+                // Escaped quote inside quoted content
+                currentRow += '"';
+                i++; // Skip the next quote
+              } else {
+                // Toggle quote state
+                inQuotes = !inQuotes;
+                currentRow += char;
+              }
+            }
+            // Handle newlines
+            else if ((char === '\n' || char === '\r') && !inQuotes) {
+              // Skip carriage return if followed by newline
+              if (char === '\r' && i + 1 < csvContent.length && csvContent[i + 1] === '\n') {
+                i++; // Skip the \n
+              }
+              
+              // Only add non-empty rows
+              if (currentRow.trim()) {
+                csvRows.push(currentRow);
+              }
+              currentRow = '';
+            }
+            // Add all other characters
+            else {
+              currentRow += char;
+            }
+          }
+          
+          // Add the last row if not empty
+          if (currentRow.trim()) {
+            csvRows.push(currentRow);
+          }
+          
+          if (csvRows.length < 2) { // Need at least header and one data row
             setCsvError('CSV file must have a header row and at least one data row');
             setCsvData([]);
             return;
           }
           
           // Process header row to find title and content columns
-          const headerRow = rows[0].toLowerCase();
-          // Properly parse CSV handling quotes and commas
+          const headerRow = csvRows[0].toLowerCase();
           const headerCols = parseCSVRow(headerRow);
           
           const titleIndex = headerCols.findIndex(col => col.trim() === 'title');
@@ -132,18 +173,28 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
           const parsedData: CsvRow[] = [];
           
           // Process each row (skip header)
-          for (let i = 1; i < rows.length; i++) {
-            if (rows[i].trim() === '') continue;
-            
-            const columns = parseCSVRow(rows[i]);
+          for (let i = 1; i < csvRows.length; i++) {
+            const columns = parseCSVRow(csvRows[i]);
             
             if (columns.length <= Math.max(titleIndex, contentIndex)) {
               console.warn(`Row ${i+1} has fewer columns than expected and will be skipped`);
               continue;
             }
             
-            const title = columns[titleIndex]?.trim();
-            const content = columns[contentIndex]?.trim();
+            // Get title and content, preserving whitespace in content
+            let title = columns[titleIndex]?.trim() || '';
+            let content = columns[contentIndex] || '';
+            
+            // Remove enclosing quotes if present
+            if (title.startsWith('"') && title.endsWith('"')) {
+              title = title.slice(1, -1).trim();
+            }
+            
+            if (content.startsWith('"') && content.endsWith('"')) {
+              content = content.slice(1, -1);
+              // Preserve paragraphs by replacing double quotes with proper HTML
+              content = content.replace(/""/g, '"');
+            }
             
             if (title && content) {
               parsedData.push({ title, content });
@@ -165,6 +216,8 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
             // Create a new array to ensure React detects the state change
             setCsvData([...parsedData]);
           }
+          
+          console.log('Parsed CSV data:', parsedData);
         } catch (error) {
           console.error('CSV parsing error:', error);
           setCsvError('Error parsing CSV file');
@@ -184,7 +237,7 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
     }
   };
   
-  // Helper function to parse CSV row handling quotes and commas
+  // Helper function to parse CSV row handling quotes, commas, and preserving newlines
   const parseCSVRow = (row: string): string[] => {
     const result: string[] = [];
     let current = '';
@@ -194,8 +247,14 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
       const char = row[i];
       
       if (char === '"') {
-        // Toggle quote state
-        inQuotes = !inQuotes;
+        // Check if it's an escaped quote (double quote inside quoted field)
+        if (inQuotes && i + 1 < row.length && row[i + 1] === '"') {
+          current += '"'; // Add the actual quote character
+          i++; // Skip the next quote
+        } else {
+          // Toggle quote state
+          inQuotes = !inQuotes;
+        }
       } else if (char === ',' && !inQuotes) {
         // End of field
         result.push(current);
@@ -474,13 +533,19 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
                 )}
                 {csvData.length > 0 && (
                   <Box 
-                    sx={{ mt: 2, maxHeight: '200px', overflow: 'auto', border: '1px solid #ddd', borderRadius: '4px', p: 1 }}
+                    sx={{ mt: 2, maxHeight: '300px', overflow: 'auto', border: '1px solid #ddd', borderRadius: '4px', p: 1 }}
                     key={`preview-box-${csvData.length}-${Date.now()}`} // Add dynamic key to force re-render
                   >
                     <Typography variant="subtitle2" gutterBottom>Preview of loaded articles:</Typography>
                     {csvData.map((article, index) => (
-                      <Box key={`article-${index}-${Date.now()}`} sx={{ mb: 1, pb: 1, borderBottom: index < csvData.length - 1 ? '1px solid #eee' : 'none' }}>
-                        <Typography variant="body2"><strong>Title {index + 1}:</strong> {article.title.substring(0, 50)}{article.title.length > 50 ? '...' : ''}</Typography>
+                      <Box key={`article-${index}-${Date.now()}`} sx={{ mb: 2, pb: 2, borderBottom: index < csvData.length - 1 ? '1px solid #eee' : 'none' }}>
+                        <Typography variant="body2"><strong>Title {index + 1}:</strong> {article.title.substring(0, 70)}{article.title.length > 70 ? '...' : ''}</Typography>
+                        <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5, fontSize: '0.8rem' }}>
+                          <strong>Content preview:</strong> {article.content.substring(0, 100).replace(/\n/g, ' ')}{article.content.length > 100 ? '...' : ''}
+                        </Typography>
+                        <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5, fontSize: '0.8rem' }}>
+                          <strong>Paragraphs:</strong> {article.content.split(/\n+/).length}
+                        </Typography>
                       </Box>
                     ))}
                   </Box>
