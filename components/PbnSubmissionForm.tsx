@@ -447,12 +447,12 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
                   Upload a CSV file with two columns: title and content. Each row will create a separate article.
                 </Typography>
                 <Typography variant="body2" color="textSecondary" gutterBottom>
-                  <strong>Format:</strong> Make sure your CSV has "title" and "content" in the header row.
+                  <strong>Format:</strong> Make sure your CSV has &ldquo;title&rdquo; and &ldquo;content&rdquo; in the header row.
                 </Typography>
                 <Typography variant="body2" color="textSecondary" gutterBottom>
                   <strong>Example:</strong> title,content
                   <br />
-                  "My Article Title","&lt;p&gt;Article content here...&lt;/p&gt;"
+                  &ldquo;My Article Title&rdquo;,&ldquo;&lt;p&gt;Article content here...&lt;/p&gt;&rdquo;
                 </Typography>
                 <input
                   type="file"
