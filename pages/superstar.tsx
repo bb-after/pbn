@@ -42,6 +42,9 @@ const HomePage = () => {
   const [categories, setCategories] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [author, setAuthor] = useState("");
+  const [clientName, setClientName] = useState("Superstar AI"); // Default client name
+  const [authors, setAuthors] = useState<{id: number, author_name: string, wp_author_id: number, author_avatar?: string}[]>([]);
+  const [isLoadingAuthors, setIsLoadingAuthors] = useState(false);
   const { isValidUser } = useValidateUserToken();
 
   useEffect(() => {
@@ -73,9 +76,31 @@ const HomePage = () => {
         } else {
           setTopic("");
         }
+        
+        // Reset author when site changes
+        setAuthor("");
+        
+        // Fetch authors for this site
+        fetchAuthorsForSite(selectedSite);
       }
     }
   }, [selectedSite, sites]);
+  
+  // Function to fetch authors for a selected site
+  const fetchAuthorsForSite = async (siteId: string) => {
+    if (!siteId) return;
+    
+    setIsLoadingAuthors(true);
+    try {
+      const response = await axios.get(`/api/superstar-authors/site?siteId=${siteId}`);
+      setAuthors(response.data.authors || []);
+    } catch (error) {
+      console.error("Error fetching authors for site:", error);
+      setAuthors([]);
+    } finally {
+      setIsLoadingAuthors(false);
+    }
+  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -104,13 +129,23 @@ const HomePage = () => {
 
   const handlePost = async () => {
     try {
+      // Get the WordPress author ID if an author is selected
+      let authorId;
+      if (author) {
+        const selectedAuthor = authors.find(a => a.id.toString() === author);
+        authorId = selectedAuthor?.wp_author_id;
+      }
+      
       const postContent = {
         siteId: selectedSite,
         title,
         content: editableContent,
         tags: tags.join(", "),
-        author,
+        clientName, // Include the client name
+        author: authorId, // Send the WordPress author ID, not our internal ID
+        authorId: author // Also send our internal author ID for database references
       };
+      
       await axios.post("/api/postSuperstarContentToWordpress", postContent);
       alert("Content posted successfully!");
       router.push("/superstar-site-submissions");
@@ -196,6 +231,58 @@ const HomePage = () => {
               placeholder="Enter tags separated by commas"
               label="Tags"
             />
+          </FormControl>
+          
+          <TextField
+            variant="outlined"
+            fullWidth
+            value={clientName}
+            onChange={(e) => setClientName(e.target.value)}
+            placeholder="Client Name"
+            margin="normal"
+            label="Client Name"
+            required
+          />
+          
+          {/* Author dropdown */}
+          <FormControl fullWidth variant="outlined" margin="normal">
+            <InputLabel id="author-select-label">Post Author (Optional)</InputLabel>
+            <Select
+              labelId="author-select-label"
+              value={author}
+              onChange={(e) => setAuthor(e.target.value as string)}
+              label="Post Author (Optional)"
+              disabled={isLoadingAuthors || authors.length === 0}
+            >
+              <MenuItem value="">
+                <em>Default Author</em>
+              </MenuItem>
+              {authors.map((author) => (
+                <MenuItem key={author.id} value={author.id.toString()}>
+                  <Box display="flex" alignItems="center">
+                    {author.author_avatar && (
+                      <Box 
+                        component="img" 
+                        src={author.author_avatar} 
+                        alt={author.author_name} 
+                        sx={{ 
+                          width: 24, 
+                          height: 24, 
+                          borderRadius: '50%', 
+                          marginRight: 1 
+                        }}
+                      />
+                    )}
+                    {author.author_name}
+                  </Box>
+                </MenuItem>
+              ))}
+            </Select>
+            {authors.length === 0 && !isLoadingAuthors && selectedSite && (
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                No authors found for this site. <a href={`/superstar-sites/${selectedSite}/manage-authors`} target="_blank" rel="noopener noreferrer">Manage Authors</a>
+              </Typography>
+            )}
           </FormControl>
         </div>
       )}

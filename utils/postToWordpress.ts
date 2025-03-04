@@ -9,47 +9,62 @@ type PostToWordPressRequest = {
     password: string;
   };
   categoryId?: number;
-  author?: string;
 };
 
-export async function postToWordpress({ title, content, domain, auth, categoryId, author }: PostToWordPressRequest) {
+export async function postToWordpress({ title, content, domain, auth, categoryId }: PostToWordPressRequest) {
   try {
-    // Log the author being used for debugging
-    console.log(`Posting to WordPress with author ID: ${author}`);
+    console.log(`Posting to WordPress ${domain} with auth user ${auth.username}`);
     
-    // Create the post data
-    const postData: any = {
-      title,
-      content,
+    // Create the post data exactly like the working implementation
+    const postData = {
+      title: title,
+      content: content,
       status: 'publish',
-      categories: categoryId ? [categoryId] : undefined,
     };
 
-    // Only include author if it's defined and is a valid ID
-    if (author && !isNaN(Number(author))) {
-      postData.author = Number(author);
-      console.log(`Setting author ID to: ${postData.author}`);
-    } else {
-      console.log(`No valid author ID provided, WordPress will use the default author`);
+    // Only include categories if defined
+    if (categoryId) {
+      (postData as any).categories = [categoryId];
+      console.log(`Using category ID: ${categoryId}`);
     }
 
-    // Make the API request
+    // Log the request URL
+    const url = `${domain}/wp-json/wp/v2/posts`;
+    console.log(`Sending post to ${url}`);
+    
+    // Make the API request exactly like in postToWordPress.ts which works
     const response = await axios.post(
-      `${domain}/wp-json/wp/v2/posts`,
+      url,
       postData,
       {
-        auth,
+        auth: {
+          username: auth.username,
+          password: auth.password,
+        },
       }
     );
     
-    // Log the response author for verification
-    if (response.data && response.data.author) {
-      console.log(`WordPress assigned author ID: ${response.data.author}`);
-    }
-    
+    console.log(`WordPress post created successfully with ID: ${response.data.id}`);
     return response.data;
   } catch (error: any) {
-    console.error('Error posting to WordPress:', error?.response?.data || error.message);
-    throw new Error(`Failed to post to WordPress: ${error?.response?.data?.message || error.message}`);
+    console.error('Error posting to WordPress:');
+    
+    if (error.response) {
+      console.error(`Response status: ${error.response.status}`);
+      console.error(`Response data:`, JSON.stringify(error.response.data));
+      
+      if (error.response.status === 401) {
+        throw new Error(`WordPress authentication failed. Check credentials.`);
+      } else if (error.response.status === 403) {
+        throw new Error(`WordPress permission denied. User cannot create posts. Check if REST API is properly configured and user has author/editor role.`);
+      } else if (error.response.data && error.response.data.message) {
+        throw new Error(`WordPress error: ${error.response.data.message}`);
+      }
+    } else if (error.request) {
+      console.error('No response received:', error.request);
+      throw new Error(`WordPress request timed out or no response received.`);
+    }
+    
+    throw new Error(`Failed to post to WordPress: ${error.message}`);
   }
 }

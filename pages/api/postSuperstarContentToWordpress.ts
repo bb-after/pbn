@@ -30,15 +30,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
 
-  const { siteId, title, content, tags, clientName, author, userToken } = req.body;
+  const { siteId, title, content, tags, clientName, author, authorId, userToken } = req.body;
 
-  if (!siteId || !content || !clientName) {
-    return res.status(400).json({ message: 'Missing required fields' });
+  if (!siteId || !content) {
+    return res.status(400).json({ 
+      message: 'Missing required fields', 
+      details: {
+        siteId: siteId ? 'provided' : 'missing (required)',
+        content: content ? 'provided' : 'missing (required)',
+        clientName: clientName ? 'provided' : 'missing (will use default)',
+        tags: tags ? 'provided' : 'missing (will use default)'
+      }
+    });
   }
 
-  if (tags.length < 1) {
-    return res.status(400).json({ message: 'Add at least 1 tag' });
-  }
+  // Default clientName if not provided
+  const effectiveClientName = clientName || 'default_client';
+  
+  // Make sure tags exists and is properly formatted - default to 'uncategorized'
+  const formattedTags = tags ? (typeof tags === 'string' ? [tags] : tags) : ['uncategorized'];
+  console.log(`Using tags: ${formattedTags.join(', ')}`);
+  
+  // Continue even without tags - we'll use the default category
 
   const connection = await mysql.createConnection(dbConfig);
   let site: SuperstarSite | null = null;
@@ -68,25 +81,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   console.log("Using WordPress author ID:", wpAuthorId);
 
   try {
+    // Try to determine which password field to use
+    // Check if we have both password fields available
+    console.log(`Site has fields: login: ${!!site.login}, hosting_site: ${!!site.hosting_site}, password: ${!!site.password}`);
+    
+    // Following the working implementation in postToWordPress.ts
+    // Looking at the database schema and implementation, we should use password field directly
+    console.log(`Using auth with username: ${site.login} and password from 'password' field`);
+    
+    // Use the password field directly - similar to how it works in postToWordPress.ts
     const auth = {
-      username: encodeURIComponent(site.login),
-      password: site.hosting_site, // Use hosting_site instead of password
+      username: site.login,
+      password: site.password,  // Use the password field like in the working implementation
     };
+    
 
     // Ensure the category exists (and get its ID)
-    const categoryId = await getOrCreateCategory(site.domain, tags[0], auth);
+    // Use the first tag, or fallback to "uncategorized" if no tags
+    const categoryName = formattedTags.length > 0 ? formattedTags[0] : 'uncategorized';
+    const categoryId = await getOrCreateCategory(site.domain, categoryName, auth);
     
     // Convert wpAuthorId to string for the WordPress API
     const authorIdForWP = wpAuthorId ? String(wpAuthorId) : undefined;
     console.log(`Using author ID for WordPress: ${authorIdForWP || 'None (will use default)'}`);
     
-    const response = await postToWordpress({
+    let response;
+    
+    // Post to WordPress using the direct approach from postToWordPress.ts
+    console.log(`Posting to WordPress directly with username: ${auth.username}`);
+    response = await postToWordpress({
       title: title,
       content,
       domain: site.domain,
       auth,
       categoryId: categoryId,
-      author: authorIdForWP,
     });
 
     console.log('Response from WordPress:', response);
@@ -95,9 +123,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw new Error('Response from WordPress contains undefined values');
     }
 
-    // Get the superstar_author_id from the wp_author_id
+    // Get the superstar_author_id - either directly from authorId parameter or lookup by wp_author_id
     let superstarAuthorId: number | null = null;
-    if (wpAuthorId) {
+    
+    // If authorId was passed directly, use it
+    if (authorId) {
+      superstarAuthorId = parseInt(authorId, 10);
+    } 
+    // Otherwise if WordPress author ID was used, look up the corresponding superstar_author_id
+    else if (wpAuthorId) {
       const [authorRows] = await connection.query(
         'SELECT id FROM superstar_authors WHERE superstar_site_id = ? AND wp_author_id = ?',
         [siteId, wpAuthorId]
@@ -108,9 +142,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
     
+    // Make sure all parameters are defined or null (not undefined)
+    // Check for all potential undefined values and convert them to null or default values
+    const authorIdForSql = superstarAuthorId !== null && superstarAuthorId !== undefined ? superstarAuthorId : null;
+    const userTokenForSql = userToken || null; // Convert undefined/empty to null
+    const titleForSql = response.title?.rendered || title || "No Title";
+    const linkForSql = response.link || null;
+    
+    console.log(`Inserting record with values: siteId=${siteId}, title=${titleForSql}, clientName=${effectiveClientName}, link=${linkForSql}, userToken=${userTokenForSql}, authorId=${authorIdForSql}`);
+    
     await connection.execute(
       'INSERT INTO superstar_site_submissions (superstar_site_id, title, content, client_name, submission_response, user_token, autogenerated, superstar_author_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [siteId, response.title.rendered, content, clientName, response.link, userToken, 0, superstarAuthorId]
+      [siteId, titleForSql, content, effectiveClientName, linkForSql, userTokenForSql, 0, authorIdForSql]
     );
 
     await postToSlack(`Successfully posted content to WordPress for site ${site.domain}.`, SLACK_CHANNEL);
