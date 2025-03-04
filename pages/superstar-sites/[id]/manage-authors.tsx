@@ -327,10 +327,7 @@ const ManageAuthors: React.FC = () => {
                             <IconButton
                               color="error"
                               onClick={() => handleDeleteAuthor(author.id)}
-                              disabled={
-                                author.submission_count &&
-                                author.submission_count > 0
-                              }
+                              disabled={Boolean(author?.submission_count)}
                             >
                               <DeleteIcon />
                             </IconButton>
