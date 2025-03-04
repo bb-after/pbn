@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import axios from 'axios';
 
 // Constants
-const modelType = process.env.NEXT_PUBLIC_GPT_ENGINE || 'gpt-4'; // Default to GPT-4
+const modelType = process.env.NEXT_PUBLIC_GPT_ENGINE || 'gpt-4o-mini'; // Default to GPT-4
 const mockData = process.env.NEXT_PUBLIC_USE_MOCK_DATA === '1';
 const skipOpenAiRevision = process.env.NEXT_PUBLIC_SKIP_OPENAI_REVISION === '1';
 const maxTokens = 16000;

@@ -42,8 +42,8 @@ export default async function handler(
     return res.status(400).json({ error: 'No articles provided' });
   }
 
-  if (articles.length > 20) {
-    return res.status(400).json({ error: 'Maximum 20 articles allowed per request' });
+  if (articles.length > 50) {
+    return res.status(400).json({ error: 'Maximum 50 articles allowed per request' });
   }
 
   try {
