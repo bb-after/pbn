@@ -270,9 +270,9 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
       const fileArray = Array.from(files);
       
       // Check if we have too many files
-      if (fileArray.length > 20) {
-        setDocxError('Maximum 20 files allowed. Only the first 20 will be used.');
-        setDocxFiles(fileArray.slice(0, 20));
+      if (fileArray.length > 50) {
+        setDocxError('Maximum 50 files allowed. Only the first 50 will be used.');
+        setDocxFiles(fileArray.slice(0, 50));
       } else {
         setDocxFiles(fileArray);
       }
@@ -812,7 +812,7 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
             </>
           ) : (
             <FormControl component="fieldset" fullWidth>
-              <FormLabel>Bulk Upload (Max 20 articles)</FormLabel>
+              <FormLabel>Bulk Upload (Max 50 articles)</FormLabel>
               
               <RadioGroup
                 row
