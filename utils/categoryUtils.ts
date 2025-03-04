@@ -26,13 +26,11 @@ export async function getOrCreateCategory(domain: string, categoryName: string, 
             if (existingCategory) {
                 console.log(`Found existing category: ${existingCategory.name} (ID: ${existingCategory.id})`);
                 return existingCategory.id;
-            }
-        } catch (listError) {
-            console.log(`Couldn't fetch all categories: ${listError.message}. Will try to create.`);
+            } 
+        } catch (listError: any) {
+            console.log(`Couldn't fetch all categories: ${listError instanceof Error ? listError.message : 'Unknown error'}. Will try to create.`);
         }
-
-        // If we couldn't find it or fetch categories, try to create the category
-        console.log(`Creating new category: "${cleanCategoryName}"`);
+            console.log(`Creating new category: "${cleanCategoryName}"`);
         try {
             const newCategoryResponse = await axios.post(
                 `${domain}/wp-json/wp/v2/categories`, 
@@ -42,8 +40,8 @@ export async function getOrCreateCategory(domain: string, categoryName: string, 
             
             console.log(`Created new category with ID: ${newCategoryResponse.data.id}`);
             return newCategoryResponse.data.id;
-        } catch (createError) {
-            console.error(`Failed to create category: ${createError.message}`);
+        } catch (createError: any) {
+            console.error(`Failed to create category: ${createError instanceof Error ? createError.message : 'Unknown error'}`);
             
             // If we can't create a category, use the default Uncategorized category (ID: 1)
             console.log('Falling back to default "Uncategorized" category (ID: 1)');
