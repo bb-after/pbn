@@ -24,7 +24,7 @@ export async function postToWordpress({ title, content, domain, auth, categoryId
 
     // Only include categories if defined
     if (categoryId) {
-      postData.categories = [categoryId];
+      (postData as any).categories = [categoryId];
       console.log(`Using category ID: ${categoryId}`);
     }
 
