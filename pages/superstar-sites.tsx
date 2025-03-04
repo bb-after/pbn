@@ -33,6 +33,7 @@ interface SuperstarSite {
   domain: string;
   hosting_site: string;
   manual_count: number;
+  author_count: number;
   topics: string | string[];
   login: string;
 }
@@ -174,6 +175,7 @@ const SuperstarSites: React.FC = () => {
               <TableCell>ID</TableCell>
               <TableCell>Domain</TableCell>
               <TableCell>Posts</TableCell>
+              <TableCell>Authors</TableCell>
               <TableCell>Topics</TableCell>
               <TableCell>Actions</TableCell>
             </TableRow>
@@ -188,6 +190,13 @@ const SuperstarSites: React.FC = () => {
                   </Link>
                 </TableCell>
                 <TableCell>{site.manual_count}</TableCell>
+                <TableCell>
+                  <Box display="flex" alignItems="center">
+                    <Typography variant="body1" mr={1}>
+                      {site.author_count || 0}
+                    </Typography>
+                  </Box>
+                </TableCell>
                 <TableCell>
                   {(Array.isArray(site.topics) ? site.topics : []).map(
                     (topic, index) => (
@@ -230,6 +239,12 @@ const SuperstarSites: React.FC = () => {
                   ) : (
                     ""
                   )}
+                  <br />
+                  <Link href={`/superstar-sites/${site.id}/manage-authors`}>
+                    <Button variant="outlined" color="info">
+                      Authors
+                    </Button>
+                  </Link>
                 </TableCell>
               </TableRow>
             ))}

@@ -14,12 +14,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const connection = await mysql.createConnection(dbConfig);
 
   try {
-    // Query to get authors with submission counts
-    const query = `
+    const { siteId } = req.query;
+    
+    // Base query for all authors or site-specific authors
+    let query = `
       SELECT 
         sa.id, 
         sa.author_name, 
+        sa.author_email,
+        sa.author_username,
         sa.author_avatar,
+        sa.author_bio,
+        sa.wp_author_id,
         sa.superstar_site_id,
         ss.domain as site_domain,
         COUNT(sss.id) as submission_count
@@ -29,13 +35,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         superstar_sites ss ON sa.superstar_site_id = ss.id
       LEFT JOIN 
         superstar_site_submissions sss ON sss.superstar_author_id = sa.id
+    `;
+    
+    // If siteId is provided, filter by that site
+    const queryParams = [];
+    if (siteId) {
+      query += ` WHERE sa.superstar_site_id = ? `;
+      queryParams.push(siteId);
+    }
+    
+    // Complete the query with grouping and ordering
+    query += `
       GROUP BY 
         sa.id
       ORDER BY 
         submission_count DESC, author_name ASC
     `;
 
-    const [rows] = await connection.query(query);
+    const [rows] = await connection.query(query, queryParams);
 
     // Close the MySQL connection
     await connection.end();
