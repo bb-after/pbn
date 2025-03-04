@@ -15,21 +15,12 @@ export async function postToWordpress({ title, content, domain, auth, categoryId
   try {
     console.log(`Posting to WordPress ${domain} with auth user ${auth.username}`);
     
-    // Create the post data with minimal fields
-    const postData: Record<string, any> = {};
-    
-    // Ensure title is properly formatted (string or object with rendered property)
-    if (typeof title === 'string') {
-      postData.title = title;
-    } else if (typeof title === 'object') {
-      postData.title = title;
-    }
-    
-    // Set content
-    postData.content = content;
-    
-    // Set status to publish
-    postData.status = 'publish';
+    // Create the post data exactly like the working implementation
+    const postData = {
+      title: title,
+      content: content,
+      status: 'publish',
+    };
 
     // Only include categories if defined
     if (categoryId) {
@@ -41,21 +32,17 @@ export async function postToWordpress({ title, content, domain, auth, categoryId
     const url = `${domain}/wp-json/wp/v2/posts`;
     console.log(`Sending post to ${url}`);
     
-    // Create the authorization header manually
-    const base64Auth = Buffer.from(`${auth.username}:${auth.password}`).toString('base64');
-    
-    // Make the post request with explicit headers
-    const response = await axios({
-      method: 'post',
-      url: url,
-      data: postData,
-      headers: {
-        'Authorization': `Basic ${base64Auth}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      timeout: 30000
-    });
+    // Make the API request exactly like in postToWordPress.ts which works
+    const response = await axios.post(
+      url,
+      postData,
+      {
+        auth: {
+          username: auth.username,
+          password: auth.password,
+        },
+      }
+    );
     
     console.log(`WordPress post created successfully with ID: ${response.data.id}`);
     return response.data;
