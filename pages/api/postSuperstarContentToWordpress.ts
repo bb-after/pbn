@@ -32,12 +32,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const { siteId, title, content, tags, clientName, author, authorId, userToken } = req.body;
 
-  if (!siteId || !content || !clientName) {
-    return res.status(400).json({ message: 'Missing required fields' });
+  if (!siteId || !content) {
+    return res.status(400).json({ 
+      message: 'Missing required fields', 
+      details: {
+        siteId: siteId ? 'provided' : 'missing (required)',
+        content: content ? 'provided' : 'missing (required)',
+        clientName: clientName ? 'provided' : 'missing (will use default)',
+        tags: tags ? 'provided' : 'missing (will use default)'
+      }
+    });
   }
 
-  // Make sure tags exists and is properly formatted
+  // Default clientName if not provided
+  const effectiveClientName = clientName || 'default_client';
+  
+  // Make sure tags exists and is properly formatted - default to 'uncategorized'
   const formattedTags = tags ? (typeof tags === 'string' ? [tags] : tags) : ['uncategorized'];
+  console.log(`Using tags: ${formattedTags.join(', ')}`);
   
   // Continue even without tags - we'll use the default category
 
@@ -73,19 +85,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Check if we have both password fields available
     console.log(`Site has fields: login: ${!!site.login}, hosting_site: ${!!site.hosting_site}, password: ${!!site.password}`);
     
-    // The field 'hosting_site' seems to be the main WP password (misleadingly named)
-    const appPassword = site.hosting_site;
-    // The field 'password' seems to be the application password
-    const wpPassword = site.password;
+    // Following the working implementation in postToWordPress.ts
+    // Looking at the database schema and implementation, we should use password field directly
+    console.log(`Using auth with username: ${site.login} and password from 'password' field`);
     
-    console.log(`Using auth with username: ${site.login}`);
-    console.log(`WordPress password length: ${wpPassword?.length || 'not available'}`);
-    console.log(`App password length: ${appPassword?.length || 'not available'}`);
-    
-    // Try with the main WordPress password first
+    // Use the password field directly - similar to how it works in postToWordPress.ts
     const auth = {
       username: site.login,
-      password: appPassword, // Use hosting_site as WordPress password
+      password: site.password,  // Use the password field like in the working implementation
     };
     
 
@@ -100,37 +107,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     let response;
     
-    try {
-      // First try with standard WordPress password
-      console.log(`Attempting to post with standard WordPress password...`);
-      response = await postToWordpress({
-        title: title,
-        content,
-        domain: site.domain,
-        auth,
-        categoryId: categoryId,
-      });
-    } catch (firstError: any) {
-      // If that fails and we have an application password, try that
-      if (site.password && firstError.message.includes('not allowed to create posts')) {
-        console.log(`First attempt failed. Trying with application password...`);
-        const appAuth = {
-          username: site.login,
-          password: site.password, // Use the application password field
-        };
-        
-        response = await postToWordpress({
-          title: title,
-          content,
-          domain: site.domain,
-          auth: appAuth,
-          categoryId: categoryId,
-        });
-      } else {
-        // If we don't have an app password or error is different, rethrow
-        throw firstError;
-      }
-    }
+    // Post to WordPress using the direct approach from postToWordPress.ts
+    console.log(`Posting to WordPress directly with username: ${auth.username}`);
+    response = await postToWordpress({
+      title: title,
+      content,
+      domain: site.domain,
+      auth,
+      categoryId: categoryId,
+    });
 
     console.log('Response from WordPress:', response);
 
@@ -157,9 +142,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
     
+    // Make sure all parameters are defined or null (not undefined)
+    // Check for all potential undefined values and convert them to null or default values
+    const authorIdForSql = superstarAuthorId !== null && superstarAuthorId !== undefined ? superstarAuthorId : null;
+    const userTokenForSql = userToken || null; // Convert undefined/empty to null
+    const titleForSql = response.title?.rendered || title || "No Title";
+    const linkForSql = response.link || null;
+    
+    console.log(`Inserting record with values: siteId=${siteId}, title=${titleForSql}, clientName=${effectiveClientName}, link=${linkForSql}, userToken=${userTokenForSql}, authorId=${authorIdForSql}`);
+    
     await connection.execute(
       'INSERT INTO superstar_site_submissions (superstar_site_id, title, content, client_name, submission_response, user_token, autogenerated, superstar_author_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [siteId, response.title.rendered, content, clientName, response.link, userToken, 0, superstarAuthorId]
+      [siteId, titleForSql, content, effectiveClientName, linkForSql, userTokenForSql, 0, authorIdForSql]
     );
 
     await postToSlack(`Successfully posted content to WordPress for site ${site.domain}.`, SLACK_CHANNEL);
