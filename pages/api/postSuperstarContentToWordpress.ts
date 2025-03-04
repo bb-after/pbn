@@ -69,13 +69,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   console.log("Using WordPress author ID:", wpAuthorId);
 
   try {
-    // Don't encode the username in the auth object itself
+    // Try to determine which password field to use
+    // Check if we have both password fields available
+    console.log(`Site has fields: login: ${!!site.login}, hosting_site: ${!!site.hosting_site}, password: ${!!site.password}`);
+    
+    // The field 'hosting_site' seems to be the main WP password (misleadingly named)
+    const appPassword = site.hosting_site;
+    // The field 'password' seems to be the application password
+    const wpPassword = site.password;
+    
+    console.log(`Using auth with username: ${site.login}`);
+    console.log(`WordPress password length: ${wpPassword?.length || 'not available'}`);
+    console.log(`App password length: ${appPassword?.length || 'not available'}`);
+    
+    // Try with the main WordPress password first
     const auth = {
       username: site.login,
-      password: site.hosting_site, // Use hosting_site (application password)
+      password: appPassword, // Use hosting_site as WordPress password
     };
-    
-    console.log(`Using auth credentials: ${site.login} (password hidden)`);
     
 
     // Ensure the category exists (and get its ID)
@@ -87,13 +98,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const authorIdForWP = wpAuthorId ? String(wpAuthorId) : undefined;
     console.log(`Using author ID for WordPress: ${authorIdForWP || 'None (will use default)'}`);
     
-    const response = await postToWordpress({
-      title: title,
-      content,
-      domain: site.domain,
-      auth,
-      categoryId: categoryId,
-    });
+    let response;
+    
+    try {
+      // First try with standard WordPress password
+      console.log(`Attempting to post with standard WordPress password...`);
+      response = await postToWordpress({
+        title: title,
+        content,
+        domain: site.domain,
+        auth,
+        categoryId: categoryId,
+      });
+    } catch (firstError: any) {
+      // If that fails and we have an application password, try that
+      if (site.password && firstError.message.includes('not allowed to create posts')) {
+        console.log(`First attempt failed. Trying with application password...`);
+        const appAuth = {
+          username: site.login,
+          password: site.password, // Use the application password field
+        };
+        
+        response = await postToWordpress({
+          title: title,
+          content,
+          domain: site.domain,
+          auth: appAuth,
+          categoryId: categoryId,
+        });
+      } else {
+        // If we don't have an app password or error is different, rethrow
+        throw firstError;
+      }
+    }
 
     console.log('Response from WordPress:', response);
 
