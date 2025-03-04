@@ -30,15 +30,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
 
-  const { siteId, title, content, tags, clientName, author, userToken } = req.body;
+  const { siteId, title, content, tags, clientName, author, authorId, userToken } = req.body;
 
   if (!siteId || !content || !clientName) {
     return res.status(400).json({ message: 'Missing required fields' });
   }
 
-  if (tags.length < 1) {
-    return res.status(400).json({ message: 'Add at least 1 tag' });
-  }
+  // Make sure tags exists and is properly formatted
+  const formattedTags = tags ? (typeof tags === 'string' ? [tags] : tags) : ['uncategorized'];
+  
+  // Continue even without tags - we'll use the default category
 
   const connection = await mysql.createConnection(dbConfig);
   let site: SuperstarSite | null = null;
@@ -68,13 +69,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   console.log("Using WordPress author ID:", wpAuthorId);
 
   try {
+    // Don't encode the username in the auth object itself
     const auth = {
-      username: encodeURIComponent(site.login),
-      password: site.hosting_site, // Use hosting_site instead of password
+      username: site.login,
+      password: site.hosting_site, // Use hosting_site (application password)
     };
+    
+    console.log(`Using auth credentials: ${site.login} (password hidden)`);
+    
 
     // Ensure the category exists (and get its ID)
-    const categoryId = await getOrCreateCategory(site.domain, tags[0], auth);
+    // Use the first tag, or fallback to "uncategorized" if no tags
+    const categoryName = formattedTags.length > 0 ? formattedTags[0] : 'uncategorized';
+    const categoryId = await getOrCreateCategory(site.domain, categoryName, auth);
     
     // Convert wpAuthorId to string for the WordPress API
     const authorIdForWP = wpAuthorId ? String(wpAuthorId) : undefined;
@@ -86,7 +93,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       domain: site.domain,
       auth,
       categoryId: categoryId,
-      author: authorIdForWP,
     });
 
     console.log('Response from WordPress:', response);
@@ -95,9 +101,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw new Error('Response from WordPress contains undefined values');
     }
 
-    // Get the superstar_author_id from the wp_author_id
+    // Get the superstar_author_id - either directly from authorId parameter or lookup by wp_author_id
     let superstarAuthorId: number | null = null;
-    if (wpAuthorId) {
+    
+    // If authorId was passed directly, use it
+    if (authorId) {
+      superstarAuthorId = parseInt(authorId, 10);
+    } 
+    // Otherwise if WordPress author ID was used, look up the corresponding superstar_author_id
+    else if (wpAuthorId) {
       const [authorRows] = await connection.query(
         'SELECT id FROM superstar_authors WHERE superstar_site_id = ? AND wp_author_id = ?',
         [siteId, wpAuthorId]
