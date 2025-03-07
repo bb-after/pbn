@@ -1,6 +1,6 @@
 import axios from "axios";
 import cheerio from "cheerio";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { saveAs } from "file-saver";
 import Image from "next/image";
 import { TextField, Button } from "@mui/material";
@@ -29,6 +29,21 @@ const CompanyInfoPage: React.FC = () => {
   const [companyInfo, setCompanyInfo] = useState(null); // To store Clearbit company info
   const [isLoading, setIsLoading] = useState(false);
   const headerTags = ["h2", "h3", "h4"]; // Add any other relevant header tags
+
+  const fetchCompanyInfo = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch(
+        `/api/clearbit?companyName=${encodeURIComponent(companyName)}`
+      );
+      const data = await response.json();
+      setCompanyInfo(data);
+      setIsLoading(false);
+    } catch (error) {
+      console.error("Error fetching company info:", error);
+      setIsLoading(false);
+    }
+  }, [companyName]);
 
   async function fetchCompanyWikipediaText(
     companyName: string
@@ -151,37 +166,10 @@ const CompanyInfoPage: React.FC = () => {
   }
 
   useEffect(() => {
-    // Function to fetch data from Clearbit
-    const fetchCompanyInfo = async (companyName: any) => {
-      try {
-        setIsLoading(true);
-
-        // Make a request to your Next.js API endpoint
-        const response = await fetch(
-          `/api/clearbit?companyName=${encodeURIComponent(companyName)}`
-        );
-        if (response.ok) {
-          console.log("clearbit data?", response);
-          const data = await response.json();
-          setCompanyInfo(data); // Store Clearbit data in state
-        } else {
-          console.error("Clearbit API request failed");
-          // Handle error if needed
-        }
-      } catch (error) {
-        console.error("Error fetching Clearbit data:", error);
-        // Handle error if needed
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    // Call fetchCompanyInfo when setWikipediaText is called
-    if (wikipediaText) {
-      // const companyName = 'YourCompanyName'; // Replace with your actual company name
-      fetchCompanyInfo(companyName);
+    if (companyName) {
+      fetchCompanyInfo();
     }
-  }, [wikipediaText]);
+  }, [companyName, fetchCompanyInfo]);
 
   const exportData = (
     data: { companyName: string; wikipediaText: string }[]

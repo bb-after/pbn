@@ -3,7 +3,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import axios from 'axios';
 
-export default async (req: NextApiRequest, res: NextApiResponse) => {
+const clearbitHandler = async (req: NextApiRequest, res: NextApiResponse) => {
   try {
     let companyName = req.query.companyName;
     console.log('hereeeeee', companyName);
@@ -47,3 +47,5 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
     return res.status(500).json({ error: 'An error occurred while fetching data from Seamless AI' });
   }
 };
+
+export default clearbitHandler;
