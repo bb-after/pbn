@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Box,
   Button,
@@ -70,47 +70,39 @@ const PbnSiteSubmissionsTable = () => {
     }));
   };
 
-  const fetchData = (query = "", page = 0, rowsPerPage = 10) => {
-    let apiUrl = `/api/pbn-site-submissions?page=${page}&rowsPerPage=${rowsPerPage}`;
-    if (query) {
-      apiUrl += `&search=${query}`; // modify the API route to accept a search query
+  const fetchData = useCallback(async () => {
+    try {
+      const response = await fetch(
+        `/api/pbn-site-submissions?page=${page}&rowsPerPage=${rowsPerPage}&search=${search}&userToken=${selectedUser}`
+      );
+      const data = await response.json();
+      setSubmissions(data.rows);
+      setTotalCount(data.totalCount);
+    } catch (error) {
+      console.error("Error fetching submissions:", error);
     }
-    console.log("selectedUSer?", selectedUser);
-    if (selectedUser) {
-      apiUrl += `&userToken=${selectedUser}`; // Assuming your backend can handle a 'user' query parameter
-    }
-
-    fetch(apiUrl)
-      .then((response) => response.json())
-      .then((data) => {
-        setSubmissions(data.rows);
-        setTotalCount(data.totalCount);
-      })
-      .catch((error) => console.error(error));
-  };
+  }, [search, selectedUser, page, rowsPerPage]);
 
   useEffect(() => {
-    // Function to fetch users
+    fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
     const fetchUsers = async () => {
       try {
         const response = await fetch("/api/getUsers");
         const data = await response.json();
-        setUsers(data.rows);
+        setUsers(data);
       } catch (error) {
-        console.error("Failed to fetch users:", error);
+        console.error("Error fetching users:", error);
       }
     };
-
     fetchUsers();
   }, []);
 
-  useEffect(() => {
-    fetchData(search, page, rowsPerPage);
-  }, [search, page, rowsPerPage, selectedUser]);
-
   // Search handler
   const handleSearch = () => {
-    fetchData(search, page, rowsPerPage); // fetch data using the current search query
+    fetchData(); // fetch data using the current search query
   };
 
   const handleChangePage = (event: unknown, newPage: number) => {
