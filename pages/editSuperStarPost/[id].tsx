@@ -1,7 +1,7 @@
 import { useRouter } from "next/router";
 import { Link } from "@mui/material";
-import React, { useState, useEffect } from "react";
-import { EditorState } from "draft-js";
+import React, { useState, useEffect, useCallback } from "react";
+import { EditorState, convertFromRaw } from "draft-js";
 import "react-draft-wysiwyg/dist/react-draft-wysiwyg.css";
 import { stateFromHTML } from "draft-js-import-html";
 import StatusLabsHeader from "components/StatusLabsHeader";
@@ -23,36 +23,31 @@ export default function EditPost() {
     undefined
   );
 
+  const fetchPost = useCallback(async (id: string) => {
+    try {
+      const response = await fetch(`/api/superstar-site-submissions/${id}`);
+      const data = await response.json();
+      setArticleTitle(data.title);
+      setEditorState(
+        EditorState.createWithContent(convertFromRaw(JSON.parse(data.content)))
+      );
+      setClientName(data.client_name);
+      setCategories(data.categories);
+      setSubmissionId(data.id);
+      setSuperStarSiteId(data.superstar_site_id);
+    } catch (error) {
+      console.error("Error fetching post:", error);
+    }
+  }, []);
+
   useEffect(() => {
+    if (!router.isReady) return;
+
+    const { id } = router.query;
     if (id) {
-      const numericId = Number(id);
-      setSubmissionId(!isNaN(numericId) ? numericId : undefined);
+      fetchPost(id as string);
     }
-
-    // Fetch post data from the database
-    const fetchData = async () => {
-      const res = await fetch(`/api/getSuperStarPost?id=${id}`);
-      if (res.status === 404) {
-        // Redirect to the home page or a custom 404 page
-        router.push("/superstar-site-submissions"); // Change '/404' to your preferred redirection target
-        return;
-      }
-
-      const data = await res.json();
-      if (data.content) {
-        const contentState = stateFromHTML(data.content); // Convert HTML to Draft.js ContentState
-        setEditorState(EditorState.createWithContent(contentState));
-        setArticleTitle(data.title);
-        setClientName(data.client_name);
-        setCategories(data.categories);
-        setSuperStarSiteId(Number(data.superstar_site_id)); // Ensure this is a number
-      }
-    };
-
-    if (id) {
-      fetchData();
-    }
-  }, [id]);
+  }, [router.isReady, router.query, fetchPost]);
 
   return (
     <div

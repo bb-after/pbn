@@ -8,7 +8,7 @@ const dbConfig = {
   database: process.env.DB_DATABASE,
 };
 
-export default async (req: NextApiRequest, res: NextApiResponse) => {
+const superstarSitesHandler = async (req: NextApiRequest, res: NextApiResponse) => {
   const { search = '', active = '1' } = req.query;
 
   // Create a MySQL connection
@@ -60,3 +60,5 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
     }
   }
 };
+
+export default superstarSitesHandler;

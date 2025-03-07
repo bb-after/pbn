@@ -4,7 +4,7 @@ import mysql from 'mysql2/promise';
 import { NextApiRequest, NextApiResponse } from 'next';
 import { RowDataPacket, FieldPacket } from 'mysql2';
 
-export default async (req: NextApiRequest, res: NextApiResponse) => {
+const pbnSiteSubmissionsHandler = async (req: NextApiRequest, res: NextApiResponse) => {
   // Define your MySQL connection options
   const dbConfig = {
     host: process.env.DB_HOST_NAME,
@@ -69,3 +69,5 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
     }
   }
 };
+
+export default pbnSiteSubmissionsHandler;
