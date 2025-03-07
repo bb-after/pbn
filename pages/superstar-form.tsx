@@ -1,6 +1,15 @@
 // pages/superstar-form.tsx
 import React from "react";
-import { Typography, Link, TableContainer, Paper, Autocomplete, TextField, Chip, Box } from "@mui/material";
+import {
+  Typography,
+  Link,
+  TableContainer,
+  Paper,
+  Autocomplete,
+  TextField,
+  Chip,
+  Box,
+} from "@mui/material";
 import LayoutContainer from "components/LayoutContainer";
 import StyledHeader from "components/StyledHeader";
 import { useState, useEffect } from "react";
@@ -30,18 +39,22 @@ const SuperstarFormPage: React.FC = () => {
   const [content, setContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const { isValidUser } = useValidateUserToken();
-  const [authors, setAuthors] = useState<{
-    id: number;
-    author_name: string;
-    wp_author_id: number;
-    author_avatar?: string;
-  }[]>([]);
+  const [authors, setAuthors] = useState<
+    {
+      id: number;
+      author_name: string;
+      wp_author_id: number;
+      author_avatar?: string;
+    }[]
+  >([]);
   const [selectedAuthor, setSelectedAuthor] = useState("");
 
   useEffect(() => {
     const fetchSites = async () => {
       try {
-        const response = await axios.get<SuperstarSite[]>("/api/superstar-sites");
+        const response = await axios.get<SuperstarSite[]>(
+          "/api/superstar-sites"
+        );
         const parsedData = response.data.map((site) => ({
           ...site,
         }));
@@ -64,7 +77,9 @@ const SuperstarFormPage: React.FC = () => {
     if (!siteId) return;
 
     try {
-      const response = await axios.get(`/api/superstar-authors/site?siteId=${siteId}`);
+      const response = await axios.get(
+        `/api/superstar-authors/site?siteId=${siteId}`
+      );
       setAuthors(response.data.authors || []);
     } catch (error) {
       console.error("Error fetching authors for site:", error);
@@ -84,7 +99,9 @@ const SuperstarFormPage: React.FC = () => {
       let authorId;
       let internalAuthorId = "";
       if (selectedAuthor) {
-        const chosenAuthor = authors.find((a) => a.id.toString() === selectedAuthor);
+        const chosenAuthor = authors.find(
+          (a) => a.id.toString() === selectedAuthor
+        );
         authorId = chosenAuthor?.wp_author_id;
         internalAuthorId = selectedAuthor;
       }
@@ -101,7 +118,7 @@ const SuperstarFormPage: React.FC = () => {
 
       await axios.post("/api/postSuperstarContentToWordpress", postContent);
       alert("Content posted successfully!");
-      
+
       // Redirect to submissions page
       window.location.href = "/superstar-site-submissions";
     } catch (error) {
@@ -144,7 +161,14 @@ const SuperstarFormPage: React.FC = () => {
           value={selectedSite}
           onChange={(_, newValue) => setSelectedSite(newValue)}
           renderInput={(params) => (
-            <TextField {...params} label="Select Superstar Site" variant="outlined" fullWidth margin="normal" required />
+            <TextField
+              {...params}
+              label="Select Superstar Site"
+              variant="outlined"
+              fullWidth
+              margin="normal"
+              required
+            />
           )}
           renderOption={(props, option) => (
             <li {...props}>
@@ -170,21 +194,25 @@ const SuperstarFormPage: React.FC = () => {
           value={categories}
           onChange={(_, newValue) => setCategories(newValue)}
           renderTags={(value, getTagProps) =>
-            value.map((option, index) => (
-              <Chip
-                variant="filled"
-                label={option}
-                {...getTagProps({ index })}
-                sx={{
-                  backgroundColor: colors[index % colors.length],
-                  color: "#fff",
-                  "&:hover": {
+            value.map((option, index) => {
+              const { key, ...rest } = getTagProps({ index });
+              return (
+                <Chip
+                  key={key}
+                  variant="filled"
+                  label={option}
+                  {...rest}
+                  sx={{
                     backgroundColor: colors[index % colors.length],
-                    opacity: 0.9,
-                  },
-                }}
-              />
-            ))
+                    color: "#fff",
+                    "&:hover": {
+                      backgroundColor: colors[index % colors.length],
+                      opacity: 0.9,
+                    },
+                  }}
+                />
+              );
+            })
           }
           renderInput={(params) => (
             <TextField
@@ -212,9 +240,9 @@ const SuperstarFormPage: React.FC = () => {
           Article Content
         </Typography>
         <Box sx={{ mb: 2, mt: 1 }}>
-          <ReactQuill 
-            value={content} 
-            onChange={setContent} 
+          <ReactQuill
+            value={content}
+            onChange={setContent}
             style={{ height: "300px", marginBottom: "50px" }}
           />
         </Box>
@@ -223,10 +251,20 @@ const SuperstarFormPage: React.FC = () => {
           id="author-select"
           options={authors}
           getOptionLabel={(option) => option.author_name}
-          value={authors.find(a => a.id.toString() === selectedAuthor) || null}
-          onChange={(_, newValue) => setSelectedAuthor(newValue ? newValue.id.toString() : "")}
+          value={
+            authors.find((a) => a.id.toString() === selectedAuthor) || null
+          }
+          onChange={(_, newValue) =>
+            setSelectedAuthor(newValue ? newValue.id.toString() : "")
+          }
           renderInput={(params) => (
-            <TextField {...params} label="Select Author (Optional)" variant="outlined" fullWidth margin="normal" />
+            <TextField
+              {...params}
+              label="Select Author (Optional)"
+              variant="outlined"
+              fullWidth
+              margin="normal"
+            />
           )}
           renderOption={(props, option) => (
             <li {...props}>
@@ -254,14 +292,22 @@ const SuperstarFormPage: React.FC = () => {
           <button
             onClick={handleSubmit}
             className="btn-primary"
-            disabled={submitting || !selectedSite || !title || !content || !clientName}
+            disabled={
+              submitting || !selectedSite || !title || !content || !clientName
+            }
             style={{
               padding: "10px 20px",
-              backgroundColor: (!selectedSite || !title || !content || !clientName) ? "#cccccc" : "#1976d2",
+              backgroundColor:
+                !selectedSite || !title || !content || !clientName
+                  ? "#cccccc"
+                  : "#1976d2",
               color: "white",
               border: "none",
               borderRadius: "4px",
-              cursor: (!selectedSite || !title || !content || !clientName) ? "not-allowed" : "pointer",
+              cursor:
+                !selectedSite || !title || !content || !clientName
+                  ? "not-allowed"
+                  : "pointer",
             }}
           >
             {submitting ? "Submitting..." : "Post to Superstar Site"}

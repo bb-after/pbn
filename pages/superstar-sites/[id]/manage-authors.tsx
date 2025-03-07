@@ -28,6 +28,7 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import LayoutContainer from "../../../components/LayoutContainer";
 import StyledHeader from "../../../components/StyledHeader";
 import useValidateUserToken from "../../../hooks/useValidateUserToken";
+import Image from "next/image";
 
 interface Author {
   id: number;
@@ -282,10 +283,15 @@ const ManageAuthors: React.FC = () => {
                   <TableRow key={author.id}>
                     <TableCell>
                       {author.author_avatar ? (
-                        <img
+                        <Box
+                          component={Image}
                           src={author.author_avatar}
                           alt={author.author_name}
-                          style={{ width: 40, height: 40, borderRadius: "50%" }}
+                          width={40}
+                          height={40}
+                          sx={{
+                            borderRadius: "50%",
+                          }}
                         />
                       ) : (
                         "—"

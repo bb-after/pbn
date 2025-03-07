@@ -13,6 +13,7 @@ import {
 import SaveAltIcon from "@mui/icons-material/SaveAlt";
 import LayoutContainer from "components/LayoutContainer";
 import StyledHeader from "components/StyledHeader";
+import Image from "next/image";
 
 interface SearchResult {
   screenshot?: string;
@@ -154,11 +155,13 @@ export default function Home() {
             <div style={{ marginTop: "2rem" }}>
               {result.error ? (
                 <p>{result.error}</p>
-              ) : (
+              ) : result.screenshot ? (
                 <>
-                  <img
+                  <Image
                     src={result.screenshot}
                     alt="Google search result"
+                    width={800}
+                    height={600}
                     style={{ maxWidth: "100%", height: "auto" }}
                   />
                   <Button
@@ -171,7 +174,7 @@ export default function Home() {
                     Download Image
                   </Button>
                 </>
-              )}
+              ) : null}
             </div>
           )}
         </div>

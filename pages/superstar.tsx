@@ -220,21 +220,25 @@ const HomePage = () => {
         value={topic}
         onChange={(_, newValue) => setTopic(newValue)}
         renderTags={(value, getTagProps) =>
-          value.map((option, index) => (
-            <Chip
-              variant="filled"
-              label={option}
-              {...getTagProps({ index })}
-              sx={{
-                backgroundColor: colors[index % colors.length],
-                color: "#fff",
-                "&:hover": {
+          value.map((option, index) => {
+            const { key, ...rest } = getTagProps({ index });
+            return (
+              <Chip
+                key={key}
+                variant="filled"
+                label={option}
+                {...rest}
+                sx={{
                   backgroundColor: colors[index % colors.length],
-                  opacity: 0.9,
-                },
-              }}
-            />
-          ))
+                  color: "#fff",
+                  "&:hover": {
+                    backgroundColor: colors[index % colors.length],
+                    opacity: 0.9,
+                  },
+                }}
+              />
+            );
+          })
         }
         renderInput={(params) => (
           <TextField
