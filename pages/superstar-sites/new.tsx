@@ -98,83 +98,86 @@ const NewSite: React.FC = () => {
   }
 
   return (
-    <Container>
-      <Box my={4}>
-        <Typography variant="h4" gutterBottom>
-          New Superstar Site
-        </Typography>
-        <TextField
-          variant="outlined"
-          label="Domain - eg - https://bobscabinets.org"
-          fullWidth
-          margin="normal"
-          value={domain}
-          onChange={(e) => setDomain(e.target.value)}
-        />
-        {errorMessage && (
-          <Typography color="error" variant="body1">
-            {errorMessage}
+    <LayoutContainer>
+      <StyledHeader />
+      <Container>
+        <Box my={4}>
+          <Typography variant="h4" gutterBottom>
+            New Superstar Site
           </Typography>
-        )}
-        <Autocomplete
-          multiple
-          freeSolo
-          options={[]}
-          value={topics}
-          onChange={(event, newValue) => setTopics(newValue as string[])}
-          renderInput={(params) => (
-            <TextField
-              {...params}
-              variant="outlined"
-              label="Topics"
-              placeholder="Add topics"
-            />
+          <TextField
+            variant="outlined"
+            label="Domain - eg - https://bobscabinets.org"
+            fullWidth
+            margin="normal"
+            value={domain}
+            onChange={(e) => setDomain(e.target.value)}
+          />
+          {errorMessage && (
+            <Typography color="error" variant="body1">
+              {errorMessage}
+            </Typography>
           )}
-        />
-        <TextField
-          variant="outlined"
-          label="WordPress Username"
-          fullWidth
-          margin="normal"
-          value={wpUsername}
-          onChange={(e) => setWpUsername(e.target.value)}
-        />
-        <TextField
-          variant="outlined"
-          label="WordPress Password"
-          type="password"
-          fullWidth
-          margin="normal"
-          value={wpPassword}
-          onChange={(e) => setWpPassword(e.target.value)}
-        />
-        <TextField
-          variant="outlined"
-          label="WordPress Application Password"
-          type="password"
-          fullWidth
-          margin="normal"
-          value={wpAppPassword}
-          onChange={(e) => setWpAppPassword(e.target.value)}
-        />
-        <FormControl fullWidth margin="normal">
-          <InputLabel id="active-label">Status</InputLabel>
-          <Select
-            labelId="active-label"
-            value={active}
-            onChange={(e) => setActive(e.target.value as string)}
-          >
-            <MenuItem value="1">Active</MenuItem>
-            <MenuItem value="0">Inactive</MenuItem>
-          </Select>
-        </FormControl>
-        <Box mt={2}>
-          <Button variant="contained" color="primary" onClick={handleSave}>
-            Save
-          </Button>
+          <Autocomplete
+            multiple
+            freeSolo
+            options={[]}
+            value={topics}
+            onChange={(event, newValue) => setTopics(newValue as string[])}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                variant="outlined"
+                label="Topics"
+                placeholder="Add topics"
+              />
+            )}
+          />
+          <TextField
+            variant="outlined"
+            label="WordPress Username"
+            fullWidth
+            margin="normal"
+            value={wpUsername}
+            onChange={(e) => setWpUsername(e.target.value)}
+          />
+          <TextField
+            variant="outlined"
+            label="WordPress Password"
+            type="password"
+            fullWidth
+            margin="normal"
+            value={wpPassword}
+            onChange={(e) => setWpPassword(e.target.value)}
+          />
+          <TextField
+            variant="outlined"
+            label="WordPress Application Password"
+            type="password"
+            fullWidth
+            margin="normal"
+            value={wpAppPassword}
+            onChange={(e) => setWpAppPassword(e.target.value)}
+          />
+          <FormControl fullWidth margin="normal">
+            <InputLabel id="active-label">Status</InputLabel>
+            <Select
+              labelId="active-label"
+              value={active}
+              onChange={(e) => setActive(e.target.value as string)}
+            >
+              <MenuItem value="1">Active</MenuItem>
+              <MenuItem value="0">Inactive</MenuItem>
+            </Select>
+          </FormControl>
+          <Box mt={2}>
+            <Button variant="contained" color="primary" onClick={handleSave}>
+              Save
+            </Button>
+          </Box>
         </Box>
-      </Box>
-    </Container>
+      </Container>
+    </LayoutContainer>
   );
 };
 

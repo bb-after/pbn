@@ -10,17 +10,20 @@ import {
   OutlinedInput,
   Box,
   Typography,
+  Autocomplete,
+  Chip,
 } from "@mui/material";
 import LayoutContainer from "../components/LayoutContainer";
 import StyledHeader from "../components/StyledHeader";
 import axios from "axios";
 import dynamic from "next/dynamic";
 import { formatSuperstarContent } from "utils/formatSuperstarContent";
+import { colors } from "../utils/colors";
+import router from "next/router";
+import useValidateUserToken from "hooks/useValidateUserToken";
 
 const ReactQuill = dynamic(() => import("react-quill"), { ssr: false });
 import "react-quill/dist/quill.snow.css"; // Import styles for ReactQuill
-import router from "next/router";
-import useValidateUserToken from "hooks/useValidateUserToken";
 
 interface SuperstarSite {
   id: number;
@@ -32,7 +35,7 @@ interface SuperstarSite {
 }
 
 const HomePage = () => {
-  const [topic, setTopic] = useState("");
+  const [topic, setTopic] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [loading, setLoading] = useState(false);
   const [content, setContent] = useState("");
@@ -43,7 +46,14 @@ const HomePage = () => {
   const [tags, setTags] = useState<string[]>([]);
   const [author, setAuthor] = useState("");
   const [clientName, setClientName] = useState("Superstar AI"); // Default client name
-  const [authors, setAuthors] = useState<{id: number, author_name: string, wp_author_id: number, author_avatar?: string}[]>([]);
+  const [authors, setAuthors] = useState<
+    {
+      id: number;
+      author_name: string;
+      wp_author_id: number;
+      author_avatar?: string;
+    }[]
+  >([]);
   const [isLoadingAuthors, setIsLoadingAuthors] = useState(false);
   const { isValidUser } = useValidateUserToken();
 
@@ -70,29 +80,37 @@ const HomePage = () => {
       const site = sites.find((s) => s.id === Number(selectedSite));
       if (site) {
         if (Array.isArray(site.topics)) {
-          setTopic(site.topics.join(" "));
-        } else if (typeof site.topics === "string") {
           setTopic(site.topics);
+        } else if (typeof site.topics === "string") {
+          // Split by commas and trim whitespace, preserving multi-word categories
+          setTopic(
+            site.topics
+              .split(",")
+              .map((t) => t.trim())
+              .filter((t) => t)
+          );
         } else {
-          setTopic("");
+          setTopic([]);
         }
-        
+
         // Reset author when site changes
         setAuthor("");
-        
+
         // Fetch authors for this site
         fetchAuthorsForSite(selectedSite);
       }
     }
   }, [selectedSite, sites]);
-  
+
   // Function to fetch authors for a selected site
   const fetchAuthorsForSite = async (siteId: string) => {
     if (!siteId) return;
-    
+
     setIsLoadingAuthors(true);
     try {
-      const response = await axios.get(`/api/superstar-authors/site?siteId=${siteId}`);
+      const response = await axios.get(
+        `/api/superstar-authors/site?siteId=${siteId}`
+      );
       setAuthors(response.data.authors || []);
     } catch (error) {
       console.error("Error fetching authors for site:", error);
@@ -105,8 +123,7 @@ const HomePage = () => {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setLoading(true);
-    const topics = topic.split(",");
-    const formattedTopics = topics.map((t) => encodeURIComponent(t)).join(",");
+    const formattedTopics = topic.map((t) => encodeURIComponent(t)).join(",");
     const siteId = selectedSite;
     try {
       const response = await axios.get(
@@ -132,10 +149,10 @@ const HomePage = () => {
       // Get the WordPress author ID if an author is selected
       let authorId;
       if (author) {
-        const selectedAuthor = authors.find(a => a.id.toString() === author);
+        const selectedAuthor = authors.find((a) => a.id.toString() === author);
         authorId = selectedAuthor?.wp_author_id;
       }
-      
+
       const postContent = {
         siteId: selectedSite,
         title,
@@ -143,9 +160,9 @@ const HomePage = () => {
         tags: tags.join(", "),
         clientName, // Include the client name
         author: authorId, // Send the WordPress author ID, not our internal ID
-        authorId: author // Also send our internal author ID for database references
+        authorId: author, // Also send our internal author ID for database references
       };
-      
+
       await axios.post("/api/postSuperstarContentToWordpress", postContent);
       alert("Content posted successfully!");
       router.push("/superstar-site-submissions");
@@ -175,28 +192,60 @@ const HomePage = () => {
       <StyledHeader />
       <h1>Superstar Generator</h1>
       <FormControl fullWidth variant="outlined" margin="normal">
-        <InputLabel id="site-select-label">Select Site</InputLabel>
-        <Select
-          labelId="site-select-label"
-          value={selectedSite}
-          onChange={(e) => setSelectedSite(e.target.value as string)}
-          label="Select Site"
-        >
-          {sites.map((site) => (
-            <MenuItem key={site.id} value={site.id.toString()}>
-              {site.domain}
-            </MenuItem>
-          ))}
-        </Select>
+        <Autocomplete
+          id="site-select"
+          options={sites}
+          getOptionLabel={(option) => option.domain}
+          value={
+            sites.find((site) => site.id.toString() === selectedSite) || null
+          }
+          onChange={(_, newValue) =>
+            setSelectedSite(newValue ? newValue.id.toString() : "")
+          }
+          renderInput={(params) => (
+            <TextField {...params} label="Select Site" variant="outlined" />
+          )}
+          renderOption={(props, option) => (
+            <li {...props}>
+              <Typography noWrap>{option.domain}</Typography>
+            </li>
+          )}
+        />
       </FormControl>
-      <TextField
-        variant="outlined"
-        fullWidth
+
+      <Autocomplete
+        multiple
+        freeSolo
+        options={[]}
         value={topic}
-        onChange={(e) => setTopic(e.target.value)}
-        placeholder="Categories"
-        margin="normal"
-        label="Categories"
+        onChange={(_, newValue) => setTopic(newValue)}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip
+              variant="filled"
+              label={option}
+              {...getTagProps({ index })}
+              sx={{
+                backgroundColor: colors[index % colors.length],
+                color: "#fff",
+                "&:hover": {
+                  backgroundColor: colors[index % colors.length],
+                  opacity: 0.9,
+                },
+              }}
+            />
+          ))
+        }
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            variant="outlined"
+            label="Categories"
+            placeholder="Add categories"
+            fullWidth
+            margin="normal"
+          />
+        )}
       />
 
       <form onSubmit={handleSubmit}>
@@ -232,7 +281,7 @@ const HomePage = () => {
               label="Tags"
             />
           </FormControl>
-          
+
           <TextField
             variant="outlined"
             fullWidth
@@ -243,10 +292,12 @@ const HomePage = () => {
             label="Client Name"
             required
           />
-          
+
           {/* Author dropdown */}
           <FormControl fullWidth variant="outlined" margin="normal">
-            <InputLabel id="author-select-label">Post Author (Optional)</InputLabel>
+            <InputLabel id="author-select-label">
+              Post Author (Optional)
+            </InputLabel>
             <Select
               labelId="author-select-label"
               value={author}
@@ -261,15 +312,15 @@ const HomePage = () => {
                 <MenuItem key={author.id} value={author.id.toString()}>
                   <Box display="flex" alignItems="center">
                     {author.author_avatar && (
-                      <Box 
-                        component="img" 
-                        src={author.author_avatar} 
-                        alt={author.author_name} 
-                        sx={{ 
-                          width: 24, 
-                          height: 24, 
-                          borderRadius: '50%', 
-                          marginRight: 1 
+                      <Box
+                        component="img"
+                        src={author.author_avatar}
+                        alt={author.author_name}
+                        sx={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: "50%",
+                          marginRight: 1,
                         }}
                       />
                     )}
@@ -279,8 +330,19 @@ const HomePage = () => {
               ))}
             </Select>
             {authors.length === 0 && !isLoadingAuthors && selectedSite && (
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-                No authors found for this site. <a href={`/superstar-sites/${selectedSite}/manage-authors`} target="_blank" rel="noopener noreferrer">Manage Authors</a>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ mt: 1 }}
+              >
+                No authors found for this site.{" "}
+                <a
+                  href={`/superstar-sites/${selectedSite}/manage-authors`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Manage Authors
+                </a>
               </Typography>
             )}
           </FormControl>
