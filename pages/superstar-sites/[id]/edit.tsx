@@ -25,6 +25,7 @@ interface SuperstarSite {
   active: string;
   hosting_site_password: string;
   application_password: string;
+  custom_prompt: string;
 }
 
 const EditTopics: React.FC = () => {
@@ -36,6 +37,7 @@ const EditTopics: React.FC = () => {
   const [wpPassword, setWpPassword] = useState<string>("");
   const [wpAppPassword, setWpAppPassword] = useState<string>("");
   const [active, setActive] = useState<string>("1");
+  const [customPrompt, setCustomPrompt] = useState<string>("");
 
   useEffect(() => {
     if (id) {
@@ -51,6 +53,7 @@ const EditTopics: React.FC = () => {
           setWpPassword(siteData.hosting_site_password || "");
           setWpAppPassword(siteData.application_password || "");
           setActive(siteData.active || "1");
+          setCustomPrompt(siteData.custom_prompt || "");
         } catch (error) {
           console.error("Error fetching site:", error);
         }
@@ -68,6 +71,7 @@ const EditTopics: React.FC = () => {
         wpPassword,
         wpAppPassword,
         active,
+        customPrompt,
       });
       router.push("/superstar-sites");
     } catch (error) {
@@ -121,6 +125,19 @@ const EditTopics: React.FC = () => {
           margin="normal"
           value={wpAppPassword}
           onChange={(e) => setWpAppPassword(e.target.value)}
+        />
+
+        <TextField
+          variant="outlined"
+          label="Custom Prompt"
+          multiline
+          rows={4}
+          fullWidth
+          margin="normal"
+          value={customPrompt}
+          onChange={(e) => setCustomPrompt(e.target.value)}
+          placeholder="Enter a custom prompt to override the default prompt when generating content for this site"
+          helperText="Leave empty to use the default prompt"
         />
 
         <FormControl fullWidth margin="normal">

@@ -13,7 +13,9 @@ export const generateSuperStarContent = async (topic: string, site: any): Promis
   console.log('Generating content for topic:', topic);
 
   // Prepare the prompt for OpenAI
-  const prompt = `Write a detailed article, between 200-500 words, about anything of current or general interest related to ${topic}.`;
+  const prompt = site.custom_prompt 
+    ? `${site.custom_prompt} The topic is: ${topic}.`
+    : `Write a detailed article, between 200-500 words, about anything of current or general interest related to ${topic}.`;
   const initialGptMessage = [
     { role: "system", content: `I want you to write as if you are a proficient SEO and copywriter who speaks and writes fluent ${language}.` },
     { role: "user", content: prompt },
