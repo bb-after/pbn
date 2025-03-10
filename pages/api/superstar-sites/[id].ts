@@ -18,7 +18,7 @@ const handleRequest = async (req: NextApiRequest, res: NextApiResponse) => {
     if (req.method === 'GET') {
       const [rows] = await connection.query<RowDataPacket[]>(
         `SELECT ss.id, domain, login, hosting_site as hosting_site_password,
-              password AS application_password,
+              password AS application_password, custom_prompt,
                 GROUP_CONCAT(topic) AS topics 
          FROM superstar_sites ss 
          LEFT JOIN superstar_site_topics sst 
@@ -37,15 +37,14 @@ const handleRequest = async (req: NextApiRequest, res: NextApiResponse) => {
           ...site,
           topics: topicsArray
         });
-
       }
     } else if (req.method === 'PUT') {
-      const { topics, wpUsername, wpPassword, wpAppPassword, active } = req.body;
+      const { topics, wpUsername, wpPassword, wpAppPassword, active, customPrompt } = req.body;
       
-      // Update the superstar_sites table with the new login and password information
+      // Update the superstar_sites table with the new login, password, and custom prompt information
       await connection.query(
-        'UPDATE superstar_sites SET login = ?, hosting_site = ?, password = ?, active = ?, modified = NOW() WHERE id = ?',
-        [wpUsername, wpPassword, wpAppPassword, active, id]
+        'UPDATE superstar_sites SET login = ?, hosting_site = ?, password = ?, active = ?, custom_prompt = ?, modified = NOW() WHERE id = ?',
+        [wpUsername, wpPassword, wpAppPassword, active, customPrompt, id]
       );
 
       // Delete existing topics
@@ -56,7 +55,7 @@ const handleRequest = async (req: NextApiRequest, res: NextApiResponse) => {
         await connection.query('INSERT INTO superstar_site_topics (superstar_site_id, topic) VALUES (?, ?)', [id, topic]);
       }
 
-      res.status(200).json({ message: 'Topics and WordPress credentials updated successfully' });
+      res.status(200).json({ message: 'Site updated successfully' });
     } else {
       res.setHeader('Allow', ['GET', 'PUT']);
       res.status(405).end(`Method ${req.method} Not Allowed`);

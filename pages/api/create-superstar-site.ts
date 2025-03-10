@@ -14,10 +14,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { domain, wpUsername,  topics, wpPassword, wpAppPassword } = req.body;
+  const { domain, wpUsername, topics, wpPassword, wpAppPassword, active, customPrompt } = req.body;
 
   if (!domain) {
-    return res.status(400).json({ error: "Domain is required are required" });
+    return res.status(400).json({ error: "Domain is required" });
   }
 
   const connection = await mysql.createConnection(dbConfig);
@@ -34,17 +34,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const [result]: [ResultSetHeader, any] = await connection.execute(
-        'INSERT INTO superstar_sites (domain, login, hosting_site, password) VALUES (?, ?, ?, ?)',
-        [domain, wpUsername, wpPassword, wpAppPassword]
-      );
+      'INSERT INTO superstar_sites (domain, login, hosting_site, password, active, custom_prompt) VALUES (?, ?, ?, ?, ?, ?)',
+      [domain, wpUsername, wpPassword, wpAppPassword, active, customPrompt]
+    );
       
     // Insert new topics
     for (const topic of topics) {
-        await connection.query('INSERT INTO superstar_site_topics (superstar_site_id, topic) VALUES (?, ?)', [result.insertId, topic]);
+      await connection.query('INSERT INTO superstar_site_topics (superstar_site_id, topic) VALUES (?, ?)', [result.insertId, topic]);
     }
         
-      res.status(201).json({ message: "Superstar site created successfully", siteId: result.insertId });
-    } catch (error) {
+    res.status(201).json({ message: "Superstar site created successfully", siteId: result.insertId });
+  } catch (error) {
     console.error("Error creating superstar site:", error);
     res.status(500).json({ error: "Error creating superstar site" });
   } finally {
