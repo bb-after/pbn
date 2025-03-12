@@ -2,7 +2,7 @@
 const nextConfig = {
     productionBrowserSourceMaps: true,
     images: {
-        domains: ['ideogram.ai']
+        domains: ['ideogram.ai', 'secure.gravatar.com']
     }
 }
 

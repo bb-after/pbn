@@ -92,7 +92,7 @@ const PbnSiteSubmissionsTable = () => {
       try {
         const response = await fetch("/api/getUsers");
         const data = await response.json();
-        setUsers(data);
+        setUsers(data.rows);
       } catch (error) {
         console.error("Error fetching users:", error);
       }
