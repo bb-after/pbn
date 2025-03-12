@@ -55,10 +55,12 @@ const HomePage = () => {
     }[]
   >([]);
   const [isLoadingAuthors, setIsLoadingAuthors] = useState(false);
+  const [isLoadingSites, setIsLoadingSites] = useState(false);
   const { isValidUser } = useValidateUserToken();
 
   useEffect(() => {
     const fetchSites = async () => {
+      setIsLoadingSites(true);
       try {
         const response = await axios.get<SuperstarSite[]>(
           "/api/superstar-sites"
@@ -69,6 +71,8 @@ const HomePage = () => {
         setSites(parsedData);
       } catch (error) {
         console.error("Error fetching sites:", error);
+      } finally {
+        setIsLoadingSites(false);
       }
     };
 
@@ -153,11 +157,14 @@ const HomePage = () => {
         authorId = selectedAuthor?.wp_author_id;
       }
 
+      // Handle tags safely - convert to comma-separated string if present, otherwise send empty string
+      const formattedTags = tags && tags.length > 0 ? tags.join(", ") : "";
+
       const postContent = {
         siteId: selectedSite,
         title,
         content: editableContent,
-        tags: tags.join(", "),
+        tags: formattedTags,
         clientName, // Include the client name
         author: authorId, // Send the WordPress author ID, not our internal ID
         authorId: author, // Also send our internal author ID for database references
@@ -202,8 +209,22 @@ const HomePage = () => {
           onChange={(_, newValue) =>
             setSelectedSite(newValue ? newValue.id.toString() : "")
           }
+          loading={isLoadingSites}
           renderInput={(params) => (
-            <TextField {...params} label="Select Site" variant="outlined" />
+            <TextField 
+              {...params} 
+              label="Select Site" 
+              variant="outlined"
+              InputProps={{
+                ...params.InputProps,
+                endAdornment: (
+                  <>
+                    {isLoadingSites ? <CircularProgress color="inherit" size={20} /> : null}
+                    {params.InputProps.endAdornment}
+                  </>
+                ),
+              }}
+            />
           )}
           renderOption={(props, option) => (
             <li {...props}>
@@ -275,16 +296,44 @@ const HomePage = () => {
             label="Title"
           />
           <ReactQuill value={editableContent} onChange={setEditableContent} />
-          <FormControl fullWidth variant="outlined" margin="normal">
-            <InputLabel htmlFor="tags">Tags</InputLabel>
-            <OutlinedInput
-              id="tags"
-              value={tags}
-              onChange={(e) => setTags(e.target.value.split(", "))}
-              placeholder="Enter tags separated by commas"
-              label="Tags"
-            />
-          </FormControl>
+          <Autocomplete
+            multiple
+            freeSolo
+            options={[]}
+            value={tags}
+            onChange={(_, newValue) => setTags(newValue)}
+            renderTags={(value, getTagProps) =>
+              value.map((option, index) => {
+                const { key, ...rest } = getTagProps({ index });
+                return (
+                  <Chip
+                    key={key}
+                    variant="filled"
+                    label={option}
+                    {...rest}
+                    sx={{
+                      backgroundColor: colors[index % colors.length],
+                      color: "#fff",
+                      "&:hover": {
+                        backgroundColor: colors[index % colors.length],
+                        opacity: 0.9,
+                      },
+                    }}
+                  />
+                );
+              })
+            }
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                variant="outlined"
+                label="Tags (Optional)"
+                placeholder="Add tags"
+                fullWidth
+                margin="normal"
+              />
+            )}
+          />
 
           <TextField
             variant="outlined"

@@ -381,17 +381,15 @@ const SuperstarSiteSubmissionsTable = () => {
                   {submission.author_name ? (
                     <Box display="flex" alignItems="center">
                       {submission.author_avatar && (
-                        <Box
-                          component={Image}
-                          src={submission.author_avatar}
-                          alt={submission.author_name}
-                          width={24}
-                          height={24}
-                          sx={{
-                            borderRadius: "50%",
-                            marginRight: 1,
-                          }}
-                        />
+                        <Box sx={{ marginRight: 1 }}>
+                          <Image
+                            src={submission.author_avatar}
+                            alt={submission.author_name}
+                            width={24}
+                            height={24}
+                            style={{ borderRadius: "50%" }}
+                          />
+                        </Box>
                       )}
                       {submission.author_name}
                     </Box>
