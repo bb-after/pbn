@@ -96,7 +96,7 @@ const StyledHeader = () => {
         },
         {
           text: "Add New Site",
-          href: "/superstar-form",
+          href: "/superstar-sites/new",
           description: "Add another Superstar site to your list",
         },
         {
