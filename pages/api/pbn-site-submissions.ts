@@ -17,10 +17,31 @@ const pbnSiteSubmissionsHandler = async (req: NextApiRequest, res: NextApiRespon
   const connection = await mysql.createConnection(dbConfig);
 
   try {
+    // Check if we're requesting unique clients with counts
+    if (req.query.getClientCounts === 'true') {
+      const clientQuery = `
+        SELECT 
+          TRIM(client_name) as client_name, 
+          SUM(CASE WHEN deleted_at is null THEN 1 ELSE 0 END) as post_count 
+        FROM pbn_site_submissions 
+        WHERE client_name IS NOT NULL 
+        AND client_name != '' 
+        GROUP BY LOWER(TRIM(client_name)) 
+        ORDER BY LOWER(client_name) ASC
+      `;
+      const [clientRows] = await connection.query(clientQuery) as [RowDataPacket[], FieldPacket[]];
+      
+      // Close the MySQL connection
+      await connection.end();
+      
+      // Return the client names with counts
+      return res.status(200).json({ clients: clientRows });
+    }
 
     // Check for the search query parameter and userToken parameter
     const searchQuery = req.query.search;
     const userToken = req.query.userToken;
+    const clientName = req.query.clientName;
 
     let query;
     let queryConfig;
@@ -36,6 +57,10 @@ const pbnSiteSubmissionsHandler = async (req: NextApiRequest, res: NextApiRespon
     if (userToken) {
       whereClauses.push('pbn_site_submissions.user_token = ?');
       queryConfig = queryConfig ? [...queryConfig, userToken] : [userToken];
+    }
+    if (clientName) {
+      whereClauses.push('pbn_site_submissions.client_name = ?');
+      queryConfig = queryConfig ? [...queryConfig, clientName] : [clientName];
     }
     const whereStatement = whereClauses.join(' AND ');
   
