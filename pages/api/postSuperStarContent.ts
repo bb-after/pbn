@@ -56,7 +56,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     console.log('Fetching active superstar sites...');
     const [sites]: [SuperstarSite[], any] = await connection.query(
-      'SELECT * FROM superstar_sites WHERE active = 1 ORDER BY RAND() limit 15'
+      'SELECT * FROM superstar_sites WHERE active = 1 ORDER BY RAND() limit 25'
     );
     console.log(`Fetched ${sites.length} active sites.`);
 
