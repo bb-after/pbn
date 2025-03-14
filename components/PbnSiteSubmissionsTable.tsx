@@ -50,12 +50,18 @@ const PbnSiteSubmissionsTable = () => {
   const [submissions, setSubmissions] = useState([]);
   const [search, setSearch] = useState(""); // new state for the search query
   const [selectedUser, setSelectedUser] = useState("");
+  const [selectedClient, setSelectedClient] = useState("");
   interface User {
     name: string;
     user_token: string; // Adjust this type based on the actual data, e.g., string, number, etc.
     pbn_count: number;
   }
   const [users, setUsers] = useState<User[]>([]);
+  interface Client {
+    client_name: string;
+    post_count: number;
+  }
+  const [clients, setClients] = useState<Client[]>([]);
 
   const [page, setPage] = useState(0); //current page
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -73,7 +79,7 @@ const PbnSiteSubmissionsTable = () => {
   const fetchData = useCallback(async () => {
     try {
       const response = await fetch(
-        `/api/pbn-site-submissions?page=${page}&rowsPerPage=${rowsPerPage}&search=${search}&userToken=${selectedUser}`
+        `/api/pbn-site-submissions?page=${page}&rowsPerPage=${rowsPerPage}&search=${search}&userToken=${selectedUser}&clientName=${selectedClient}`
       );
       const data = await response.json();
       setSubmissions(data.rows);
@@ -81,7 +87,7 @@ const PbnSiteSubmissionsTable = () => {
     } catch (error) {
       console.error("Error fetching submissions:", error);
     }
-  }, [search, selectedUser, page, rowsPerPage]);
+  }, [search, selectedUser, selectedClient, page, rowsPerPage]);
 
   useEffect(() => {
     fetchData();
@@ -98,6 +104,19 @@ const PbnSiteSubmissionsTable = () => {
       }
     };
     fetchUsers();
+  }, []);
+
+  useEffect(() => {
+    const fetchClients = async () => {
+      try {
+        const response = await fetch("/api/pbn-site-submissions?getClientCounts=true");
+        const data = await response.json();
+        setClients(data.clients || []);
+      } catch (error) {
+        console.error("Error fetching clients:", error);
+      }
+    };
+    fetchClients();
   }, []);
 
   // Search handler
@@ -163,6 +182,7 @@ const PbnSiteSubmissionsTable = () => {
               onChange={(e) => setSelectedUser(e.target.value)}
               displayEmpty
               inputProps={{ "aria-label": "Without label" }}
+              style={{ minWidth: '120px' }}
             >
               <MenuItem value="">
                 <em>All Users</em>
@@ -170,6 +190,24 @@ const PbnSiteSubmissionsTable = () => {
               {users.map((user, index) => (
                 <MenuItem key={index} value={user.user_token}>
                   {user.name} ({user.pbn_count})
+                </MenuItem>
+              ))}
+            </Select>
+          </Box>
+          <Box mr={1}>
+            <Select
+              value={selectedClient}
+              onChange={(e) => setSelectedClient(e.target.value)}
+              displayEmpty
+              inputProps={{ "aria-label": "Without label" }}
+              style={{ minWidth: '120px' }}
+            >
+              <MenuItem value="">
+                <em>All Clients</em>
+              </MenuItem>
+              {clients.map((client, index) => (
+                <MenuItem key={index} value={client.client_name}>
+                  {client.client_name} ({client.post_count})
                 </MenuItem>
               ))}
             </Select>
@@ -204,6 +242,7 @@ const PbnSiteSubmissionsTable = () => {
                 <TableCell>Title</TableCell>
                 <TableCell>Content</TableCell>
                 <TableCell>User</TableCell>
+                <TableCell>Client</TableCell>
                 <TableCell>Submission Response</TableCell>
                 <TableCell>Created</TableCell>
                 <TableCell>Actions</TableCell>
@@ -233,6 +272,7 @@ const PbnSiteSubmissionsTable = () => {
                     </Button>
                   </TableCell>
                   <TableCell>{submission.name}</TableCell>
+                  <TableCell>{submission.client_name || '-'}</TableCell>
                   <TableCell>
                     <Link href={submission.submission_response} target="_blank">
                       {submission.submission_response}

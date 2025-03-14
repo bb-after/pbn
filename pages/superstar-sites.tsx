@@ -42,7 +42,7 @@ interface SuperstarSite {
   custom_prompt?: string;
 }
 
-type SortField = "manual_count" | "author_count" | "domain";
+type SortField = "manual_count" | "author_count" | "domain" | "id";
 type SortOrder = "asc" | "desc";
 
 const MyChip = styled(Chip)(({ theme }) => ({
@@ -255,7 +255,15 @@ const SuperstarSites: React.FC = () => {
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>ID</TableCell>
+              <TableCell>
+                <TableSortLabel
+                  active={sortField === "id"}
+                  direction={sortField === "id" ? sortOrder : "asc"}
+                  onClick={() => handleSort("id")}
+                >
+                  ID
+                </TableSortLabel>
+              </TableCell>
               <TableCell>
                 <TableSortLabel
                   active={sortField === "domain"}
