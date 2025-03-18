@@ -52,9 +52,13 @@ export async function uploadImageToWordpress(imageUrl: string, topic: string, do
       
       console.log(`Image uploaded successfully to WordPress with ID: ${response.data.id}`);
       return response.data.source_url;
-    } catch (uploadError) {
+    } catch (uploadError: any) {
       // If traditional method fails, try alternative method
-      console.log('Standard upload failed, trying alternative base64 method:', uploadError.message);
+      if (uploadError instanceof Error) {
+        console.log('Standard upload failed, trying alternative base64 method:', uploadError.message);
+      } else {
+        console.log('Standard upload failed, trying alternative base64 method:', uploadError);
+      }
       
       // Try direct JSON payload with base64 data
       // This is an alternative approach that works on some WordPress configurations
