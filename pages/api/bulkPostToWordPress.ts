@@ -160,10 +160,13 @@ export default async function handler(
             throw new Error('Invalid response from WordPress API');
           }
           
-          // Record the submission in the database
+          // Get WordPress post ID
+          const wordpressPostId = response.data.id;
+          
+          // Record the submission in the database with WordPress post ID
           await connection.execute(
-            'INSERT INTO pbn_site_submissions (pbn_site_id, title, content, categories, user_token, submission_response, client_name) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [site.id, article.title, article.content, category, userToken, response.data.link, clientName]
+            'INSERT INTO pbn_site_submissions (pbn_site_id, title, content, categories, user_token, submission_response, client_name, wordpress_post_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [site.id, article.title, article.content, category, userToken, response.data.link, clientName, wordpressPostId]
           );
 
           successfulSubmissions.push({

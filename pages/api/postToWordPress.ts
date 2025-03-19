@@ -141,10 +141,13 @@ export default async function handler(
           }
         );
     
-        // Insert submission record into the database
+        // Get WordPress post ID
+        const wordpressPostId = response.data.id;
+        
+        // Insert submission record into the database with WordPress post ID
         const [insertResult] = await connection.execute(
-          'INSERT INTO pbn_site_submissions (pbn_site_id, title, content, categories, user_token, submission_response, client_name) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [id, title, content, category, userToken, response.data.link, clientName]
+          'INSERT INTO pbn_site_submissions (pbn_site_id, title, content, categories, user_token, submission_response, client_name, wordpress_post_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [id, title, content, category, userToken, response.data.link, clientName, wordpressPostId]
         );
 
         res.status(201).json(response.data);
