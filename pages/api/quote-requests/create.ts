@@ -8,6 +8,7 @@ type DealData = {
     timeline: string;
     location: string;
     notes_on_quotes: string;
+    budget_discussed: string;
   };
   
   // Function to format OpenAI's markdown for Slack
@@ -81,6 +82,7 @@ function createSlackMessage(assistantReply: string, dealData: DealData, screensh
   • *Referral:* ${dealData.referral || 'N/A'}
   • *Timeline:* ${dealData.timeline || 'N/A'}
   • *Location:* ${dealData.location || 'N/A'}
+  • *Budget Discussed:* ${dealData.budget_discussed || 'N/A'}
   • *Additional Notes:* ${dealData.notes_on_quotes || 'N/A'}
   • *Screenshots:* ${screenshotSection}
   
@@ -244,7 +246,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         timeline: req.body.timeline,
         location: req.body.location,
         notes_on_quotes: req.body.notes_on_quotes,
-        };
+        budget_discussed: req.body.budget_discussed,
+    };
       
     // Before creating the screenshot paths, filter out empty values
     const screenshotFileIds = [
@@ -273,6 +276,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 Here is the information for the quote request we need to generate:
 Keyword(s): ${dealData.keyword ?? 'N/A'}
 Referral: ${dealData.referral ?? 'N/A'}
+Budget Discussed: ${dealData.budget ?? 'N/A'}
 Timeline: ${dealData.timeline ?? 'N/A'}
 Location: ${dealData.location ?? 'N/A'}
 Notes on Quotes: ${dealData.notes_on_quotes ?? 'N/A'}

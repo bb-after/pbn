@@ -64,6 +64,7 @@ Today's date is ${new Date().toLocaleDateString()}. Write with current, up-to-da
 
 IMPORTANT: 
 - Avoid explicitly mentioning years (past, current, or future) in the content
+- Avoid terms like "in conclusion" or "in summary"
 - Use timeless phrasing like "currently," "recently," or "today" instead of specific year references
 - Focus on evergreen content that doesn't date itself quickly
 - Never mention your role or identity in the content (e.g., do not say "As a proficient SEO copywriter" or similar phrases)
