@@ -17,6 +17,7 @@ import axios from "axios";
 import dynamic from "next/dynamic";
 import { colors } from "../utils/colors";
 import useValidateUserToken from "hooks/useValidateUserToken";
+import { useRouter } from "next/router";
 
 const ReactQuill = dynamic(() => import("react-quill"), { ssr: false });
 import "react-quill/dist/quill.snow.css";
@@ -31,6 +32,9 @@ interface SuperstarSite {
 }
 
 const SuperstarFormPage: React.FC = () => {
+  const router = useRouter();
+  const { blogId, blogName, topic, category } = router.query;
+
   const [sites, setSites] = useState<SuperstarSite[]>([]);
   const [selectedSite, setSelectedSite] = useState<SuperstarSite | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
@@ -59,13 +63,36 @@ const SuperstarFormPage: React.FC = () => {
           ...site,
         }));
         setSites(parsedData);
+
+        // If blogId exists in URL, pre-select the site
+        if (blogId) {
+          const matchingSite = parsedData.find(
+            (site) => site.id === Number(blogId)
+          );
+          if (matchingSite) {
+            setSelectedSite(matchingSite);
+          }
+        }
       } catch (error) {
         console.error("Error fetching sites:", error);
       }
     };
 
     fetchSites();
-  }, []);
+  }, [blogId]); // Add blogId to dependency array
+
+  // Pre-fill other fields from URL parameters
+  useEffect(() => {
+    if (topic) {
+      setTitle(String(topic));
+    }
+    if (category) {
+      setCategories(Array.isArray(category) ? category : [String(category)]);
+    }
+    if (blogName) {
+      setClientName(String(blogName));
+    }
+  }, [topic, category, blogName]);
 
   useEffect(() => {
     if (selectedSite) {
