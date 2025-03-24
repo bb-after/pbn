@@ -276,7 +276,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 Here is the information for the quote request we need to generate:
 Keyword(s): ${dealData.keyword ?? 'N/A'}
 Referral: ${dealData.referral ?? 'N/A'}
-Budget Discussed: ${dealData.budget ?? 'N/A'}
+Budget Discussed: ${dealData.budget_discussed ?? 'N/A'}
 Timeline: ${dealData.timeline ?? 'N/A'}
 Location: ${dealData.location ?? 'N/A'}
 Notes on Quotes: ${dealData.notes_on_quotes ?? 'N/A'}
