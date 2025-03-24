@@ -15,7 +15,7 @@ const dbConfig = {
 async function createTables() {
   console.log('Starting database migration for Content Explorer...');
   
-  let connection: mysql.Connection;
+  let connection: mysql.Connection | null = null;
   
   try {
     // Create database connection
@@ -86,11 +86,16 @@ async function createTables() {
     console.log('Database migration completed successfully');
   } catch (error) {
     console.error('Error during database migration:', error);
+    console.error('Error during database migration:', error);
     throw error;
   } finally {
     if (connection) {
-      await connection.end();
-      console.log('Database connection closed');
+      try {
+        await connection.end();
+        console.log('Database connection closed');
+      } catch (endError) {
+        console.error('Error closing the database connection:', endError);
+      }
     }
   }
 }
