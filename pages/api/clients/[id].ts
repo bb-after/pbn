@@ -186,12 +186,12 @@ async function deleteClient(req: NextApiRequest, res: NextApiResponse, connectio
   }
   
   // Check if client is referenced in superstar_site_submissions
-  const [references] = await connection.execute(
+  const [references] = await connection.execute<mysql.RowDataPacket[]>(
     'SELECT COUNT(*) as count FROM superstar_site_submissions WHERE client_id = ?',
     [id]
   );
   
-  const count = Array.isArray(references) && references.length > 0 ? references[0].count : 0;
+  const count = references[0]?.count ?? 0;
   
   if (count > 0) {
     // Instead of deleting, mark as inactive
