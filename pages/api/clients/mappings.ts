@@ -3,7 +3,7 @@ import mysql from 'mysql2/promise';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { client_id, type } = req.query;
-  
+
   if (!client_id || Array.isArray(client_id)) {
     return res.status(400).json({ error: 'Invalid client ID' });
   }
@@ -12,12 +12,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: 'Type must be industries, regions, or all' });
   }
 
-  const connection = await mysql.createConnection({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
+  // Define your MySQL connection options
+  const dbConfig = {
+    host: process.env.DB_HOST_NAME,
+    user: process.env.DB_USER_NAME,
     password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-  });
+    database: process.env.DB_DATABASE,
+  };
+
+  // Create a MySQL connection
+  const connection = await mysql.createConnection(dbConfig);
 
   try {
     let industries: mysql.RowDataPacket[] = [];
@@ -48,7 +52,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({
       client_id,
       ...(type === 'industries' || type === 'all' ? { industries } : {}),
-      ...(type === 'regions' || type === 'all' ? { regions } : {})
+      ...(type === 'regions' || type === 'all' ? { regions } : {}),
     });
   } catch (error) {
     console.error('Error fetching client mappings:', error);
