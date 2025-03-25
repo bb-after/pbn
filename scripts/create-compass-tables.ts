@@ -13,27 +13,27 @@ const dbConfig = {
 };
 
 async function createTables() {
-  console.log('Starting database migration for Content Explorer...');
+  console.log('Starting database migration for Content Compass...');
   
-  let connection: mysql.Connection | null = null;
+  let connection: mysql.Connection | undefined;
   
   try {
     // Create database connection
     connection = await mysql.createConnection(dbConfig);
     console.log('Connected to database successfully');
 
-    // Create categories table
-    console.log('Creating categories table...');
+    // Create industries table
+    console.log('Creating industries table...');
     await connection.query(`
-      CREATE TABLE IF NOT EXISTS categories (
-        category_id INT AUTO_INCREMENT PRIMARY KEY,
-        category_name VARCHAR(255) NOT NULL,
+      CREATE TABLE IF NOT EXISTS industries (
+        industry_id INT AUTO_INCREMENT PRIMARY KEY,
+        industry_name VARCHAR(255) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY (category_name)
+        UNIQUE KEY (industry_name)
       )
     `);
-    console.log('Categories table created successfully');
+    console.log('Industries table created successfully');
 
     // Create article_topics table
     console.log('Creating article_topics table...');
@@ -41,11 +41,11 @@ async function createTables() {
       CREATE TABLE IF NOT EXISTS article_topics (
         topic_id INT AUTO_INCREMENT PRIMARY KEY,
         topic_title VARCHAR(255) NOT NULL,
-        category_id INT NOT NULL,
+        industry_id INT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (category_id) REFERENCES categories(category_id),
-        UNIQUE KEY (topic_title, category_id)
+        FOREIGN KEY (industry_id) REFERENCES industries(industry_id),
+        UNIQUE KEY (topic_title, industry_id)
       )
     `);
     console.log('Article topics table created successfully');
@@ -86,29 +86,24 @@ async function createTables() {
     console.log('Database migration completed successfully');
   } catch (error) {
     console.error('Error during database migration:', error);
-    console.error('Error during database migration:', error);
     throw error;
   } finally {
     if (connection) {
-      try {
-        await connection.end();
-        console.log('Database connection closed');
-      } catch (endError) {
-        console.error('Error closing the database connection:', endError);
-      }
+      await connection.end();
+      console.log('Database connection closed');
     }
   }
 }
 
 async function insertSampleData(connection: mysql.Connection) {
-  // Check if categories table is empty
-  const [categoryRows] = await connection.query('SELECT COUNT(*) as count FROM categories');
-  const categoryCount = (categoryRows as any)[0].count;
+  // Check if industries table is empty
+  const [industryRows] = await connection.query('SELECT COUNT(*) as count FROM industries');
+  const industryCount = (industryRows as any)[0].count;
   
-  if (categoryCount === 0) {
-    console.log('Inserting sample categories...');
+  if (industryCount === 0) {
+    console.log('Inserting sample industries...');
     await connection.query(`
-      INSERT INTO categories (category_name) VALUES 
+      INSERT INTO industries (industry_name) VALUES 
       ('Technology'),
       ('Business'),
       ('Health'),
@@ -116,33 +111,33 @@ async function insertSampleData(connection: mysql.Connection) {
       ('Travel')
     `);
     
-    // Get inserted categories
-    const [categories] = await connection.query('SELECT * FROM categories');
+    // Get inserted industries
+    const [industries] = await connection.query('SELECT * FROM industries');
     
     // Insert sample topics
     console.log('Inserting sample topics...');
-    for (const category of categories as any[]) {
-      if (category.category_name === 'Technology') {
+    for (const industry of industries as any[]) {
+      if (industry.industry_name === 'Technology') {
         await connection.query(`
-          INSERT INTO article_topics (topic_title, category_id) VALUES 
+          INSERT INTO article_topics (topic_title, industry_id) VALUES 
           ('Artificial Intelligence', ?),
           ('Web Development', ?),
           ('Cybersecurity', ?)
-        `, [category.category_id, category.category_id, category.category_id]);
-      } else if (category.category_name === 'Business') {
+        `, [industry.industry_id, industry.industry_id, industry.industry_id]);
+      } else if (industry.industry_name === 'Business') {
         await connection.query(`
-          INSERT INTO article_topics (topic_title, category_id) VALUES 
+          INSERT INTO article_topics (topic_title, industry_id) VALUES 
           ('Marketing', ?),
           ('Entrepreneurship', ?),
           ('Finance', ?)
-        `, [category.category_id, category.category_id, category.category_id]);
-      } else if (category.category_name === 'Health') {
+        `, [industry.industry_id, industry.industry_id, industry.industry_id]);
+      } else if (industry.industry_name === 'Health') {
         await connection.query(`
-          INSERT INTO article_topics (topic_title, category_id) VALUES 
+          INSERT INTO article_topics (topic_title, industry_id) VALUES 
           ('Nutrition', ?),
           ('Fitness', ?),
           ('Mental Health', ?)
-        `, [category.category_id, category.category_id, category.category_id]);
+        `, [industry.industry_id, industry.industry_id, industry.industry_id]);
       }
     }
     
@@ -182,8 +177,8 @@ async function insertSampleData(connection: mysql.Connection) {
         ) {
           try {
             await connection.query(`
-              INSERT INTO superstar_sites_article_topic_mapping (superstar_site_id, topic_id) VALUES (?, ?)
-            `, [blog.superstar_site_id, topic.topic_id]);
+              INSERT INTO blog_topic_mapping (blog_id, topic_id) VALUES (?, ?)
+            `, [blog.blog_id, topic.topic_id]);
           } catch (err) {
             // Ignore duplicate entry errors
             if (!(err as any).message.includes('Duplicate entry')) {
