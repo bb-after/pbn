@@ -51,9 +51,10 @@ async function createSuperstarAuthorsTable(): Promise<void> {
   
   try {
     // First, check the data type of the id column in superstar_sites
-    const [columns] = await connection.query(`
-      SHOW COLUMNS FROM superstar_sites WHERE Field = 'id'
-    `);
+    const [columns] = await connection.execute<mysql.RowDataPacket[]>(
+      'SHOW COLUMNS FROM superstar_sites WHERE Field = ?',
+      ['id']
+    );
     
     console.log('superstar_sites id column:', columns);
     
@@ -99,9 +100,10 @@ async function alterSuperstarSiteSubmissionsTable(): Promise<void> {
     `);
     
     // Check the data type of the id column in superstar_authors
-    const [authorColumns] = await connection.query(`
-      SHOW COLUMNS FROM superstar_authors WHERE Field = 'id'
-    `);
+    const [authorColumns] = await connection.execute<mysql.RowDataPacket[]>(
+      'SHOW COLUMNS FROM superstar_authors WHERE Field = ?',
+      ['id']
+    );
     
     const idType = authorColumns.length > 0 ? authorColumns[0].Type : 'INT';
     console.log(`Using data type ${idType} for superstar_author_id`);
