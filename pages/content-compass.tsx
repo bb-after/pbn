@@ -34,6 +34,7 @@ import {
 import axios from "axios";
 import { useRouter } from "next/router";
 import debounce from "lodash/debounce";
+import { SelectChangeEvent } from "@mui/material/Select";
 
 // Types for our data
 interface Industry {
@@ -323,7 +324,7 @@ export default function ContentCompass() {
     if (newArticleType !== null) {
       // Always set the article type, even if it's the same
       setArticleType(newArticleType);
-      
+
       // Reset selections if the article type is changing
       if (newArticleType !== articleType) {
         setSelectedTopic("");
@@ -331,7 +332,7 @@ export default function ContentCompass() {
         setSelectedIndustry("");
         setSelectedRegion("");
       }
-      
+
       // Always move to the next step
       setActiveStep(2);
     }
@@ -359,15 +360,13 @@ export default function ContentCompass() {
   };
 
   // Handle industry selection
-  const handleIndustryChange = (
-    event: React.ChangeEvent<{ value: unknown }>
-  ) => {
+  const handleIndustryChange = (event: SelectChangeEvent<number>) => {
     setSelectedIndustry(event.target.value as number);
     setActiveStep(3); // Move to blogs step automatically
   };
 
   // Handle region selection
-  const handleRegionChange = (event: React.ChangeEvent<{ value: unknown }>) => {
+  const handleRegionChange = (event: SelectChangeEvent<number>) => {
     setSelectedRegion(event.target.value as number);
     setActiveStep(3); // Move to blogs step automatically
   };
@@ -511,11 +510,14 @@ export default function ContentCompass() {
           size="large"
           color="primary"
         >
-          <ToggleButton 
-            value="specific" 
+          <ToggleButton
+            value="specific"
             aria-label="Specific Article"
             onClick={() => {
-              handleArticleTypeChange({} as React.MouseEvent<HTMLElement>, "specific");
+              handleArticleTypeChange(
+                {} as React.MouseEvent<HTMLElement>,
+                "specific"
+              );
             }}
           >
             <Box sx={{ p: 2, textAlign: "center" }}>
@@ -525,11 +527,14 @@ export default function ContentCompass() {
               </Typography>
             </Box>
           </ToggleButton>
-          <ToggleButton 
-            value="general" 
+          <ToggleButton
+            value="general"
             aria-label="General Article"
             onClick={() => {
-              handleArticleTypeChange({} as React.MouseEvent<HTMLElement>, "general");
+              handleArticleTypeChange(
+                {} as React.MouseEvent<HTMLElement>,
+                "general"
+              );
             }}
           >
             <Box sx={{ p: 2, textAlign: "center" }}>
@@ -668,20 +673,26 @@ export default function ContentCompass() {
           size="medium"
           color="primary"
         >
-          <ToggleButton 
-            value="industry" 
+          <ToggleButton
+            value="industry"
             aria-label="Industry"
             onClick={() => {
-              handleTargetTypeChange({} as React.MouseEvent<HTMLElement>, "industry");
+              handleTargetTypeChange(
+                {} as React.MouseEvent<HTMLElement>,
+                "industry"
+              );
             }}
           >
             Target by Industry
           </ToggleButton>
-          <ToggleButton 
-            value="region" 
+          <ToggleButton
+            value="region"
             aria-label="Region"
             onClick={() => {
-              handleTargetTypeChange({} as React.MouseEvent<HTMLElement>, "region");
+              handleTargetTypeChange(
+                {} as React.MouseEvent<HTMLElement>,
+                "region"
+              );
             }}
           >
             Target by Region
