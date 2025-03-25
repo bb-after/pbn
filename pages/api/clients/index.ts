@@ -117,7 +117,7 @@ async function createClient(req: NextApiRequest, res: NextApiResponse, connectio
     
     // Insert industry mappings
     if (industries.length > 0) {
-      const industryValues = industries.map(id => [clientId, id]);
+      const industryValues = industries.map((id: any) => [clientId, id]);
       await connection.query(
         'INSERT INTO clients_industry_mapping (client_id, industry_id) VALUES ?',
         [industryValues]
