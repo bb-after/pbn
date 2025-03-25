@@ -511,7 +511,13 @@ export default function ContentCompass() {
           size="large"
           color="primary"
         >
-          <ToggleButton value="specific" aria-label="Specific Article">
+          <ToggleButton 
+            value="specific" 
+            aria-label="Specific Article"
+            onClick={() => {
+              handleArticleTypeChange({} as React.MouseEvent<HTMLElement>, "specific");
+            }}
+          >
             <Box sx={{ p: 2, textAlign: "center" }}>
               <Typography variant="h6">Specific Article Topic</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
@@ -519,7 +525,13 @@ export default function ContentCompass() {
               </Typography>
             </Box>
           </ToggleButton>
-          <ToggleButton value="general" aria-label="General Article">
+          <ToggleButton 
+            value="general" 
+            aria-label="General Article"
+            onClick={() => {
+              handleArticleTypeChange({} as React.MouseEvent<HTMLElement>, "general");
+            }}
+          >
             <Box sx={{ p: 2, textAlign: "center" }}>
               <Typography variant="h6">General Article</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
@@ -656,10 +668,22 @@ export default function ContentCompass() {
           size="medium"
           color="primary"
         >
-          <ToggleButton value="industry" aria-label="Industry">
+          <ToggleButton 
+            value="industry" 
+            aria-label="Industry"
+            onClick={() => {
+              handleTargetTypeChange({} as React.MouseEvent<HTMLElement>, "industry");
+            }}
+          >
             Target by Industry
           </ToggleButton>
-          <ToggleButton value="region" aria-label="Region">
+          <ToggleButton 
+            value="region" 
+            aria-label="Region"
+            onClick={() => {
+              handleTargetTypeChange({} as React.MouseEvent<HTMLElement>, "region");
+            }}
+          >
             Target by Region
           </ToggleButton>
         </ToggleButtonGroup>
