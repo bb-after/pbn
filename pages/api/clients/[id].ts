@@ -135,7 +135,7 @@ async function updateClient(req: NextApiRequest, res: NextApiResponse, connectio
     
     // Insert new industry mappings
     if (industries.length > 0) {
-      const industryValues = industries.map(industryId => [id, industryId]);
+      const industryValues = industries.map((industryId: any) => [id, industryId]);
       await connection.query(
         'INSERT INTO clients_industry_mapping (client_id, industry_id) VALUES ?',
         [industryValues]
@@ -150,7 +150,7 @@ async function updateClient(req: NextApiRequest, res: NextApiResponse, connectio
     
     // Insert new region mappings
     if (regions.length > 0) {
-      const regionValues = regions.map(regionId => [id, regionId]);
+      const regionValues = regions.map((regionId: any) => [id, regionId]);
       await connection.query(
         'INSERT INTO clients_region_mapping (client_id, region_id) VALUES ?',
         [regionValues]
