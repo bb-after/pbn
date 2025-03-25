@@ -20,16 +20,26 @@ import {
   FormControlLabel,
   Switch,
   Grid,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Tooltip,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
+import MergeIcon from '@mui/icons-material/MergeType';
 import axios from 'axios';
 import { useRouter } from 'next/router';
 import LayoutContainer from '../components/LayoutContainer';
 import StyledHeader from '../components/StyledHeader';
 import ClientForm from '../components/ClientForm';
 import useValidateUserToken from 'hooks/useValidateUserToken';
+import Link from 'next/link';
 
 interface Client {
   client_id: number;
@@ -37,9 +47,8 @@ interface Client {
   is_active: number;
   created_at: string;
   updated_at: string;
-  submission_count?: number;
-  auto_count?: number;
-  manual_count?: number;
+  superstar_posts?: number;
+  pbn_posts?: number;
 }
 
 type Order = 'asc' | 'desc';
@@ -55,9 +64,8 @@ const headCells: HeadCell[] = [
   { id: 'client_id', label: 'ID', numeric: true, sortable: true },
   { id: 'client_name', label: 'Client Name', numeric: false, sortable: true },
   { id: 'is_active', label: 'Status', numeric: false, sortable: true },
-  { id: 'submission_count', label: 'Total Posts', numeric: true, sortable: true },
-  { id: 'auto_count', label: 'Auto Posts', numeric: true, sortable: true },
-  { id: 'manual_count', label: 'Manual Posts', numeric: true, sortable: true },
+  { id: 'superstar_posts', label: 'Superstar Posts', numeric: true, sortable: true },
+  { id: 'pbn_posts', label: 'PBN Posts', numeric: true, sortable: true },
   { id: 'created_at', label: 'Created At', numeric: false, sortable: true },
   { id: 'actions', label: 'Actions', numeric: false, sortable: false },
 ];
@@ -73,21 +81,23 @@ export default function ClientsPage() {
   const [showActiveOnly, setShowActiveOnly] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  
+  const [mergingClient, setMergingClient] = useState<Client | null>(null);
+  const [targetClientId, setTargetClientId] = useState<number | ''>('');
+
   useEffect(() => {
     if (isValidUser) {
       fetchClients();
     }
   }, [isValidUser, showActiveOnly]);
-  
+
   const fetchClients = async () => {
     setLoading(true);
     try {
       const response = await axios.get('/api/clients', {
         params: {
           active: showActiveOnly ? 'true' : undefined,
-          includeStats: 'true'
-        }
+          includeStats: 'true',
+        },
       });
       setClients(response.data);
     } catch (error) {
@@ -96,27 +106,27 @@ export default function ClientsPage() {
       setLoading(false);
     }
   };
-  
+
   const handleRequestSort = (property: keyof Client) => {
     const isAsc = orderBy === property && order === 'asc';
     setOrder(isAsc ? 'desc' : 'asc');
     setOrderBy(property);
   };
-  
+
   const handleSearch = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
   };
-  
+
   const handleAddClient = () => {
     setSelectedClient(null);
     setOpenDialog(true);
   };
-  
+
   const handleEditClient = (client: Client) => {
     setSelectedClient(client);
     setOpenDialog(true);
   };
-  
+
   const handleDeleteClient = async (client: Client) => {
     if (confirm(`Are you sure you want to delete or deactivate client "${client.client_name}"?`)) {
       try {
@@ -128,34 +138,62 @@ export default function ClientsPage() {
       }
     }
   };
-  
+
   const handleCloseDialog = () => {
     setOpenDialog(false);
   };
-  
+
   const handleSaveClient = () => {
     setOpenDialog(false);
     fetchClients();
   };
-  
+
+  const handleMergeClick = (client: Client) => {
+    setMergingClient(client);
+  };
+
+  const handleMergeClose = () => {
+    setMergingClient(null);
+    setTargetClientId('');
+  };
+
+  const handleMergeConfirm = async () => {
+    if (!mergingClient || !targetClientId) return;
+
+    try {
+      await axios.post('/api/clients/merge', {
+        sourceClientId: mergingClient.client_id,
+        targetClientId,
+      });
+      handleMergeClose();
+      fetchClients();
+    } catch (error) {
+      console.error('Error merging clients:', error);
+      alert('Failed to merge clients');
+    }
+  };
+
   const sortedAndFilteredClients = clients
-    .filter(client => 
-      client.client_name.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+    .filter(client => client.client_name.toLowerCase().includes(searchTerm.toLowerCase()))
     .sort((a, b) => {
       let comparison = 0;
-      
+
       if (orderBy === 'client_name') {
         comparison = a.client_name.localeCompare(b.client_name);
-      } else if (typeof a[orderBy] === 'number' && typeof b[orderBy] === 'number') {
-        comparison = (a[orderBy] as number) - (b[orderBy] as number);
+      } else if (
+        orderBy === 'superstar_posts' ||
+        orderBy === 'pbn_posts' ||
+        orderBy === 'client_id' ||
+        orderBy === 'is_active'
+      ) {
+        comparison = ((a[orderBy] || 0) as number) - ((b[orderBy] || 0) as number);
       } else if (orderBy === 'created_at' || orderBy === 'updated_at') {
         comparison = new Date(a[orderBy]).getTime() - new Date(b[orderBy]).getTime();
       }
-      
+
       return order === 'asc' ? comparison : -comparison;
     });
-    
+
   if (!isValidUser) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
@@ -163,25 +201,25 @@ export default function ClientsPage() {
       </Box>
     );
   }
-  
+
   return (
     <LayoutContainer>
       <StyledHeader />
-      
+
       <Container maxWidth="xl">
         <Paper elevation={3} sx={{ p: 3, mt: 3 }}>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
             <Typography variant="h5">Client Management</Typography>
-            <Button 
-              variant="contained" 
-              color="primary" 
+            <Button
+              variant="contained"
+              color="primary"
               startIcon={<AddIcon />}
               onClick={handleAddClient}
             >
               Add Client
             </Button>
           </Box>
-          
+
           <Box mb={3}>
             <Grid container spacing={2} alignItems="center">
               <Grid item xs={12} md={6}>
@@ -198,7 +236,7 @@ export default function ClientsPage() {
                   control={
                     <Switch
                       checked={showActiveOnly}
-                      onChange={(e) => setShowActiveOnly(e.target.checked)}
+                      onChange={e => setShowActiveOnly(e.target.checked)}
                       color="primary"
                     />
                   }
@@ -207,7 +245,7 @@ export default function ClientsPage() {
               </Grid>
             </Grid>
           </Box>
-          
+
           {loading ? (
             <Box display="flex" justifyContent="center" my={4}>
               <CircularProgress />
@@ -217,7 +255,7 @@ export default function ClientsPage() {
               <Table aria-label="clients table">
                 <TableHead>
                   <TableRow>
-                    {headCells.map((headCell) => (
+                    {headCells.map(headCell => (
                       <TableCell
                         key={headCell.id}
                         align={headCell.numeric ? 'right' : 'left'}
@@ -240,7 +278,7 @@ export default function ClientsPage() {
                 </TableHead>
                 <TableBody>
                   {sortedAndFilteredClients.length > 0 ? (
-                    sortedAndFilteredClients.map((client) => (
+                    sortedAndFilteredClients.map(client => (
                       <TableRow key={client.client_id}>
                         <TableCell align="right">{client.client_id}</TableCell>
                         <TableCell>{client.client_name}</TableCell>
@@ -251,27 +289,71 @@ export default function ClientsPage() {
                             size="small"
                           />
                         </TableCell>
-                        <TableCell align="right">{client.submission_count || 0}</TableCell>
-                        <TableCell align="right">{client.auto_count || 0}</TableCell>
-                        <TableCell align="right">{client.manual_count || 0}</TableCell>
-                        <TableCell>
-                          {new Date(client.created_at).toLocaleDateString()}
+                        <TableCell align="right">
+                          {client.superstar_posts && client.superstar_posts > 0 ? (
+                            <Tooltip title="View all Superstar posts for this client" arrow>
+                              <Button
+                                color="primary"
+                                variant="text"
+                                size="small"
+                                component={Link}
+                                href={`/superstar-site-submissions`}
+                                sx={{ minWidth: 'auto', p: 0, fontWeight: 'bold' }}
+                              >
+                                {client.superstar_posts}
+                              </Button>
+                            </Tooltip>
+                          ) : (
+                            0
+                          )}
                         </TableCell>
+                        <TableCell align="right">
+                          {client.pbn_posts && client.pbn_posts > 0 ? (
+                            <Tooltip title="View all PBN posts for this client" arrow>
+                              <Button
+                                color="primary"
+                                variant="text"
+                                size="small"
+                                component={Link}
+                                href={`/pbn-site-submissions`}
+                                sx={{ minWidth: 'auto', p: 0, fontWeight: 'bold' }}
+                              >
+                                {client.pbn_posts}
+                              </Button>
+                            </Tooltip>
+                          ) : (
+                            0
+                          )}
+                        </TableCell>
+                        <TableCell>{new Date(client.created_at).toLocaleDateString()}</TableCell>
                         <TableCell>
-                          <IconButton 
-                            size="small" 
-                            color="primary"
-                            onClick={() => handleEditClient(client)}
-                          >
-                            <EditIcon />
-                          </IconButton>
-                          <IconButton 
-                            size="small" 
-                            color="error"
-                            onClick={() => handleDeleteClient(client)}
-                          >
-                            <DeleteIcon />
-                          </IconButton>
+                          <Tooltip title="Edit client" arrow placement="top">
+                            <IconButton
+                              size="small"
+                              color="primary"
+                              onClick={() => handleEditClient(client)}
+                            >
+                              <EditIcon />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Merge with another client" arrow placement="top">
+                            <IconButton
+                              size="small"
+                              color="warning"
+                              onClick={() => handleMergeClick(client)}
+                            >
+                              <MergeIcon />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Delete client" arrow placement="top">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => handleDeleteClient(client)}
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          </Tooltip>
                         </TableCell>
                       </TableRow>
                     ))
@@ -288,18 +370,55 @@ export default function ClientsPage() {
           )}
         </Paper>
       </Container>
-      
-      <Dialog
-        open={openDialog}
-        onClose={handleCloseDialog}
-        maxWidth="md"
-        fullWidth
-      >
-        <ClientForm 
+
+      {/* Client Edit Dialog */}
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
+        <ClientForm
           client={selectedClient}
           onSave={handleSaveClient}
           onCancel={handleCloseDialog}
         />
+      </Dialog>
+
+      {/* Client Merge Dialog */}
+      <Dialog open={Boolean(mergingClient)} onClose={handleMergeClose} maxWidth="sm" fullWidth>
+        <DialogTitle>Merge Client</DialogTitle>
+        <DialogContent>
+          <Typography gutterBottom>
+            Merge &ldquo;{mergingClient?.client_name}&rdquo; (ID: {mergingClient?.client_id}) into:
+          </Typography>
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>Target Client</InputLabel>
+            <Select
+              value={targetClientId}
+              onChange={e => setTargetClientId(e.target.value as number)}
+              label="Target Client"
+            >
+              {clients
+                .filter(c => c.client_id !== mergingClient?.client_id)
+                .map(client => (
+                  <MenuItem key={client.client_id} value={client.client_id}>
+                    #{client.client_id} - {client.client_name}
+                  </MenuItem>
+                ))}
+            </Select>
+          </FormControl>
+          <Typography color="warning.main" sx={{ mt: 2 }}>
+            Warning: This action cannot be undone. All posts and mappings will be moved to the
+            target client.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleMergeClose}>Cancel</Button>
+          <Button
+            onClick={handleMergeConfirm}
+            variant="contained"
+            color="primary"
+            disabled={!targetClientId}
+          >
+            Merge
+          </Button>
+        </DialogActions>
       </Dialog>
     </LayoutContainer>
   );

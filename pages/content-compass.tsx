@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Container,
   Typography,
@@ -30,11 +30,11 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-} from "@mui/material";
-import axios from "axios";
-import { useRouter } from "next/router";
-import debounce from "lodash/debounce";
-import { SelectChangeEvent } from "@mui/material/Select";
+} from '@mui/material';
+import axios from 'axios';
+import { useRouter } from 'next/router';
+import debounce from 'lodash/debounce';
+import { SelectChangeEvent } from '@mui/material/Select';
 
 // Types for our data
 interface Industry {
@@ -71,12 +71,7 @@ interface Client {
 }
 
 // Step titles for the new flow
-const steps = [
-  "Select Client",
-  "Choose Article Type",
-  "Select Target",
-  "View Blogs",
-];
+const steps = ['Select Client', 'Choose Article Type', 'Select Target', 'View Blogs'];
 
 export default function ContentCompass() {
   const router = useRouter();
@@ -92,19 +87,13 @@ export default function ContentCompass() {
   const [blogs, setBlogs] = useState<Blog[]>([]);
 
   // State for selected values
-  const [selectedClientName, setSelectedClientName] = useState<string | null>(
-    null
-  );
+  const [selectedClientName, setSelectedClientName] = useState<string | null>(null);
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
-  const [articleType, setArticleType] = useState<"specific" | "general" | "">(
-    ""
-  );
-  const [selectedTopic, setSelectedTopic] = useState<number | "">("");
-  const [selectedTargetType, setSelectedTargetType] = useState<
-    "industry" | "region"
-  >("industry");
-  const [selectedIndustry, setSelectedIndustry] = useState<number | "">("");
-  const [selectedRegion, setSelectedRegion] = useState<number | "">("");
+  const [articleType, setArticleType] = useState<'specific' | 'general' | ''>('');
+  const [selectedTopic, setSelectedTopic] = useState<number | ''>('');
+  const [selectedTargetType, setSelectedTargetType] = useState<'industry' | 'region'>('industry');
+  const [selectedIndustry, setSelectedIndustry] = useState<number | ''>('');
+  const [selectedRegion, setSelectedRegion] = useState<number | ''>('');
 
   // Loading states
   const [loadingClientNames, setLoadingClientNames] = useState(false);
@@ -117,7 +106,7 @@ export default function ContentCompass() {
   const [error, setError] = useState<string | null>(null);
 
   // Client name search input state
-  const [clientNameSearch, setClientNameSearch] = useState<string>("");
+  const [clientNameSearch, setClientNameSearch] = useState<string>('');
 
   // Fetch client names on initial load
   useEffect(() => {
@@ -138,14 +127,14 @@ export default function ContentCompass() {
 
   // Fetch topics when client is selected and specific article type is chosen
   useEffect(() => {
-    if (selectedClientName && articleType === "specific") {
+    if (selectedClientName && articleType === 'specific') {
       fetchTopics();
     }
   }, [selectedClientName, articleType]);
 
   // Fetch industries and regions when client is selected and general article type is chosen
   useEffect(() => {
-    if (selectedClientName && articleType === "general") {
+    if (selectedClientName && articleType === 'general') {
       fetchIndustries();
       fetchRegions();
     }
@@ -153,36 +142,28 @@ export default function ContentCompass() {
 
   // Fetch blogs based on the selected criteria
   useEffect(() => {
-    if (articleType === "specific" && selectedTopic !== "") {
+    if (articleType === 'specific' && selectedTopic !== '') {
       fetchBlogsByTopic(selectedTopic as number);
-    } else if (articleType === "general") {
-      if (selectedTargetType === "industry" && selectedIndustry !== "") {
+    } else if (articleType === 'general') {
+      if (selectedTargetType === 'industry' && selectedIndustry !== '') {
         fetchBlogsByIndustry(selectedIndustry as number);
-      } else if (selectedTargetType === "region" && selectedRegion !== "") {
+      } else if (selectedTargetType === 'region' && selectedRegion !== '') {
         fetchBlogsByRegion(selectedRegion as number);
       }
     }
-  }, [
-    articleType,
-    selectedTopic,
-    selectedTargetType,
-    selectedIndustry,
-    selectedRegion,
-  ]);
+  }, [articleType, selectedTopic, selectedTargetType, selectedIndustry, selectedRegion]);
 
   // Functions to fetch data
   const fetchClientNames = async (search?: string) => {
     try {
       setLoadingClientNames(true);
       setError(null);
-      const url = `/api/client-names${
-        search ? `?search=${encodeURIComponent(search)}` : ""
-      }`;
+      const url = `/api/client-names${search ? `?search=${encodeURIComponent(search)}` : ''}`;
       const response = await axios.get(url);
       setClients(response.data);
     } catch (err) {
-      console.error("Failed to fetch client names:", err);
-      setError("Failed to load client names. Please try again later.");
+      console.error('Failed to fetch client names:', err);
+      setError('Failed to load client names. Please try again later.');
     } finally {
       setLoadingClientNames(false);
     }
@@ -193,11 +174,11 @@ export default function ContentCompass() {
       setLoadingTopics(true);
       setError(null);
       // Fetch all topics with blog count
-      const response = await axios.get("/api/article-topics");
+      const response = await axios.get('/api/article-topics');
       setTopics(response.data);
     } catch (err) {
-      console.error("Failed to fetch topics:", err);
-      setError("Failed to load topics. Please try again later.");
+      console.error('Failed to fetch topics:', err);
+      setError('Failed to load topics. Please try again later.');
     } finally {
       setLoadingTopics(false);
     }
@@ -208,11 +189,11 @@ export default function ContentCompass() {
       setLoadingIndustries(true);
       setError(null);
       // Fetch industries with blog count
-      const response = await axios.get("/api/industries?with_count=true");
+      const response = await axios.get('/api/industries?with_count=true');
       setIndustries(response.data);
     } catch (err) {
-      console.error("Failed to fetch industries:", err);
-      setError("Failed to load industries. Please try again later.");
+      console.error('Failed to fetch industries:', err);
+      setError('Failed to load industries. Please try again later.');
     } finally {
       setLoadingIndustries(false);
     }
@@ -223,13 +204,11 @@ export default function ContentCompass() {
       setLoadingRegions(true);
       setError(null);
       // Fetch regions with blog count and hierarchical structure
-      const response = await axios.get(
-        "/api/geo-regions?with_count=true&with_hierarchy=true"
-      );
+      const response = await axios.get('/api/geo-regions?with_count=true&with_hierarchy=true');
       setRegions(response.data);
     } catch (err) {
-      console.error("Failed to fetch regions:", err);
-      setError("Failed to load regions. Please try again later.");
+      console.error('Failed to fetch regions:', err);
+      setError('Failed to load regions. Please try again later.');
     } finally {
       setLoadingRegions(false);
     }
@@ -242,8 +221,8 @@ export default function ContentCompass() {
       const response = await axios.get(`/api/blogs?topic_id=${topicId}`);
       setBlogs(response.data);
     } catch (err) {
-      console.error("Failed to fetch blogs by topic:", err);
-      setError("Failed to load blogs. Please try again later.");
+      console.error('Failed to fetch blogs by topic:', err);
+      setError('Failed to load blogs. Please try again later.');
     } finally {
       setLoadingBlogs(false);
     }
@@ -256,8 +235,8 @@ export default function ContentCompass() {
       const response = await axios.get(`/api/blogs?industry_id=${industryId}`);
       setBlogs(response.data);
     } catch (err) {
-      console.error("Failed to fetch blogs by industry:", err);
-      setError("Failed to load blogs. Please try again later.");
+      console.error('Failed to fetch blogs by industry:', err);
+      setError('Failed to load blogs. Please try again later.');
     } finally {
       setLoadingBlogs(false);
     }
@@ -270,8 +249,8 @@ export default function ContentCompass() {
       const response = await axios.get(`/api/blogs?region_id=${regionId}`);
       setBlogs(response.data);
     } catch (err) {
-      console.error("Failed to fetch blogs by region:", err);
-      setError("Failed to load blogs. Please try again later.");
+      console.error('Failed to fetch blogs by region:', err);
+      setError('Failed to load blogs. Please try again later.');
     } finally {
       setLoadingBlogs(false);
     }
@@ -279,7 +258,7 @@ export default function ContentCompass() {
 
   // Handle back step
   const handleBack = () => {
-    setActiveStep((prevActiveStep) => prevActiveStep - 1);
+    setActiveStep(prevActiveStep => prevActiveStep - 1);
   };
 
   // Handle reset
@@ -287,19 +266,16 @@ export default function ContentCompass() {
     setActiveStep(0);
     setSelectedClientName(null);
     setSelectedClientId(null);
-    setArticleType("specific");
-    setSelectedTopic("");
-    setSelectedTargetType("industry");
-    setSelectedIndustry("");
-    setSelectedRegion("");
+    setArticleType('specific');
+    setSelectedTopic('');
+    setSelectedTargetType('industry');
+    setSelectedIndustry('');
+    setSelectedRegion('');
     setBlogs([]);
   };
 
   // Handle client name selection
-  const handleClientNameChange = (
-    _event: React.SyntheticEvent,
-    newValue: Client | null
-  ) => {
+  const handleClientNameChange = (_event: React.SyntheticEvent, newValue: Client | null) => {
     setSelectedClientName(newValue ? newValue.client_name : null);
     setSelectedClientId(newValue ? newValue.client_id : null);
     if (newValue) {
@@ -308,17 +284,14 @@ export default function ContentCompass() {
   };
 
   // Handle client name input change
-  const handleClientNameInputChange = (
-    _event: React.SyntheticEvent,
-    newInputValue: string
-  ) => {
+  const handleClientNameInputChange = (_event: React.SyntheticEvent, newInputValue: string) => {
     setClientNameSearch(newInputValue);
   };
 
   // Handle article type selection
   const handleArticleTypeChange = (
     event: React.MouseEvent<HTMLElement>,
-    newArticleType: "specific" | "general"
+    newArticleType: 'specific' | 'general'
   ) => {
     // Always proceed when a button is clicked, even if it's the same value
     if (newArticleType !== null) {
@@ -327,10 +300,10 @@ export default function ContentCompass() {
 
       // Reset selections if the article type is changing
       if (newArticleType !== articleType) {
-        setSelectedTopic("");
-        setSelectedTargetType("industry");
-        setSelectedIndustry("");
-        setSelectedRegion("");
+        setSelectedTopic('');
+        setSelectedTargetType('industry');
+        setSelectedIndustry('');
+        setSelectedRegion('');
       }
 
       // Always move to the next step
@@ -347,15 +320,15 @@ export default function ContentCompass() {
   // Handle target type selection (industry vs region)
   const handleTargetTypeChange = (
     event: React.MouseEvent<HTMLElement>,
-    newTargetType: "industry" | "region"
+    newTargetType: 'industry' | 'region'
   ) => {
     if (newTargetType !== null) {
       // Always set the target type, even if it's the same
       setSelectedTargetType(newTargetType);
 
       // Reset selections
-      setSelectedIndustry("");
-      setSelectedRegion("");
+      setSelectedIndustry('');
+      setSelectedRegion('');
     }
   };
 
@@ -375,7 +348,7 @@ export default function ContentCompass() {
   const handleBlogClick = (blog: Blog) => {
     // Open blog URL in a new tab/window
     if (blog.blog_url) {
-      window.open(blog.blog_url, "_blank");
+      window.open(blog.blog_url, '_blank');
     }
   };
 
@@ -385,53 +358,45 @@ export default function ContentCompass() {
     let queryParams = new URLSearchParams();
 
     // Always send blog info
-    queryParams.append("blogId", blog.id.toString());
+    queryParams.append('blogId', blog.id.toString());
     if (blog.domain) {
-      queryParams.append("blogName", blog.domain);
+      queryParams.append('blogName', blog.domain);
     }
 
     // Always add client name first in the query string (important for form pre-population)
     if (selectedClientName) {
       // Use the client parameter since that's what superstar-form expects
-      queryParams.append("client", selectedClientName);
+      queryParams.append('client', selectedClientName);
 
       // Also add client ID if available
       if (selectedClientId) {
-        queryParams.append("clientId", selectedClientId.toString());
+        queryParams.append('clientId', selectedClientId.toString());
       }
     }
 
     // Add topic if specific article
-    if (articleType === "specific" && selectedTopic) {
-      const selectedTopicObj = topics.find((t) => t.topic_id === selectedTopic);
+    if (articleType === 'specific' && selectedTopic) {
+      const selectedTopicObj = topics.find(t => t.topic_id === selectedTopic);
       if (selectedTopicObj) {
-        queryParams.append("topic", selectedTopicObj.topic_title);
+        queryParams.append('topic', selectedTopicObj.topic_title);
       }
     }
 
     // Add industry or region if general article
-    if (articleType === "general") {
-      if (selectedTargetType === "industry" && selectedIndustry) {
-        const selectedIndustryObj = industries.find(
-          (i) => i.industry_id === selectedIndustry
-        );
+    if (articleType === 'general') {
+      if (selectedTargetType === 'industry' && selectedIndustry) {
+        const selectedIndustryObj = industries.find(i => i.industry_id === selectedIndustry);
         if (selectedIndustryObj) {
-          queryParams.append("industry", selectedIndustryObj.industry_name);
+          queryParams.append('industry', selectedIndustryObj.industry_name);
         }
-      } else if (selectedTargetType === "region" && selectedRegion) {
-        const findRegionById = (
-          regionId: number,
-          regionsList: Region[]
-        ): Region | undefined => {
+      } else if (selectedTargetType === 'region' && selectedRegion) {
+        const findRegionById = (regionId: number, regionsList: Region[]): Region | undefined => {
           for (const region of regionsList) {
             if (region.region_id === regionId) {
               return region;
             }
             if (region.sub_regions) {
-              const subRegionMatch = findRegionById(
-                regionId,
-                region.sub_regions
-              );
+              const subRegionMatch = findRegionById(regionId, region.sub_regions);
               if (subRegionMatch) {
                 return subRegionMatch;
               }
@@ -440,12 +405,9 @@ export default function ContentCompass() {
           return undefined;
         };
 
-        const selectedRegionObj = findRegionById(
-          selectedRegion as number,
-          regions
-        );
+        const selectedRegionObj = findRegionById(selectedRegion as number, regions);
         if (selectedRegionObj) {
-          queryParams.append("region", selectedRegionObj.region_name);
+          queryParams.append('region', selectedRegionObj.region_name);
         }
       }
     }
@@ -461,16 +423,14 @@ export default function ContentCompass() {
         Select a Client
       </Typography>
       <Autocomplete
-        value={
-          clients.find((c) => c.client_name === selectedClientName) || null
-        }
+        value={clients.find(c => c.client_name === selectedClientName) || null}
         onChange={handleClientNameChange}
         inputValue={clientNameSearch}
         onInputChange={handleClientNameInputChange}
         options={clients}
-        getOptionLabel={(option) => option.client_name}
+        getOptionLabel={option => option.client_name}
         loading={loadingClientNames}
-        renderInput={(params) => (
+        renderInput={params => (
           <TextField
             {...params}
             label="Client Name"
@@ -480,9 +440,7 @@ export default function ContentCompass() {
               ...params.InputProps,
               endAdornment: (
                 <React.Fragment>
-                  {loadingClientNames ? (
-                    <CircularProgress color="inherit" size={20} />
-                  ) : null}
+                  {loadingClientNames ? <CircularProgress color="inherit" size={20} /> : null}
                   {params.InputProps.endAdornment}
                 </React.Fragment>
               ),
@@ -501,7 +459,7 @@ export default function ContentCompass() {
         Choose Article Type for {selectedClientName}
       </Typography>
 
-      <Box sx={{ mt: 3, display: "flex", justifyContent: "center" }}>
+      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
         <ToggleButtonGroup
           value={articleType}
           exclusive
@@ -514,13 +472,10 @@ export default function ContentCompass() {
             value="specific"
             aria-label="Specific Article"
             onClick={() => {
-              handleArticleTypeChange(
-                {} as React.MouseEvent<HTMLElement>,
-                "specific"
-              );
+              handleArticleTypeChange({} as React.MouseEvent<HTMLElement>, 'specific');
             }}
           >
-            <Box sx={{ p: 2, textAlign: "center" }}>
+            <Box sx={{ p: 2, textAlign: 'center' }}>
               <Typography variant="h6">Specific Article Topic</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                 Find blogs that match a particular article topic
@@ -531,13 +486,10 @@ export default function ContentCompass() {
             value="general"
             aria-label="General Article"
             onClick={() => {
-              handleArticleTypeChange(
-                {} as React.MouseEvent<HTMLElement>,
-                "general"
-              );
+              handleArticleTypeChange({} as React.MouseEvent<HTMLElement>, 'general');
             }}
           >
-            <Box sx={{ p: 2, textAlign: "center" }}>
+            <Box sx={{ p: 2, textAlign: 'center' }}>
               <Typography variant="h6">General Article</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                 Find blogs by industry or geographic region
@@ -569,9 +521,7 @@ export default function ContentCompass() {
           </Button>
         </Box>
 
-        {articleType === "specific"
-          ? renderTopicSelection()
-          : renderGeneralArticleTargets()}
+        {articleType === 'specific' ? renderTopicSelection() : renderGeneralArticleTargets()}
       </Box>
     );
   };
@@ -597,20 +547,14 @@ export default function ContentCompass() {
               {/* Sort topics by ID ascending */}
               {[...topics]
                 .sort((a, b) => a.topic_id - b.topic_id)
-                .map((topic) => (
+                .map(topic => (
                   <TableRow
                     key={topic.topic_id}
                     sx={{
-                      cursor: "pointer",
-                      backgroundColor:
-                        selectedTopic === topic.topic_id
-                          ? "#e3f2fd"
-                          : "inherit",
-                      "&:hover": {
-                        backgroundColor:
-                          selectedTopic === topic.topic_id
-                            ? "#e3f2fd"
-                            : "#f5f5f5",
+                      cursor: 'pointer',
+                      backgroundColor: selectedTopic === topic.topic_id ? '#e3f2fd' : 'inherit',
+                      '&:hover': {
+                        backgroundColor: selectedTopic === topic.topic_id ? '#e3f2fd' : '#f5f5f5',
                       },
                     }}
                     onClick={() => handleTopicChange(topic.topic_id)}
@@ -618,9 +562,7 @@ export default function ContentCompass() {
                     <TableCell>
                       <Typography
                         variant="body1"
-                        fontWeight={
-                          selectedTopic === topic.topic_id ? "bold" : "normal"
-                        }
+                        fontWeight={selectedTopic === topic.topic_id ? 'bold' : 'normal'}
                       >
                         #{topic.topic_id} - {topic.topic_title}
                       </Typography>
@@ -628,8 +570,8 @@ export default function ContentCompass() {
                     <TableCell align="center">
                       <Chip
                         label={topic.blog_count}
-                        color={topic.blog_count > 0 ? "primary" : "default"}
-                        variant={topic.blog_count > 0 ? "outlined" : "filled"}
+                        color={topic.blog_count > 0 ? 'primary' : 'default'}
+                        variant={topic.blog_count > 0 ? 'outlined' : 'filled'}
                         size="small"
                       />
                     </TableCell>
@@ -638,7 +580,7 @@ export default function ContentCompass() {
                         variant="contained"
                         color="primary"
                         size="small"
-                        onClick={(e) => {
+                        onClick={e => {
                           e.stopPropagation();
                           handleTopicChange(topic.topic_id);
                         }}
@@ -677,10 +619,7 @@ export default function ContentCompass() {
             value="industry"
             aria-label="Industry"
             onClick={() => {
-              handleTargetTypeChange(
-                {} as React.MouseEvent<HTMLElement>,
-                "industry"
-              );
+              handleTargetTypeChange({} as React.MouseEvent<HTMLElement>, 'industry');
             }}
           >
             Target by Industry
@@ -689,10 +628,7 @@ export default function ContentCompass() {
             value="region"
             aria-label="Region"
             onClick={() => {
-              handleTargetTypeChange(
-                {} as React.MouseEvent<HTMLElement>,
-                "region"
-              );
+              handleTargetTypeChange({} as React.MouseEvent<HTMLElement>, 'region');
             }}
           >
             Target by Region
@@ -700,7 +636,7 @@ export default function ContentCompass() {
         </ToggleButtonGroup>
       </Box>
 
-      {selectedTargetType === "industry" ? (
+      {selectedTargetType === 'industry' ? (
         <Box sx={{ mt: 3 }}>
           <Typography variant="subtitle1" gutterBottom>
             Select an Industry
@@ -713,20 +649,13 @@ export default function ContentCompass() {
           ) : (
             <FormControl fullWidth variant="outlined">
               <InputLabel>Industry</InputLabel>
-              <Select
-                value={selectedIndustry}
-                onChange={handleIndustryChange}
-                label="Industry"
-              >
+              <Select value={selectedIndustry} onChange={handleIndustryChange} label="Industry">
                 <MenuItem value="">
                   <em>Select an industry</em>
                 </MenuItem>
-                {industries.map((industry) => (
-                  <MenuItem
-                    key={industry.industry_id}
-                    value={industry.industry_id}
-                  >
-                    {industry.industry_name}{" "}
+                {industries.map(industry => (
+                  <MenuItem key={industry.industry_id} value={industry.industry_id}>
+                    {industry.industry_name}{' '}
                     {industry.blog_count && `(${industry.blog_count} blogs)`}
                   </MenuItem>
                 ))}
@@ -747,35 +676,26 @@ export default function ContentCompass() {
           ) : (
             <FormControl fullWidth variant="outlined">
               <InputLabel>Region</InputLabel>
-              <Select
-                value={selectedRegion}
-                onChange={handleRegionChange}
-                label="Region"
-              >
+              <Select value={selectedRegion} onChange={handleRegionChange} label="Region">
                 <MenuItem value="">
                   <em>Select a region</em>
                 </MenuItem>
 
                 {/* Render regions grouped by parent */}
-                {regions.map((continent) => [
+                {regions.map(continent => [
                   <MenuItem
                     key={continent.region_id}
                     value={continent.region_id}
-                    sx={{ fontWeight: "bold" }}
+                    sx={{ fontWeight: 'bold' }}
                   >
-                    {continent.region_name}{" "}
-                    {continent.blog_count &&
-                      `- ${continent.blog_count} blog(s)`}
+                    {continent.region_name}{' '}
+                    {continent.blog_count && `- ${continent.blog_count} blog(s)`}
                   </MenuItem>,
 
                   continent.sub_regions &&
-                    continent.sub_regions.map((country) => (
-                      <MenuItem
-                        key={country.region_id}
-                        value={country.region_id}
-                        sx={{ pl: 4 }}
-                      >
-                        #{country.region_id} - {country.region_name}{" "}
+                    continent.sub_regions.map(country => (
+                      <MenuItem key={country.region_id} value={country.region_id} sx={{ pl: 4 }}>
+                        #{country.region_id} - {country.region_name}{' '}
                         {country.blog_count && `(${country.blog_count} blogs)`}
                       </MenuItem>
                     )),
@@ -791,34 +711,26 @@ export default function ContentCompass() {
   // Render the blogs display step
   const renderBlogsStep = () => {
     // Prepare the heading based on selections made
-    let heading = "";
-    if (articleType === "specific" && selectedTopic) {
-      const selectedTopicObj = topics.find((t) => t.topic_id === selectedTopic);
+    let heading = '';
+    if (articleType === 'specific' && selectedTopic) {
+      const selectedTopicObj = topics.find(t => t.topic_id === selectedTopic);
       heading = `Available Blogs for ${selectedClientName} - "#${selectedTopic} - ${
-        selectedTopicObj?.topic_title || "Selected Topic"
+        selectedTopicObj?.topic_title || 'Selected Topic'
       }"`;
-    } else if (articleType === "general") {
-      if (selectedTargetType === "industry" && selectedIndustry) {
-        const selectedIndustryObj = industries.find(
-          (i) => i.industry_id === selectedIndustry
-        );
+    } else if (articleType === 'general') {
+      if (selectedTargetType === 'industry' && selectedIndustry) {
+        const selectedIndustryObj = industries.find(i => i.industry_id === selectedIndustry);
         heading = `Available Blogs for ${selectedClientName} in #${selectedIndustry} - ${
-          selectedIndustryObj?.industry_name || "Selected Industry"
+          selectedIndustryObj?.industry_name || 'Selected Industry'
         }`;
-      } else if (selectedTargetType === "region" && selectedRegion) {
-        const findRegionById = (
-          regionId: number,
-          regionsList: Region[]
-        ): Region | undefined => {
+      } else if (selectedTargetType === 'region' && selectedRegion) {
+        const findRegionById = (regionId: number, regionsList: Region[]): Region | undefined => {
           for (const region of regionsList) {
             if (region.region_id === regionId) {
               return region;
             }
             if (region.sub_regions) {
-              const subRegionMatch = findRegionById(
-                regionId,
-                region.sub_regions
-              );
+              const subRegionMatch = findRegionById(regionId, region.sub_regions);
               if (subRegionMatch) {
                 return subRegionMatch;
               }
@@ -827,12 +739,9 @@ export default function ContentCompass() {
           return undefined;
         };
 
-        const selectedRegionObj = findRegionById(
-          selectedRegion as number,
-          regions
-        );
+        const selectedRegionObj = findRegionById(selectedRegion as number, regions);
         heading = `Available Blogs for ${selectedClientName} in #${selectedRegion} - ${
-          selectedRegionObj?.region_name || "Selected Region"
+          selectedRegionObj?.region_name || 'Selected Region'
         }`;
       }
     }
@@ -854,7 +763,7 @@ export default function ContentCompass() {
           </Box>
         ) : blogs.length > 0 ? (
           <Grid container spacing={3} mt={2}>
-            {blogs.map((blog) => (
+            {blogs.map(blog => (
               <Grid item xs={12} sm={6} md={4} key={blog.id || blog.blog_id}>
                 <Card>
                   <CardContent>
@@ -873,15 +782,13 @@ export default function ContentCompass() {
                     )}
                   </CardContent>
                   <Divider />
-                  <CardActions
-                    sx={{ justifyContent: "space-between", px: 2, py: 1 }}
-                  >
+                  <CardActions sx={{ justifyContent: 'space-between', px: 2, py: 1 }}>
                     <Button
                       size="small"
                       color="primary"
-                      onClick={() => window.open(`${blog.domain}`, "_blank")}
+                      onClick={() => window.open(`${blog.domain}`, '_blank')}
                       startIcon={
-                        <Box component="span" sx={{ fontSize: "18px" }}>
+                        <Box component="span" sx={{ fontSize: '18px' }}>
                           🔗
                         </Box>
                       }
@@ -894,7 +801,7 @@ export default function ContentCompass() {
                       variant="contained"
                       onClick={() => handleSubmitPostClick(blog)}
                       startIcon={
-                        <Box component="span" sx={{ fontSize: "18px" }}>
+                        <Box component="span" sx={{ fontSize: '18px' }}>
                           ✏️
                         </Box>
                       }
@@ -908,8 +815,7 @@ export default function ContentCompass() {
           </Grid>
         ) : (
           <Typography align="center" sx={{ py: 3 }}>
-            No blogs found for the selected criteria. Please try another
-            selection.
+            No blogs found for the selected criteria. Please try another selection.
           </Typography>
         )}
 
@@ -934,7 +840,7 @@ export default function ContentCompass() {
       case 3:
         return renderBlogsStep();
       default:
-        return "Unknown step";
+        return 'Unknown step';
     }
   };
 
@@ -944,17 +850,12 @@ export default function ContentCompass() {
         <Typography variant="h4" align="center" gutterBottom>
           Content Compass
         </Typography>
-        <Typography
-          variant="subtitle1"
-          align="center"
-          color="textSecondary"
-          paragraph
-        >
+        <Typography variant="subtitle1" align="center" color="textSecondary" paragraph>
           Navigate to the perfect content placement for your clients
         </Typography>
 
         <Stepper activeStep={activeStep} sx={{ mt: 4, mb: 5 }}>
-          {steps.map((label) => (
+          {steps.map(label => (
             <Step key={label}>
               <StepLabel>{label}</StepLabel>
             </Step>
