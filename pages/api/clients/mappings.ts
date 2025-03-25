@@ -20,11 +20,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   });
 
   try {
-    let industries = [];
-    let regions = [];
+    let industries: mysql.RowDataPacket[] = [];
+    let regions: mysql.RowDataPacket[] = [];
 
     if (type === 'industries' || type === 'all') {
-      const [industryRows] = await connection.execute(
+      const [industryRows] = await connection.execute<mysql.RowDataPacket[]>(
         `SELECT i.industry_id, i.industry_name
          FROM clients_industry_mapping cim
          JOIN industries i ON cim.industry_id = i.industry_id
@@ -35,7 +35,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (type === 'regions' || type === 'all') {
-      const [regionRows] = await connection.execute(
+      const [regionRows] = await connection.execute<mysql.RowDataPacket[]>(
         `SELECT r.region_id, r.region_name, r.region_type, r.parent_region_id
          FROM clients_region_mapping crm
          JOIN geo_regions r ON crm.region_id = r.region_id
