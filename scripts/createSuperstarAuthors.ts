@@ -1,9 +1,8 @@
-const mysql = require('mysql2/promise');
-const axios = require('axios');
-const { faker } = require('@faker-js/faker');
-const dotenv = require('dotenv');
-
-const path = require('path');
+import mysql from 'mysql2/promise';
+import axios from 'axios';
+import { faker } from '@faker-js/faker';
+import dotenv from 'dotenv';
+import path from 'path';
 
 // Load environment variables from .env.local
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
