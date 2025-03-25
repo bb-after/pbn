@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/router";
-import axios from "axios";
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
+import axios from 'axios';
 import {
   Typography,
   TextField,
@@ -11,8 +11,28 @@ import {
   InputLabel,
   Select,
   MenuItem,
-} from "@mui/material";
-import Autocomplete from "@mui/lab/Autocomplete";
+  CircularProgress,
+  Divider,
+  Grid,
+  Paper,
+  Chip,
+} from '@mui/material';
+import Autocomplete from '@mui/material/Autocomplete';
+import IndustryMappingSelector from '../../../components/IndustryMappingSelector';
+import RegionMappingSelector from '../../../components/RegionMappingSelector';
+
+interface Industry {
+  industry_id: number;
+  industry_name: string;
+}
+
+interface Region {
+  region_id: number;
+  region_name: string;
+  region_type: string;
+  parent_region_id: number | null;
+  sub_regions?: Region[];
+}
 
 interface SuperstarSite {
   id: number;
@@ -26,6 +46,8 @@ interface SuperstarSite {
   hosting_site_password: string;
   application_password: string;
   custom_prompt: string;
+  industries?: Industry[];
+  regions?: Region[];
 }
 
 const EditTopics: React.FC = () => {
@@ -33,29 +55,79 @@ const EditTopics: React.FC = () => {
   const { id } = router.query;
   const [site, setSite] = useState<SuperstarSite | null>(null);
   const [topics, setTopics] = useState<string[]>([]);
-  const [wpUsername, setWpUsername] = useState<string>("");
-  const [wpPassword, setWpPassword] = useState<string>("");
-  const [wpAppPassword, setWpAppPassword] = useState<string>("");
-  const [active, setActive] = useState<string>("1");
-  const [customPrompt, setCustomPrompt] = useState<string>("");
+  const [wpUsername, setWpUsername] = useState<string>('');
+  const [wpPassword, setWpPassword] = useState<string>('');
+  const [wpAppPassword, setWpAppPassword] = useState<string>('');
+  const [active, setActive] = useState<string>('1');
+  const [customPrompt, setCustomPrompt] = useState<string>('');
+
+  // For region and industry mappings
+  const [industries, setIndustries] = useState<Industry[]>([]);
+  const [regions, setRegions] = useState<Region[]>([]);
+  const [selectedIndustries, setSelectedIndustries] = useState<Industry[]>([]);
+  const [selectedRegions, setSelectedRegions] = useState<Region[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+
+  // Helper function to flatten nested regions for Autocomplete
+  const flattenRegions = (regions: Region[]): Region[] => {
+    let result: Region[] = [];
+
+    for (const region of regions) {
+      result.push(region);
+
+      if (region.sub_regions && region.sub_regions.length > 0) {
+        result = [...result, ...flattenRegions(region.sub_regions)];
+      }
+    }
+
+    return result;
+  };
+
+  // Load industries and regions data
+  useEffect(() => {
+    const fetchMappingData = async () => {
+      setLoading(true);
+      try {
+        const [industriesRes, regionsRes] = await Promise.all([
+          axios.get('/api/industries'),
+          axios.get('/api/geo-regions?with_hierarchy=true'),
+        ]);
+        setIndustries(industriesRes.data);
+        setRegions(regionsRes.data);
+      } catch (error) {
+        console.error('Error fetching mapping data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMappingData();
+  }, []);
 
   useEffect(() => {
     if (id) {
       const fetchSite = async () => {
         try {
-          const response = await axios.get<SuperstarSite>(
-            `/api/superstar-sites/${id}`
-          );
+          const response = await axios.get<SuperstarSite>(`/api/superstar-sites/${id}`);
           const siteData = response.data;
           setSite(siteData);
           setTopics(siteData.topics);
-          setWpUsername(siteData.login || "");
-          setWpPassword(siteData.hosting_site_password || "");
-          setWpAppPassword(siteData.application_password || "");
-          setActive(siteData.active || "1");
-          setCustomPrompt(siteData.custom_prompt || "");
+          setWpUsername(siteData.login || '');
+          setWpPassword(siteData.hosting_site_password || '');
+          setWpAppPassword(siteData.application_password || '');
+          setActive(siteData.active || '1');
+          setCustomPrompt(siteData.custom_prompt || '');
+
+          // Set selected industries and regions if they exist
+          if (siteData.industries) {
+            setSelectedIndustries(siteData.industries);
+          }
+
+          if (siteData.regions) {
+            setSelectedRegions(siteData.regions);
+          }
         } catch (error) {
-          console.error("Error fetching site:", error);
+          console.error('Error fetching site:', error);
         }
       };
 
@@ -72,12 +144,36 @@ const EditTopics: React.FC = () => {
         wpAppPassword,
         active,
         customPrompt,
+        // Add region and industry mappings
+        industries: selectedIndustries.map(i => i.industry_id),
+        regions: selectedRegions.map(r => r.region_id),
       });
-      router.push("/superstar-sites");
+      router.push('/superstar-sites');
     } catch (error) {
-      console.error("Error saving topics:", error);
+      console.error('Error saving site data:', error);
     }
   };
+
+  // Sort regions alphabetically within each type group
+  const sortedRegions = flattenRegions(regions).sort((a, b) => {
+    // First sort by region_type to maintain groups
+    if (a.region_type !== b.region_type) {
+      // Custom order for region types
+      const typeOrder = {
+        continent: 1,
+        country: 2,
+        us_region: 3,
+        state: 4,
+        city: 5,
+      };
+      return (
+        (typeOrder[a.region_type as keyof typeof typeOrder] || 99) -
+        (typeOrder[b.region_type as keyof typeof typeOrder] || 99)
+      );
+    }
+    // Then sort alphabetically within each type
+    return a.region_name.localeCompare(b.region_name);
+  });
 
   return (
     <Container>
@@ -85,76 +181,256 @@ const EditTopics: React.FC = () => {
         <Typography variant="h4" gutterBottom>
           Edit Site: {site?.domain}
         </Typography>
-        <Autocomplete
-          multiple
-          freeSolo
-          options={[]}
-          value={topics}
-          onChange={(event, newValue) => setTopics(newValue as string[])}
-          renderInput={(params) => (
-            <TextField
-              {...params}
-              variant="outlined"
-              label="Topics"
-              placeholder="Add topics"
-            />
-          )}
-        />
-        <TextField
-          variant="outlined"
-          label="WordPress Username"
-          fullWidth
-          margin="normal"
-          value={wpUsername}
-          onChange={(e) => setWpUsername(e.target.value)}
-        />
-        <TextField
-          variant="outlined"
-          label="WordPress Password"
-          type="password"
-          fullWidth
-          margin="normal"
-          value={wpPassword}
-          onChange={(e) => setWpPassword(e.target.value)}
-        />
-        <TextField
-          variant="outlined"
-          label="WordPress Application Password"
-          type="password"
-          fullWidth
-          margin="normal"
-          value={wpAppPassword}
-          onChange={(e) => setWpAppPassword(e.target.value)}
-        />
+        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Site Details
+          </Typography>
+          <Grid container spacing={3}>
+            <Grid item xs={12}>
+              <Autocomplete
+                multiple
+                freeSolo
+                options={[]}
+                value={topics}
+                onChange={(event, newValue) => setTopics(newValue as string[])}
+                renderInput={params => (
+                  <TextField
+                    {...params}
+                    variant="outlined"
+                    label="Topics"
+                    placeholder="Add topics"
+                  />
+                )}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                variant="outlined"
+                label="WordPress Username"
+                fullWidth
+                value={wpUsername}
+                onChange={e => setWpUsername(e.target.value)}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                variant="outlined"
+                label="WordPress Password"
+                type="password"
+                fullWidth
+                value={wpPassword}
+                onChange={e => setWpPassword(e.target.value)}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                variant="outlined"
+                label="WordPress Application Password"
+                type="password"
+                fullWidth
+                value={wpAppPassword}
+                onChange={e => setWpAppPassword(e.target.value)}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                variant="outlined"
+                label="Custom Prompt"
+                multiline
+                rows={4}
+                fullWidth
+                value={customPrompt}
+                onChange={e => setCustomPrompt(e.target.value)}
+                placeholder="Enter a custom prompt to override the default prompt when generating content for this site"
+                helperText="Leave empty to use the default prompt"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel id="active-label">Status</InputLabel>
+                <Select
+                  labelId="active-label"
+                  value={active}
+                  onChange={e => setActive(e.target.value as string)}
+                >
+                  <MenuItem value="1">Active</MenuItem>
+                  <MenuItem value="0">Inactive</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+        </Paper>
 
-        <TextField
-          variant="outlined"
-          label="Custom Prompt"
-          multiline
-          rows={4}
-          fullWidth
-          margin="normal"
-          value={customPrompt}
-          onChange={(e) => setCustomPrompt(e.target.value)}
-          placeholder="Enter a custom prompt to override the default prompt when generating content for this site"
-          helperText="Leave empty to use the default prompt"
-        />
+        {/* Industry Mappings Section */}
+        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Industry Mappings
+          </Typography>
+          <Box my={2}>
+            {loading ? (
+              <CircularProgress size={24} />
+            ) : (
+              <Autocomplete
+                multiple
+                id="industries"
+                options={industries.sort((a, b) => a.industry_name.localeCompare(b.industry_name))}
+                getOptionLabel={option => `${option.industry_name}`}
+                value={selectedIndustries}
+                onChange={(_, newValue) => setSelectedIndustries(newValue)}
+                renderInput={params => (
+                  <TextField
+                    {...params}
+                    variant="outlined"
+                    label="Select Industries"
+                    placeholder="Add industries"
+                  />
+                )}
+                renderTags={(value, getTagProps) =>
+                  value.map((option, index) => (
+                    <Chip
+                      {...getTagProps({ index })}
+                      key={option.industry_id}
+                      label={`${option.industry_name}`}
+                      sx={{
+                        backgroundColor: '#e0f7fa',
+                        m: 0.3,
+                      }}
+                    />
+                  ))
+                }
+                renderOption={(props, option) => (
+                  <li {...props}>
+                    <Typography variant="body2">
+                      <strong>#{option.industry_id}</strong> - {option.industry_name}
+                    </Typography>
+                  </li>
+                )}
+              />
+            )}
+            <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mt: 1 }}>
+              Select industries that this site specializes in. This helps match content to
+              appropriate sites.
+            </Typography>
+          </Box>
+        </Paper>
 
-        <FormControl fullWidth margin="normal">
-          <InputLabel id="active-label">Status</InputLabel>
-          <Select
-            labelId="active-label"
-            value={active}
-            onChange={(e) => setActive(e.target.value as string)}
-          >
-            <MenuItem value="1">Active</MenuItem>
-            <MenuItem value="0">Inactive</MenuItem>
-          </Select>
-        </FormControl>
+        {/* Region Mappings Section */}
+        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Region Mappings
+          </Typography>
+          <Box my={2}>
+            {loading ? (
+              <CircularProgress size={24} />
+            ) : (
+              <Autocomplete
+                multiple
+                id="regions"
+                options={sortedRegions}
+                getOptionLabel={option => `${option.region_name}`}
+                groupBy={option => {
+                  // Transform region_type values to user-friendly group names
+                  switch (option.region_type) {
+                    case 'continent':
+                      return 'Continents';
+                    case 'country':
+                      return 'Countries';
+                    case 'us_region':
+                      return 'US Regions';
+                    case 'state':
+                      return 'States';
+                    case 'city':
+                      return 'Cities';
+                    default:
+                      return option.region_type || 'Other';
+                  }
+                }}
+                value={selectedRegions}
+                onChange={(_, newValue) => setSelectedRegions(newValue)}
+                renderInput={params => (
+                  <TextField
+                    {...params}
+                    variant="outlined"
+                    label="Select Regions"
+                    placeholder="Add regions"
+                  />
+                )}
+                renderTags={(value, getTagProps) =>
+                  value.map((option, index) => {
+                    // Create color-coded chips based on region type
+                    let chipColor;
+                    switch (option.region_type) {
+                      case 'continent':
+                        chipColor = '#e3f2fd'; // light blue
+                        break;
+                      case 'country':
+                        chipColor = '#e8f5e9'; // light green
+                        break;
+                      case 'us_region':
+                        chipColor = '#f3e5f5'; // light purple
+                        break;
+                      case 'state':
+                        chipColor = '#fff3e0'; // light orange
+                        break;
+                      case 'city':
+                        chipColor = '#fce4ec'; // light pink
+                        break;
+                      default:
+                        chipColor = '#eeeeee'; // light grey
+                    }
 
-        <Box mt={2}>
+                    return (
+                      <Chip
+                        {...getTagProps({ index })}
+                        key={option.region_id}
+                        label={`${option.region_name}`}
+                        sx={{
+                          backgroundColor: chipColor,
+                          m: 0.3,
+                        }}
+                      />
+                    );
+                  })
+                }
+                renderOption={(props, option) => (
+                  <li {...props}>
+                    <Typography variant="body2">
+                      <strong>#{option.region_id}</strong> - {option.region_name}
+                    </Typography>
+                  </li>
+                )}
+                renderGroup={params => (
+                  <li key={params.key}>
+                    <Typography
+                      variant="body1"
+                      fontWeight="bold"
+                      color="primary"
+                      sx={{
+                        p: 1,
+                        backgroundColor: '#f5f5f5',
+                        borderBottom: '1px solid #e0e0e0',
+                      }}
+                    >
+                      {params.group}
+                    </Typography>
+                    <ul style={{ padding: 0 }}>{params.children}</ul>
+                  </li>
+                )}
+              />
+            )}
+            <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mt: 1 }}>
+              Select geographic regions that this site targets. This helps match content to the
+              appropriate audience.
+            </Typography>
+          </Box>
+        </Paper>
+
+        <Box mt={3} mb={5} display="flex" justifyContent="space-between">
+          <Button variant="outlined" onClick={() => router.push('/superstar-sites')}>
+            Cancel
+          </Button>
           <Button variant="contained" color="primary" onClick={handleSave}>
-            Save
+            Save Changes
           </Button>
         </Box>
       </Box>
