@@ -15,7 +15,7 @@ const dbConfig = {
 async function createTables() {
   console.log('Starting database migration for Content Compass...');
   
-  let connection: mysql.Connection;
+  let connection: mysql.Connection | undefined;
   
   try {
     // Create database connection
