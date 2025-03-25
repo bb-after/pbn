@@ -1,19 +1,23 @@
-import { NextApiRequest, NextApiResponse } from 'next';
 import mysql from 'mysql2/promise';
+import { NextApiRequest, NextApiResponse } from 'next';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { id } = req.query;
-  
+
   if (!id || Array.isArray(id)) {
     return res.status(400).json({ error: 'Invalid client ID' });
   }
 
-  const connection = await mysql.createConnection({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
+  // Define your MySQL connection options
+  const dbConfig = {
+    host: process.env.DB_HOST_NAME,
+    user: process.env.DB_USER_NAME,
     password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-  });
+    database: process.env.DB_DATABASE,
+  };
+
+  // Create a MySQL connection
+  const connection = await mysql.createConnection(dbConfig);
 
   try {
     switch (req.method) {
@@ -35,19 +39,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 }
 
-async function getClient(req: NextApiRequest, res: NextApiResponse, connection: mysql.Connection, id: string) {
+async function getClient(
+  req: NextApiRequest,
+  res: NextApiResponse,
+  connection: mysql.Connection,
+  id: string
+) {
   // Get client data
   const [clientRows] = await connection.execute(
     'SELECT client_id, client_name, is_active, created_at, updated_at FROM clients WHERE client_id = ?',
     [id]
   );
-  
+
   if (!Array.isArray(clientRows) || clientRows.length === 0) {
     return res.status(404).json({ error: 'Client not found' });
   }
-  
+
   const client = clientRows[0];
-  
+
   // Get industry mappings
   const [industryRows] = await connection.execute(
     `SELECT i.industry_id, i.industry_name
@@ -56,7 +65,7 @@ async function getClient(req: NextApiRequest, res: NextApiResponse, connection: 
      WHERE cim.client_id = ?`,
     [id]
   );
-  
+
   // Get region mappings
   const [regionRows] = await connection.execute(
     `SELECT r.region_id, r.region_name, r.region_type
@@ -65,7 +74,7 @@ async function getClient(req: NextApiRequest, res: NextApiResponse, connection: 
      WHERE crm.client_id = ?`,
     [id]
   );
-  
+
   // Get statistics
   const [statsRows] = await connection.execute(
     `SELECT 
@@ -78,61 +87,64 @@ async function getClient(req: NextApiRequest, res: NextApiResponse, connection: 
      GROUP BY c.client_id`,
     [id]
   );
-  
-  const stats = Array.isArray(statsRows) && statsRows.length > 0 
-    ? statsRows[0] 
-    : { total_submissions: 0, auto_count: 0, manual_count: 0 };
-  
+
+  const stats =
+    Array.isArray(statsRows) && statsRows.length > 0
+      ? statsRows[0]
+      : { total_submissions: 0, auto_count: 0, manual_count: 0 };
+
   return res.status(200).json({
     ...client,
     industries: industryRows,
     regions: regionRows,
-    stats
+    stats,
   });
 }
 
-async function updateClient(req: NextApiRequest, res: NextApiResponse, connection: mysql.Connection, id: string) {
+async function updateClient(
+  req: NextApiRequest,
+  res: NextApiResponse,
+  connection: mysql.Connection,
+  id: string
+) {
   const { clientName, isActive, industries = [], regions = [] } = req.body;
-  
+
   if (!clientName) {
     return res.status(400).json({ error: 'Client name is required' });
   }
-  
+
   // Check if client exists
   const [existingClients] = await connection.execute(
     'SELECT client_id FROM clients WHERE client_id = ?',
     [id]
   );
-  
+
   if (!Array.isArray(existingClients) || existingClients.length === 0) {
     return res.status(404).json({ error: 'Client not found' });
   }
-  
+
   // Check for duplicate client names (excluding this client)
   const [duplicateClients] = await connection.execute(
     'SELECT client_id FROM clients WHERE client_name = ? AND client_id != ?',
     [clientName, id]
   );
-  
+
   if (Array.isArray(duplicateClients) && duplicateClients.length > 0) {
     return res.status(409).json({ error: 'Another client with this name already exists' });
   }
-  
+
   try {
     await connection.beginTransaction();
-    
+
     // Update client
     await connection.execute(
       'UPDATE clients SET client_name = ?, is_active = ? WHERE client_id = ?',
       [clientName, isActive, id]
     );
-    
+
     // Delete existing industry mappings
-    await connection.execute(
-      'DELETE FROM clients_industry_mapping WHERE client_id = ?',
-      [id]
-    );
-    
+    await connection.execute('DELETE FROM clients_industry_mapping WHERE client_id = ?', [id]);
+
     // Insert new industry mappings
     if (industries.length > 0) {
       const industryValues = industries.map((industryId: any) => [id, industryId]);
@@ -141,31 +153,27 @@ async function updateClient(req: NextApiRequest, res: NextApiResponse, connectio
         [industryValues]
       );
     }
-    
+
     // Delete existing region mappings
-    await connection.execute(
-      'DELETE FROM clients_region_mapping WHERE client_id = ?',
-      [id]
-    );
-    
+    await connection.execute('DELETE FROM clients_region_mapping WHERE client_id = ?', [id]);
+
     // Insert new region mappings
     if (regions.length > 0) {
       const regionValues = regions.map((regionId: any) => [id, regionId]);
-      await connection.query(
-        'INSERT INTO clients_region_mapping (client_id, region_id) VALUES ?',
-        [regionValues]
-      );
+      await connection.query('INSERT INTO clients_region_mapping (client_id, region_id) VALUES ?', [
+        regionValues,
+      ]);
     }
-    
+
     await connection.commit();
-    
-    return res.status(200).json({ 
+
+    return res.status(200).json({
       clientId: id,
       clientName,
       isActive,
       industries,
       regions,
-      message: 'Client updated successfully' 
+      message: 'Client updated successfully',
     });
   } catch (error) {
     await connection.rollback();
@@ -174,60 +182,54 @@ async function updateClient(req: NextApiRequest, res: NextApiResponse, connectio
   }
 }
 
-async function deleteClient(req: NextApiRequest, res: NextApiResponse, connection: mysql.Connection, id: string) {
+async function deleteClient(
+  req: NextApiRequest,
+  res: NextApiResponse,
+  connection: mysql.Connection,
+  id: string
+) {
   // Check if client exists
   const [existingClients] = await connection.execute(
     'SELECT client_id FROM clients WHERE client_id = ?',
     [id]
   );
-  
+
   if (!Array.isArray(existingClients) || existingClients.length === 0) {
     return res.status(404).json({ error: 'Client not found' });
   }
-  
+
   // Check if client is referenced in superstar_site_submissions
   const [references] = await connection.execute<mysql.RowDataPacket[]>(
     'SELECT COUNT(*) as count FROM superstar_site_submissions WHERE client_id = ?',
     [id]
   );
-  
+
   const count = references[0]?.count ?? 0;
-  
+
   if (count > 0) {
     // Instead of deleting, mark as inactive
-    await connection.execute(
-      'UPDATE clients SET is_active = 0 WHERE client_id = ?',
-      [id]
-    );
-    
-    return res.status(200).json({ 
-      message: 'Client has associated submissions and cannot be deleted. It has been marked as inactive instead.' 
+    await connection.execute('UPDATE clients SET is_active = 0 WHERE client_id = ?', [id]);
+
+    return res.status(200).json({
+      message:
+        'Client has associated submissions and cannot be deleted. It has been marked as inactive instead.',
     });
   }
-  
+
   try {
     await connection.beginTransaction();
-    
+
     // Delete industry mappings
-    await connection.execute(
-      'DELETE FROM clients_industry_mapping WHERE client_id = ?',
-      [id]
-    );
-    
+    await connection.execute('DELETE FROM clients_industry_mapping WHERE client_id = ?', [id]);
+
     // Delete region mappings
-    await connection.execute(
-      'DELETE FROM clients_region_mapping WHERE client_id = ?',
-      [id]
-    );
-    
+    await connection.execute('DELETE FROM clients_region_mapping WHERE client_id = ?', [id]);
+
     // Delete client
-    await connection.execute(
-      'DELETE FROM clients WHERE client_id = ?',
-      [id]
-    );
-    
+    await connection.execute('DELETE FROM clients WHERE client_id = ?', [id]);
+
     await connection.commit();
-    
+
     return res.status(200).json({ message: 'Client deleted successfully' });
   } catch (error) {
     await connection.rollback();

@@ -7,6 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "lint:fix": "next lint --fix",
+    "typecheck": "tsc --noEmit",
+    "prepare": "husky install",
+    "check": "sh scripts/check-code.sh",
+    "fix": "sh scripts/fix-code.sh",
     "create-authors": "NODE_ENV=development npx ts-node scripts/createSuperstarAuthors.ts",
     "create-compass-tables": "NODE_ENV=development npx ts-node scripts/create-compass-tables.ts"
   },
@@ -70,15 +75,20 @@
     "@types/react": "^18.2.18",
     "@types/react-dom": "^18.2.7",
     "@types/react-draft-wysiwyg": "^1.13.4",
+    "eslint-config-prettier": "^10.1.1",
     "husky": "^8.0.3",
     "jest": "^29.7.0",
     "lint-staged": "^13.2.3",
+    "prettier": "^3.5.3",
     "ts-node": "^10.9.2"
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx}": [
       "eslint --fix",
-      "git add"
+      "prettier --write"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
     ]
   }
 }
