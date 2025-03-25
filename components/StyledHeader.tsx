@@ -100,6 +100,11 @@ const StyledHeader = () => {
           description: "Add another Superstar site to your list",
         },
         {
+          text: "Content Compass",
+          href: "/content-compass",
+          description: "Find perfect content placement for clients",
+        },
+        {
           text: "Site Submissions",
           href: "/superstar-site-submissions",
           description: "View all submitted Superstar posts",

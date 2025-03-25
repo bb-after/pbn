@@ -12,6 +12,7 @@ import {
 } from "@mui/material";
 import LayoutContainer from "components/LayoutContainer";
 import StyledHeader from "components/StyledHeader";
+import ClientDropdown from "components/ClientDropdown";
 import { useState, useEffect } from "react";
 import axios from "axios";
 import dynamic from "next/dynamic";
@@ -33,12 +34,23 @@ interface SuperstarSite {
 
 const SuperstarFormPage: React.FC = () => {
   const router = useRouter();
-  const { blogId, blogName, topic, category } = router.query;
+  const {
+    blogId,
+    blogName,
+    topic,
+    category,
+    industry,
+    region,
+    clientId: routerClientId,
+  } = router.query;
 
   const [sites, setSites] = useState<SuperstarSite[]>([]);
   const [selectedSite, setSelectedSite] = useState<SuperstarSite | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
+  const [topicCounts, setTopicCounts] = useState<{ [key: string]: number }>({});
+  const [topicIds, setTopicIds] = useState<{ [key: string]: number }>({});
   const [clientName, setClientName] = useState("");
+  const [clientId, setClientId] = useState<number | null>(null);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -52,6 +64,18 @@ const SuperstarFormPage: React.FC = () => {
     }[]
   >([]);
   const [selectedAuthor, setSelectedAuthor] = useState("");
+  const [selectedType, setSelectedType] = useState<"industry" | "region">(
+    "industry"
+  );
+  const [selectedRegion, setSelectedRegion] = useState<string>("");
+  const regions = [
+    "North America",
+    "Europe",
+    "Asia",
+    "South America",
+    "Africa",
+    "Oceania",
+  ];
 
   useEffect(() => {
     const fetchSites = async () => {
@@ -81,18 +105,57 @@ const SuperstarFormPage: React.FC = () => {
     fetchSites();
   }, [blogId]); // Add blogId to dependency array
 
+  useEffect(() => {
+    const fetchTopicCounts = async () => {
+      try {
+        const response = await axios.get("/api/topic-counts");
+        const counts: { [key: string]: number } = {};
+        const ids: { [key: string]: number } = {};
+
+        response.data.forEach((topic: any) => {
+          counts[topic.topic_title] = topic.count;
+          ids[topic.topic_title] = topic.topic_id;
+        });
+
+        setTopicCounts(counts);
+        setTopicIds(ids);
+      } catch (error) {
+        console.error("Error fetching topic counts:", error);
+      }
+    };
+
+    fetchTopicCounts();
+  }, []);
+
   // Pre-fill other fields from URL parameters
   useEffect(() => {
     if (topic) {
       setTitle(String(topic));
     }
+
+    // Handle category/industry tags
     if (category) {
       setCategories(Array.isArray(category) ? category : [String(category)]);
     }
-    if (blogName) {
-      setClientName(String(blogName));
+    // Handle both category and industry parameters (industry is the new field name)
+    if (industry) {
+      setCategories(Array.isArray(industry) ? industry : [String(industry)]);
     }
-  }, [topic, category, blogName]);
+    // Don't need to handle region parameter specifically - just add it as a category
+    if (region) {
+      setCategories((prev) => {
+        const regionValue = Array.isArray(region) ? region[0] : String(region);
+        return [...prev, regionValue];
+      });
+    }
+  }, [topic, category, industry, region, blogName]);
+
+  // Handle clientId from URL after client dropdown is ready
+  useEffect(() => {
+    if (routerClientId) {
+      setClientId(Number(routerClientId));
+    }
+  }, [routerClientId]);
 
   useEffect(() => {
     if (selectedSite) {
@@ -115,7 +178,13 @@ const SuperstarFormPage: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    if (!selectedSite || !title || !content || !clientName) {
+    if (
+      !selectedSite ||
+      !title ||
+      !content ||
+      !clientName ||
+      (!categories.length && !selectedRegion)
+    ) {
       alert("Please fill in all required fields");
       return;
     }
@@ -137,8 +206,10 @@ const SuperstarFormPage: React.FC = () => {
         siteId: selectedSite.id.toString(),
         title,
         content,
-        tags: categories.join(", "),
+        tags: selectedType === "category" ? categories.join(", ") : "",
+        region: selectedType === "region" ? selectedRegion : "",
         clientName,
+        clientId: clientId, // Add the client ID to the request
         author: authorId, // WordPress author ID
         authorId: internalAuthorId, // Internal author ID for database
       };
@@ -204,54 +275,102 @@ const SuperstarFormPage: React.FC = () => {
           )}
         />
 
-        <TextField
-          label="Client Name"
+        <ClientDropdown
           value={clientName}
-          onChange={(e) => setClientName(e.target.value)}
+          onChange={(newValue) => setClientName(newValue)}
+          onClientIdChange={(newClientId) => setClientId(newClientId)}
           fullWidth
           margin="normal"
           required
           variant="outlined"
         />
 
-        <Autocomplete
-          multiple
-          freeSolo
-          options={[]}
-          value={categories}
-          onChange={(_, newValue) => setCategories(newValue)}
-          renderTags={(value, getTagProps) =>
-            value.map((option, index) => {
-              const { key, ...rest } = getTagProps({ index });
-              return (
-                <Chip
-                  key={key}
-                  variant="filled"
-                  label={option}
-                  {...rest}
-                  sx={{
-                    backgroundColor: colors[index % colors.length],
-                    color: "#fff",
-                    "&:hover": {
-                      backgroundColor: colors[index % colors.length],
-                      opacity: 0.9,
-                    },
-                  }}
+        <Box sx={{ mb: 2 }}>
+          <Autocomplete
+            id="selection-type"
+            options={["industry", "region"]}
+            value={selectedType}
+            onChange={(_, newValue) => {
+              setSelectedType(newValue as "industry" | "region");
+              // Clear the other field when switching
+              if (newValue === "industry") {
+                setSelectedRegion("");
+              } else {
+                setCategories([]);
+              }
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Select Type"
+                variant="outlined"
+                fullWidth
+                margin="normal"
+              />
+            )}
+          />
+
+          {selectedType === "industry" ? (
+            <Autocomplete
+              multiple
+              freeSolo
+              options={[]}
+              value={categories}
+              onChange={(_, newValue) => setCategories(newValue)}
+              renderTags={(value, getTagProps) =>
+                value.map((option, index) => {
+                  const { key, ...rest } = getTagProps({ index });
+                  const count = topicCounts[option] || 0;
+                  const topicId = topicIds[option];
+                  const label = topicId ? `#${topicId} - ${option}` : option;
+
+                  return (
+                    <Chip
+                      key={key}
+                      variant="filled"
+                      label={label}
+                      {...rest}
+                      sx={{
+                        backgroundColor: colors[index % colors.length],
+                        color: "#fff",
+                        "&:hover": {
+                          backgroundColor: colors[index % colors.length],
+                          opacity: 0.9,
+                        },
+                      }}
+                    />
+                  );
+                })
+              }
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  variant="outlined"
+                  label="Industries/Tags"
+                  placeholder="Add industries or tags"
+                  fullWidth
+                  margin="normal"
                 />
-              );
-            })
-          }
-          renderInput={(params) => (
-            <TextField
-              {...params}
-              variant="outlined"
-              label="Categories/Tags"
-              placeholder="Add categories or tags"
-              fullWidth
-              margin="normal"
+              )}
+            />
+          ) : (
+            <Autocomplete
+              id="region-select"
+              options={regions}
+              value={selectedRegion}
+              onChange={(_, newValue) => setSelectedRegion(newValue || "")}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Select Region"
+                  variant="outlined"
+                  fullWidth
+                  margin="normal"
+                />
+              )}
             />
           )}
-        />
+        </Box>
 
         <TextField
           label="Article Title"

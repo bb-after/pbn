@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "create-authors": "NODE_ENV=development npx ts-node scripts/createSuperstarAuthors.ts",
-    "create-explorer-tables": "NODE_ENV=development npx ts-node scripts/create-explorer-tables.ts"
+    "create-compass-tables": "NODE_ENV=development npx ts-node scripts/create-compass-tables.ts"
   },
   "dependencies": {
     "@babel/preset-typescript": "^7.23.3",
