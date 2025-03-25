@@ -108,12 +108,12 @@ async function createClient(req: NextApiRequest, res: NextApiResponse, connectio
     await connection.beginTransaction();
     
     // Insert client
-    const [result] = await connection.execute(
+    const [result] = await connection.execute<mysql.ResultSetHeader>(
       'INSERT INTO clients (client_name, is_active) VALUES (?, ?)',
       [clientName, isActive]
     );
     
-    const clientId = result.insertId;
+    const clientId = (result as mysql.ResultSetHeader).insertId;
     
     // Insert industry mappings
     if (industries.length > 0) {
@@ -126,7 +126,7 @@ async function createClient(req: NextApiRequest, res: NextApiResponse, connectio
     
     // Insert region mappings
     if (regions.length > 0) {
-      const regionValues = regions.map(id => [clientId, id]);
+      const regionValues = regions.map((id: any) => [clientId, id]);
       await connection.query(
         'INSERT INTO clients_region_mapping (client_id, region_id) VALUES ?',
         [regionValues]

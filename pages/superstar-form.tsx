@@ -206,7 +206,7 @@ const SuperstarFormPage: React.FC = () => {
         siteId: selectedSite.id.toString(),
         title,
         content,
-        tags: selectedType === "category" ? categories.join(", ") : "",
+        tags: selectedType === "industry" ? categories.join(", ") : "",
         region: selectedType === "region" ? selectedRegion : "",
         clientName,
         clientId: clientId, // Add the client ID to the request
@@ -279,6 +279,7 @@ const SuperstarFormPage: React.FC = () => {
           value={clientName}
           onChange={(newValue) => setClientName(newValue)}
           onClientIdChange={(newClientId) => setClientId(newClientId)}
+          initialClientId={routerClientId ? Number(routerClientId) : undefined}
           fullWidth
           margin="normal"
           required
@@ -286,30 +287,6 @@ const SuperstarFormPage: React.FC = () => {
         />
 
         <Box sx={{ mb: 2 }}>
-          <Autocomplete
-            id="selection-type"
-            options={["industry", "region"]}
-            value={selectedType}
-            onChange={(_, newValue) => {
-              setSelectedType(newValue as "industry" | "region");
-              // Clear the other field when switching
-              if (newValue === "industry") {
-                setSelectedRegion("");
-              } else {
-                setCategories([]);
-              }
-            }}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label="Select Type"
-                variant="outlined"
-                fullWidth
-                margin="normal"
-              />
-            )}
-          />
-
           {selectedType === "industry" ? (
             <Autocomplete
               multiple
@@ -346,8 +323,8 @@ const SuperstarFormPage: React.FC = () => {
                 <TextField
                   {...params}
                   variant="outlined"
-                  label="Industries/Tags"
-                  placeholder="Add industries or tags"
+                  label="Tags"
+                  placeholder="Add any relevant tags to show up on the post"
                   fullWidth
                   margin="normal"
                 />
