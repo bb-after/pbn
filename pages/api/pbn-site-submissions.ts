@@ -29,11 +29,14 @@ const pbnSiteSubmissionsHandler = async (req: NextApiRequest, res: NextApiRespon
         GROUP BY LOWER(TRIM(client_name)) 
         ORDER BY LOWER(client_name) ASC
       `;
-      const [clientRows] = await connection.query(clientQuery) as [RowDataPacket[], FieldPacket[]];
-      
+      const [clientRows] = (await connection.query(clientQuery)) as [
+        RowDataPacket[],
+        FieldPacket[],
+      ];
+
       // Close the MySQL connection
       await connection.end();
-      
+
       // Return the client names with counts
       return res.status(200).json({ clients: clientRows });
     }
@@ -42,13 +45,15 @@ const pbnSiteSubmissionsHandler = async (req: NextApiRequest, res: NextApiRespon
     const searchQuery = req.query.search;
     const userToken = req.query.userToken;
     const clientName = req.query.clientName;
+    const clientId = req.query.clientId;
 
     let query;
     let queryConfig;
     const page = parseInt(typeof req.query.page === 'string' ? req.query.page : '0', 10) || 0;
-    const rowsPerPage = parseInt(typeof req.query.rowsPerPage === 'string' ? req.query.rowsPerPage : '10', 10) || 10;
+    const rowsPerPage =
+      parseInt(typeof req.query.rowsPerPage === 'string' ? req.query.rowsPerPage : '10', 10) || 10;
     const offset = page * rowsPerPage;
-    
+
     let whereClauses = ['deleted_at is null']; // Always include the check for non-deleted records
     if (searchQuery) {
       whereClauses.push('(title LIKE ? OR content LIKE ?)');
@@ -62,22 +67,28 @@ const pbnSiteSubmissionsHandler = async (req: NextApiRequest, res: NextApiRespon
       whereClauses.push('pbn_site_submissions.client_name = ?');
       queryConfig = queryConfig ? [...queryConfig, clientName] : [clientName];
     }
+    if (clientId) {
+      whereClauses.push('pbn_site_submissions.client_id = ?');
+      queryConfig = queryConfig ? [...queryConfig, clientId] : [clientId];
+    }
     const whereStatement = whereClauses.join(' AND ');
-  
+
     query = `SELECT pbn_site_submissions.*, users.name FROM pbn_site_submissions JOIN users ON users.user_token = pbn_site_submissions.user_token WHERE ${whereStatement} ORDER BY pbn_site_submissions.id DESC LIMIT ? OFFSET ?`;
     queryConfig = queryConfig ? [...queryConfig, rowsPerPage, offset] : [rowsPerPage, offset];
 
-
-    const [rows] = await connection.query(query, queryConfig);  
+    const [rows] = await connection.query(query, queryConfig);
 
     let totalCountQuery = 'SELECT COUNT(*) as total FROM pbn_site_submissions';
     if (whereClauses.length > 0) {
       totalCountQuery += ` WHERE ${whereStatement}`;
     }
-    
+
     // Reuse queryConfig without limit and offset for total count
     const totalCountConfig = queryConfig.slice(0, -2);
-    const [totalCountRows] = await connection.query(totalCountQuery, totalCountConfig) as [RowDataPacket[], FieldPacket[]];
+    const [totalCountRows] = (await connection.query(totalCountQuery, totalCountConfig)) as [
+      RowDataPacket[],
+      FieldPacket[],
+    ];
     const totalCount = totalCountRows[0]?.total;
 
     // Close the MySQL connection
@@ -88,7 +99,7 @@ const pbnSiteSubmissionsHandler = async (req: NextApiRequest, res: NextApiRespon
   } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch data', details: error.message });
-      // Close the MySQL connection in case of an error, but only if it's still open
+    // Close the MySQL connection in case of an error, but only if it's still open
     if (connection && connection.end) {
       await connection.end();
     }

@@ -34,7 +34,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           ${client_id ? 'AND sss.client_id = ?' : ''}
         ) as post_count
         FROM superstar_sites s
-        JOIN superstar_sites_topic_mapping stm ON s.id = stm.superstar_site_id
+        JOIN superstar_sites_article_topic_mapping stm ON s.id = stm.superstar_site_id
         WHERE stm.topic_id = ?
       `;
 
