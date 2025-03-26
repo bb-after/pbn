@@ -20,6 +20,8 @@ import {
 import Autocomplete from '@mui/material/Autocomplete';
 import IndustryMappingSelector from '../../../components/IndustryMappingSelector';
 import RegionMappingSelector from '../../../components/RegionMappingSelector';
+import StyledHeader from 'components/StyledHeader';
+import LayoutContainer from 'components/LayoutContainer';
 
 interface Industry {
   industry_id: number;
@@ -176,7 +178,8 @@ const EditTopics: React.FC = () => {
   });
 
   return (
-    <Container>
+    <LayoutContainer>
+      <StyledHeader />
       <Box my={4}>
         <Typography variant="h4" gutterBottom>
           Edit Site: {site?.domain}
@@ -261,168 +264,23 @@ const EditTopics: React.FC = () => {
           </Grid>
         </Paper>
 
-        {/* Industry Mappings Section */}
+        {/* <Grid item xs={12}> */}
         <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Industry Mappings
-          </Typography>
-          <Box my={2}>
-            {loading ? (
-              <CircularProgress size={24} />
-            ) : (
-              <Autocomplete
-                multiple
-                id="industries"
-                options={industries.sort((a, b) => a.industry_name.localeCompare(b.industry_name))}
-                getOptionLabel={option => `${option.industry_name}`}
-                value={selectedIndustries}
-                onChange={(_, newValue) => setSelectedIndustries(newValue)}
-                renderInput={params => (
-                  <TextField
-                    {...params}
-                    variant="outlined"
-                    label="Select Industries"
-                    placeholder="Add industries"
-                  />
-                )}
-                renderTags={(value, getTagProps) =>
-                  value.map((option, index) => (
-                    <Chip
-                      {...getTagProps({ index })}
-                      key={option.industry_id}
-                      label={`${option.industry_name}`}
-                      sx={{
-                        backgroundColor: '#e0f7fa',
-                        m: 0.3,
-                      }}
-                    />
-                  ))
-                }
-                renderOption={(props, option) => (
-                  <li {...props}>
-                    <Typography variant="body2">
-                      <strong>#{option.industry_id}</strong> - {option.industry_name}
-                    </Typography>
-                  </li>
-                )}
-              />
-            )}
-            <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mt: 1 }}>
-              Select industries that this site specializes in. This helps match content to
-              appropriate sites.
-            </Typography>
-          </Box>
+          <Divider sx={{ my: 1 }} />
+          <IndustryMappingSelector
+            selectedIndustries={selectedIndustries}
+            onChange={setSelectedIndustries}
+            description="Select industries that this client specializes in."
+          />
         </Paper>
 
-        {/* Region Mappings Section */}
         <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Region Mappings
-          </Typography>
-          <Box my={2}>
-            {loading ? (
-              <CircularProgress size={24} />
-            ) : (
-              <Autocomplete
-                multiple
-                id="regions"
-                options={sortedRegions}
-                getOptionLabel={option => `${option.region_name}`}
-                groupBy={option => {
-                  // Transform region_type values to user-friendly group names
-                  switch (option.region_type) {
-                    case 'continent':
-                      return 'Continents';
-                    case 'country':
-                      return 'Countries';
-                    case 'us_region':
-                      return 'US Regions';
-                    case 'state':
-                      return 'States';
-                    case 'city':
-                      return 'Cities';
-                    default:
-                      return option.region_type || 'Other';
-                  }
-                }}
-                value={selectedRegions}
-                onChange={(_, newValue) => setSelectedRegions(newValue)}
-                renderInput={params => (
-                  <TextField
-                    {...params}
-                    variant="outlined"
-                    label="Select Regions"
-                    placeholder="Add regions"
-                  />
-                )}
-                renderTags={(value, getTagProps) =>
-                  value.map((option, index) => {
-                    // Create color-coded chips based on region type
-                    let chipColor;
-                    switch (option.region_type) {
-                      case 'continent':
-                        chipColor = '#e3f2fd'; // light blue
-                        break;
-                      case 'country':
-                        chipColor = '#e8f5e9'; // light green
-                        break;
-                      case 'us_region':
-                        chipColor = '#f3e5f5'; // light purple
-                        break;
-                      case 'state':
-                        chipColor = '#fff3e0'; // light orange
-                        break;
-                      case 'city':
-                        chipColor = '#fce4ec'; // light pink
-                        break;
-                      default:
-                        chipColor = '#eeeeee'; // light grey
-                    }
-
-                    return (
-                      <Chip
-                        {...getTagProps({ index })}
-                        key={option.region_id}
-                        label={`${option.region_name}`}
-                        sx={{
-                          backgroundColor: chipColor,
-                          m: 0.3,
-                        }}
-                      />
-                    );
-                  })
-                }
-                renderOption={(props, option) => (
-                  <li {...props}>
-                    <Typography variant="body2">
-                      <strong>#{option.region_id}</strong> - {option.region_name}
-                    </Typography>
-                  </li>
-                )}
-                renderGroup={params => (
-                  <li key={params.key}>
-                    <Typography
-                      variant="body1"
-                      fontWeight="bold"
-                      color="primary"
-                      sx={{
-                        p: 1,
-                        backgroundColor: '#f5f5f5',
-                        borderBottom: '1px solid #e0e0e0',
-                      }}
-                    >
-                      {params.group}
-                    </Typography>
-                    <ul style={{ padding: 0 }}>{params.children}</ul>
-                  </li>
-                )}
-              />
-            )}
-            <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mt: 1 }}>
-              Select geographic regions that this site targets. This helps match content to the
-              appropriate audience.
-            </Typography>
-          </Box>
+          <Divider sx={{ my: 1 }} />
+          <RegionMappingSelector
+            selectedRegions={selectedRegions}
+            onChange={setSelectedRegions}
+            description="Select geographic regions that this client targets."
+          />
         </Paper>
 
         <Box mt={3} mb={5} display="flex" justifyContent="space-between">
@@ -434,7 +292,7 @@ const EditTopics: React.FC = () => {
           </Button>
         </Box>
       </Box>
-    </Container>
+    </LayoutContainer>
   );
 };
 

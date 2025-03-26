@@ -159,9 +159,7 @@ const RegionMappingSelector: React.FC<RegionMappingSelectorProps> = ({
             }
             renderOption={(props, option) => (
               <li {...props}>
-                <Typography variant="body2">
-                  <strong>#{option.region_id}</strong> - {option.region_name}
-                </Typography>
+                <Typography variant="body2">{option.region_name}</Typography>
               </li>
             )}
             renderGroup={params => (

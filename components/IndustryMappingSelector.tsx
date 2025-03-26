@@ -87,9 +87,7 @@ const IndustryMappingSelector: React.FC<IndustryMappingSelectorProps> = ({
             }
             renderOption={(props, option) => (
               <li {...props}>
-                <Typography variant="body2">
-                  <strong>#{option.industry_id}</strong> - {option.industry_name}
-                </Typography>
+                <Typography variant="body2">{option.industry_name}</Typography>
               </li>
             )}
           />
