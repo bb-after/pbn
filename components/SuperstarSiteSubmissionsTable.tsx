@@ -75,6 +75,7 @@ const SuperstarSiteSubmissionsTable = () => {
   interface Client {
     client_id: number;
     client_name: string;
+    superstar_posts?: number;
   }
 
   const [users, setUsers] = useState<User[]>([]);
@@ -102,6 +103,7 @@ const SuperstarSiteSubmissionsTable = () => {
       const data = await response.json();
       setSubmissions(data.rows);
       setTotalCount(data.totalCount);
+      setClients(data.clients);
     } catch (error) {
       console.error('Error fetching submissions:', error);
     }
@@ -144,20 +146,8 @@ const SuperstarSiteSubmissionsTable = () => {
       }
     };
 
-    // Function to fetch clients
-    const fetchClients = async () => {
-      try {
-        const response = await fetch('/api/clients?active=true');
-        const data = await response.json();
-        setClients(data);
-      } catch (error) {
-        console.error('Failed to fetch clients:', error);
-      }
-    };
-
     fetchUsers();
     fetchAuthors();
-    fetchClients();
   }, []);
 
   // Search handler
@@ -297,7 +287,7 @@ const SuperstarSiteSubmissionsTable = () => {
             </MenuItem>
             {clients.map(client => (
               <MenuItem key={client.client_id} value={client.client_id}>
-                #{client.client_id} - {client.client_name}
+                {client.client_name} ({client.superstar_posts || 0})
               </MenuItem>
             ))}
           </Select>

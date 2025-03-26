@@ -148,14 +148,14 @@ const StyledHeader = () => {
       group: 'Clients',
       items: [
         {
-          text: 'Add New Client',
-          href: '/clients/new',
-          description: 'Add a new client to the system',
-        },
-        {
           text: 'View Clients',
           href: '/clients',
           description: 'View and manage your client list',
+        },
+        {
+          text: 'Add New Client',
+          href: '/clients/new',
+          description: 'Add a new client to the system',
         },
         {
           text: 'Client Mappings',

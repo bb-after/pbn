@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/router";
-import axios from "axios";
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
+import axios from 'axios';
 import {
   Typography,
   TextField,
@@ -11,8 +11,30 @@ import {
   InputLabel,
   Select,
   MenuItem,
-} from "@mui/material";
-import Autocomplete from "@mui/lab/Autocomplete";
+  CircularProgress,
+  Divider,
+  Grid,
+  Paper,
+  Chip,
+} from '@mui/material';
+import Autocomplete from '@mui/material/Autocomplete';
+import IndustryMappingSelector from '../../../components/IndustryMappingSelector';
+import RegionMappingSelector from '../../../components/RegionMappingSelector';
+import StyledHeader from 'components/StyledHeader';
+import LayoutContainer from 'components/LayoutContainer';
+
+interface Industry {
+  industry_id: number;
+  industry_name: string;
+}
+
+interface Region {
+  region_id: number;
+  region_name: string;
+  region_type: string;
+  parent_region_id: number | null;
+  sub_regions?: Region[];
+}
 
 interface SuperstarSite {
   id: number;
@@ -26,6 +48,8 @@ interface SuperstarSite {
   hosting_site_password: string;
   application_password: string;
   custom_prompt: string;
+  industries?: Industry[];
+  regions?: Region[];
 }
 
 const EditTopics: React.FC = () => {
@@ -33,29 +57,79 @@ const EditTopics: React.FC = () => {
   const { id } = router.query;
   const [site, setSite] = useState<SuperstarSite | null>(null);
   const [topics, setTopics] = useState<string[]>([]);
-  const [wpUsername, setWpUsername] = useState<string>("");
-  const [wpPassword, setWpPassword] = useState<string>("");
-  const [wpAppPassword, setWpAppPassword] = useState<string>("");
-  const [active, setActive] = useState<string>("1");
-  const [customPrompt, setCustomPrompt] = useState<string>("");
+  const [wpUsername, setWpUsername] = useState<string>('');
+  const [wpPassword, setWpPassword] = useState<string>('');
+  const [wpAppPassword, setWpAppPassword] = useState<string>('');
+  const [active, setActive] = useState<string>('1');
+  const [customPrompt, setCustomPrompt] = useState<string>('');
+
+  // For region and industry mappings
+  const [industries, setIndustries] = useState<Industry[]>([]);
+  const [regions, setRegions] = useState<Region[]>([]);
+  const [selectedIndustries, setSelectedIndustries] = useState<Industry[]>([]);
+  const [selectedRegions, setSelectedRegions] = useState<Region[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+
+  // Helper function to flatten nested regions for Autocomplete
+  const flattenRegions = (regions: Region[]): Region[] => {
+    let result: Region[] = [];
+
+    for (const region of regions) {
+      result.push(region);
+
+      if (region.sub_regions && region.sub_regions.length > 0) {
+        result = [...result, ...flattenRegions(region.sub_regions)];
+      }
+    }
+
+    return result;
+  };
+
+  // Load industries and regions data
+  useEffect(() => {
+    const fetchMappingData = async () => {
+      setLoading(true);
+      try {
+        const [industriesRes, regionsRes] = await Promise.all([
+          axios.get('/api/industries'),
+          axios.get('/api/geo-regions?with_hierarchy=true'),
+        ]);
+        setIndustries(industriesRes.data);
+        setRegions(regionsRes.data);
+      } catch (error) {
+        console.error('Error fetching mapping data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMappingData();
+  }, []);
 
   useEffect(() => {
     if (id) {
       const fetchSite = async () => {
         try {
-          const response = await axios.get<SuperstarSite>(
-            `/api/superstar-sites/${id}`
-          );
+          const response = await axios.get<SuperstarSite>(`/api/superstar-sites/${id}`);
           const siteData = response.data;
           setSite(siteData);
           setTopics(siteData.topics);
-          setWpUsername(siteData.login || "");
-          setWpPassword(siteData.hosting_site_password || "");
-          setWpAppPassword(siteData.application_password || "");
-          setActive(siteData.active || "1");
-          setCustomPrompt(siteData.custom_prompt || "");
+          setWpUsername(siteData.login || '');
+          setWpPassword(siteData.hosting_site_password || '');
+          setWpAppPassword(siteData.application_password || '');
+          setActive(siteData.active || '1');
+          setCustomPrompt(siteData.custom_prompt || '');
+
+          // Set selected industries and regions if they exist
+          if (siteData.industries) {
+            setSelectedIndustries(siteData.industries);
+          }
+
+          if (siteData.regions) {
+            setSelectedRegions(siteData.regions);
+          }
         } catch (error) {
-          console.error("Error fetching site:", error);
+          console.error('Error fetching site:', error);
         }
       };
 
@@ -72,93 +146,153 @@ const EditTopics: React.FC = () => {
         wpAppPassword,
         active,
         customPrompt,
+        // Add region and industry mappings
+        industries: selectedIndustries.map(i => i.industry_id),
+        regions: selectedRegions.map(r => r.region_id),
       });
-      router.push("/superstar-sites");
+      router.push('/superstar-sites');
     } catch (error) {
-      console.error("Error saving topics:", error);
+      console.error('Error saving site data:', error);
     }
   };
 
+  // Sort regions alphabetically within each type group
+  const sortedRegions = flattenRegions(regions).sort((a, b) => {
+    // First sort by region_type to maintain groups
+    if (a.region_type !== b.region_type) {
+      // Custom order for region types
+      const typeOrder = {
+        continent: 1,
+        country: 2,
+        us_region: 3,
+        state: 4,
+        city: 5,
+      };
+      return (
+        (typeOrder[a.region_type as keyof typeof typeOrder] || 99) -
+        (typeOrder[b.region_type as keyof typeof typeOrder] || 99)
+      );
+    }
+    // Then sort alphabetically within each type
+    return a.region_name.localeCompare(b.region_name);
+  });
+
   return (
-    <Container>
+    <LayoutContainer>
+      <StyledHeader />
       <Box my={4}>
         <Typography variant="h4" gutterBottom>
           Edit Site: {site?.domain}
         </Typography>
-        <Autocomplete
-          multiple
-          freeSolo
-          options={[]}
-          value={topics}
-          onChange={(event, newValue) => setTopics(newValue as string[])}
-          renderInput={(params) => (
-            <TextField
-              {...params}
-              variant="outlined"
-              label="Topics"
-              placeholder="Add topics"
-            />
-          )}
-        />
-        <TextField
-          variant="outlined"
-          label="WordPress Username"
-          fullWidth
-          margin="normal"
-          value={wpUsername}
-          onChange={(e) => setWpUsername(e.target.value)}
-        />
-        <TextField
-          variant="outlined"
-          label="WordPress Password"
-          type="password"
-          fullWidth
-          margin="normal"
-          value={wpPassword}
-          onChange={(e) => setWpPassword(e.target.value)}
-        />
-        <TextField
-          variant="outlined"
-          label="WordPress Application Password"
-          type="password"
-          fullWidth
-          margin="normal"
-          value={wpAppPassword}
-          onChange={(e) => setWpAppPassword(e.target.value)}
-        />
+        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Site Details
+          </Typography>
+          <Grid container spacing={3}>
+            <Grid item xs={12}>
+              <Autocomplete
+                multiple
+                freeSolo
+                options={[]}
+                value={topics}
+                onChange={(event, newValue) => setTopics(newValue as string[])}
+                renderInput={params => (
+                  <TextField
+                    {...params}
+                    variant="outlined"
+                    label="Topics"
+                    placeholder="Add topics"
+                  />
+                )}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                variant="outlined"
+                label="WordPress Username"
+                fullWidth
+                value={wpUsername}
+                onChange={e => setWpUsername(e.target.value)}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                variant="outlined"
+                label="WordPress Password"
+                type="password"
+                fullWidth
+                value={wpPassword}
+                onChange={e => setWpPassword(e.target.value)}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                variant="outlined"
+                label="WordPress Application Password"
+                type="password"
+                fullWidth
+                value={wpAppPassword}
+                onChange={e => setWpAppPassword(e.target.value)}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                variant="outlined"
+                label="Custom Prompt"
+                multiline
+                rows={4}
+                fullWidth
+                value={customPrompt}
+                onChange={e => setCustomPrompt(e.target.value)}
+                placeholder="Enter a custom prompt to override the default prompt when generating content for this site"
+                helperText="Leave empty to use the default prompt"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel id="active-label">Status</InputLabel>
+                <Select
+                  labelId="active-label"
+                  value={active}
+                  onChange={e => setActive(e.target.value as string)}
+                >
+                  <MenuItem value="1">Active</MenuItem>
+                  <MenuItem value="0">Inactive</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+        </Paper>
 
-        <TextField
-          variant="outlined"
-          label="Custom Prompt"
-          multiline
-          rows={4}
-          fullWidth
-          margin="normal"
-          value={customPrompt}
-          onChange={(e) => setCustomPrompt(e.target.value)}
-          placeholder="Enter a custom prompt to override the default prompt when generating content for this site"
-          helperText="Leave empty to use the default prompt"
-        />
+        {/* <Grid item xs={12}> */}
+        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+          <Divider sx={{ my: 1 }} />
+          <IndustryMappingSelector
+            selectedIndustries={selectedIndustries}
+            onChange={setSelectedIndustries}
+            description="Select industries that this client specializes in."
+          />
+        </Paper>
 
-        <FormControl fullWidth margin="normal">
-          <InputLabel id="active-label">Status</InputLabel>
-          <Select
-            labelId="active-label"
-            value={active}
-            onChange={(e) => setActive(e.target.value as string)}
-          >
-            <MenuItem value="1">Active</MenuItem>
-            <MenuItem value="0">Inactive</MenuItem>
-          </Select>
-        </FormControl>
+        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+          <Divider sx={{ my: 1 }} />
+          <RegionMappingSelector
+            selectedRegions={selectedRegions}
+            onChange={setSelectedRegions}
+            description="Select geographic regions that this client targets."
+          />
+        </Paper>
 
-        <Box mt={2}>
+        <Box mt={3} mb={5} display="flex" justifyContent="space-between">
+          <Button variant="outlined" onClick={() => router.push('/superstar-sites')}>
+            Cancel
+          </Button>
           <Button variant="contained" color="primary" onClick={handleSave}>
-            Save
+            Save Changes
           </Button>
         </Box>
       </Box>
-    </Container>
+    </LayoutContainer>
   );
 };
 

@@ -110,11 +110,24 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
     );
     const totalCount = totalCountRows[0]?.total;
 
+    // Get unique clients with their submission counts
+    const [clients] = await connection.execute(`
+      SELECT 
+        c.client_id,
+        c.client_name,
+        COUNT(ss.id) as superstar_posts
+      FROM clients c
+      LEFT JOIN superstar_site_submissions ss ON c.client_id = ss.client_id
+      WHERE c.is_active = 1
+      GROUP BY c.client_id, c.client_name
+      ORDER BY c.client_name ASC
+    `);
+
     // Close the MySQL connection
     await connection.end();
 
     // Send the data as a JSON response
-    res.status(200).json({ rows, totalCount });
+    res.status(200).json({ rows, totalCount, clients });
   } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch data', details: error.message });
