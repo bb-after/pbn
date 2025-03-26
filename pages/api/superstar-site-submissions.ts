@@ -77,7 +77,9 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
         sa.author_email, 
         sa.author_avatar,
         sa.wp_author_id,
-        c.client_name
+        c.client_name,
+        ss.domain as site_name,
+        ss.domain as site_domain
       FROM 
         superstar_site_submissions 
       LEFT JOIN 
@@ -86,6 +88,8 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
         superstar_authors sa ON sa.id = superstar_site_submissions.superstar_author_id
       LEFT JOIN
         clients c ON c.client_id = superstar_site_submissions.client_id
+      LEFT JOIN
+        superstar_sites ss ON ss.id = superstar_site_submissions.superstar_site_id
       WHERE 
         ${whereStatement} 
       ORDER BY 
@@ -123,11 +127,26 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
       ORDER BY c.client_name ASC
     `);
 
+    // Get site statistics for client posts
+    const [siteStats] = await connection.execute(`
+      SELECT 
+        ss.id as site_id,
+        ss.domain as site_domain,
+        COUNT(sss.id) as total_posts,
+        COUNT(DISTINCT sss.client_id) as unique_clients
+      FROM superstar_sites ss
+      LEFT JOIN superstar_site_submissions sss ON ss.id = sss.superstar_site_id
+      WHERE sss.deleted_at IS NULL
+      AND sss.client_id > 0
+      GROUP BY ss.id, ss.domain
+      ORDER BY ss.domain ASC
+    `);
+
     // Close the MySQL connection
     await connection.end();
 
     // Send the data as a JSON response
-    res.status(200).json({ rows, totalCount, clients });
+    res.status(200).json({ rows, totalCount, clients, siteStats });
   } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch data', details: error.message });
