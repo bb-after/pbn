@@ -6,9 +6,6 @@ import {
   Button,
   FormControlLabel,
   Switch,
-  Autocomplete,
-  Chip,
-  CircularProgress,
   Paper,
   DialogTitle,
   DialogContent,
@@ -16,7 +13,10 @@ import {
   Grid,
   Alert,
   Divider,
+  CircularProgress,
 } from '@mui/material';
+import IndustryMappingSelector from './IndustryMappingSelector';
+import RegionMappingSelector from './RegionMappingSelector';
 import axios from 'axios';
 
 interface Industry {
@@ -49,33 +49,11 @@ interface ClientFormProps {
 export default function ClientForm({ client, onSave, onCancel }: ClientFormProps) {
   const [clientName, setClientName] = useState('');
   const [isActive, setIsActive] = useState(true);
-  const [industries, setIndustries] = useState<Industry[]>([]);
-  const [regions, setRegions] = useState<Region[]>([]);
   const [selectedIndustries, setSelectedIndustries] = useState<Industry[]>([]);
   const [selectedRegions, setSelectedRegions] = useState<Region[]>([]);
   const [loading, setLoading] = useState(false);
-  const [loadingMappings, setLoadingMappings] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isEditMode = Boolean(client);
-
-  // Load industries and regions data
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [industriesRes, regionsRes] = await Promise.all([
-          axios.get('/api/industries'),
-          axios.get('/api/geo-regions?with_hierarchy=true'),
-        ]);
-        setIndustries(industriesRes.data);
-        setRegions(regionsRes.data);
-      } catch (error) {
-        console.error('Error fetching form data:', error);
-        setError('Failed to load form data');
-      }
-    };
-
-    fetchData();
-  }, []);
 
   // Load client data if in edit mode
   useEffect(() => {
@@ -85,7 +63,7 @@ export default function ClientForm({ client, onSave, onCancel }: ClientFormProps
 
       // Fetch client mappings
       const fetchMappings = async () => {
-        setLoadingMappings(true);
+        setLoading(true);
         try {
           const response = await axios.get(
             `/api/clients/mappings?client_id=${client.client_id}&type=all`
@@ -104,7 +82,7 @@ export default function ClientForm({ client, onSave, onCancel }: ClientFormProps
           console.error('Error fetching client mappings:', error);
           setError('Failed to load client mappings');
         } finally {
-          setLoadingMappings(false);
+          setLoading(false);
         }
       };
 
@@ -141,44 +119,6 @@ export default function ClientForm({ client, onSave, onCancel }: ClientFormProps
       setLoading(false);
     }
   };
-
-  // Helper function to flatten nested regions for Autocomplete
-  const flattenRegions = (regions: Region[]): Region[] => {
-    let result: Region[] = [];
-
-    for (const region of regions) {
-      result.push(region);
-
-      if (region.sub_regions && region.sub_regions.length > 0) {
-        result = [...result, ...flattenRegions(region.sub_regions)];
-      }
-    }
-
-    return result;
-  };
-
-  // Sort regions alphabetically within each type group
-  const sortedRegions = flattenRegions(regions).sort((a, b) => {
-    // First sort by region_type to maintain groups
-    if (a.region_type !== b.region_type) {
-      // Custom order for region types
-      const typeOrder = {
-        continent: 1,
-        country: 2,
-        us_region: 3,
-        state: 4,
-        city: 5,
-      };
-      return (
-        (typeOrder[a.region_type as keyof typeof typeOrder] || 99) -
-        (typeOrder[b.region_type as keyof typeof typeOrder] || 99)
-      );
-    }
-    // Then sort alphabetically within each type
-    return a.region_name.localeCompare(b.region_name);
-  });
-
-  const allRegionsFlat = sortedRegions;
 
   return (
     <>
@@ -221,156 +161,20 @@ export default function ClientForm({ client, onSave, onCancel }: ClientFormProps
 
             <Grid item xs={12}>
               <Divider sx={{ my: 1 }} />
-              <Typography variant="h6" gutterBottom>
-                Industry Mappings
-              </Typography>
-              {loadingMappings ? (
-                <Box display="flex" justifyContent="center" my={2}>
-                  <CircularProgress size={24} />
-                </Box>
-              ) : (
-                <Autocomplete
-                  multiple
-                  id="industries"
-                  options={industries.sort((a, b) =>
-                    a.industry_name.localeCompare(b.industry_name)
-                  )}
-                  getOptionLabel={option => `${option.industry_name}`}
-                  value={selectedIndustries}
-                  onChange={(_, newValue) => setSelectedIndustries(newValue)}
-                  renderInput={params => (
-                    <TextField
-                      {...params}
-                      variant="outlined"
-                      label="Select Industries"
-                      placeholder="Add industries"
-                    />
-                  )}
-                  renderTags={(value, getTagProps) =>
-                    value.map((option, index) => (
-                      <Chip
-                        {...getTagProps({ index })}
-                        key={option.industry_id}
-                        label={`${option.industry_name}`}
-                        sx={{
-                          backgroundColor: '#e0f7fa',
-                          m: 0.3,
-                        }}
-                      />
-                    ))
-                  }
-                  renderOption={(props, option) => (
-                    <li {...props}>
-                      <Typography variant="body2">{option.industry_name}</Typography>
-                    </li>
-                  )}
-                />
-              )}
+              <IndustryMappingSelector
+                selectedIndustries={selectedIndustries}
+                onChange={setSelectedIndustries}
+                description="Select industries that this client specializes in."
+              />
             </Grid>
 
             <Grid item xs={12}>
               <Divider sx={{ my: 1 }} />
-              <Typography variant="h6" gutterBottom>
-                Region Mappings
-              </Typography>
-              {loadingMappings ? (
-                <Box display="flex" justifyContent="center" my={2}>
-                  <CircularProgress size={24} />
-                </Box>
-              ) : (
-                <Autocomplete
-                  multiple
-                  id="regions"
-                  options={allRegionsFlat}
-                  getOptionLabel={option => `${option.region_name}`}
-                  groupBy={option => {
-                    // Transform region_type values to user-friendly group names
-                    switch (option.region_type) {
-                      case 'continent':
-                        return 'Continents';
-                      case 'country':
-                        return 'Countries';
-                      case 'us_region':
-                        return 'US Regions';
-                      case 'state':
-                        return 'States';
-                      case 'city':
-                        return 'Cities';
-                      default:
-                        return option.region_type || 'Other';
-                    }
-                  }}
-                  value={selectedRegions}
-                  onChange={(_, newValue) => setSelectedRegions(newValue)}
-                  renderInput={params => (
-                    <TextField
-                      {...params}
-                      variant="outlined"
-                      label="Select Regions"
-                      placeholder="Add regions"
-                    />
-                  )}
-                  renderTags={(value, getTagProps) =>
-                    value.map((option, index) => {
-                      // Create color-coded chips based on region type
-                      let chipColor;
-                      switch (option.region_type) {
-                        case 'continent':
-                          chipColor = '#e3f2fd'; // light blue
-                          break;
-                        case 'country':
-                          chipColor = '#e8f5e9'; // light green
-                          break;
-                        case 'us_region':
-                          chipColor = '#f3e5f5'; // light purple
-                          break;
-                        case 'state':
-                          chipColor = '#fff3e0'; // light orange
-                          break;
-                        case 'city':
-                          chipColor = '#fce4ec'; // light pink
-                          break;
-                        default:
-                          chipColor = '#eeeeee'; // light grey
-                      }
-
-                      return (
-                        <Chip
-                          {...getTagProps({ index })}
-                          key={option.region_id}
-                          label={`${option.region_name}`}
-                          sx={{
-                            backgroundColor: chipColor,
-                            m: 0.3,
-                          }}
-                        />
-                      );
-                    })
-                  }
-                  renderOption={(props, option) => (
-                    <li {...props}>
-                      <Typography variant="body2">{option.region_name}</Typography>
-                    </li>
-                  )}
-                  renderGroup={params => (
-                    <li key={params.key}>
-                      <Typography
-                        variant="body1"
-                        fontWeight="bold"
-                        color="primary"
-                        sx={{
-                          p: 1,
-                          backgroundColor: '#f5f5f5',
-                          borderBottom: '1px solid #e0e0e0',
-                        }}
-                      >
-                        {params.group}
-                      </Typography>
-                      <ul style={{ padding: 0 }}>{params.children}</ul>
-                    </li>
-                  )}
-                />
-              )}
+              <RegionMappingSelector
+                selectedRegions={selectedRegions}
+                onChange={setSelectedRegions}
+                description="Select geographic regions that this client targets."
+              />
             </Grid>
           </Grid>
         </DialogContent>

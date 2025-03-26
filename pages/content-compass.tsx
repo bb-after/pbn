@@ -35,6 +35,8 @@ import axios from 'axios';
 import { useRouter } from 'next/router';
 import debounce from 'lodash/debounce';
 import { SelectChangeEvent } from '@mui/material/Select';
+import StyledHeader from 'components/StyledHeader';
+import LayoutContainer from 'components/LayoutContainer';
 
 // Types for our data
 interface Industry {
@@ -63,6 +65,7 @@ interface Blog {
   domain: string;
   blog_id?: number;
   blog_url?: string;
+  post_count?: number;
 }
 
 interface Client {
@@ -85,6 +88,10 @@ export default function ContentCompass() {
   const [industries, setIndustries] = useState<Industry[]>([]);
   const [regions, setRegions] = useState<Region[]>([]);
   const [blogs, setBlogs] = useState<Blog[]>([]);
+
+  // Content filter state
+  const [contentFilter, setContentFilter] = useState<'all' | 'with' | 'without'>('all');
+  const [filteredBlogs, setFilteredBlogs] = useState<Blog[]>([]);
 
   // State for selected values
   const [selectedClientName, setSelectedClientName] = useState<string | null>(null);
@@ -153,6 +160,21 @@ export default function ContentCompass() {
     }
   }, [articleType, selectedTopic, selectedTargetType, selectedIndustry, selectedRegion]);
 
+  // Add effect to filter blogs
+  useEffect(() => {
+    if (!blogs) return;
+
+    let result = [...blogs];
+
+    if (contentFilter === 'with') {
+      result = result.filter(blog => blog.post_count && blog.post_count > 0);
+    } else if (contentFilter === 'without') {
+      result = result.filter(blog => !blog.post_count || blog.post_count === 0);
+    }
+
+    setFilteredBlogs(result);
+  }, [blogs, contentFilter]);
+
   // Functions to fetch data
   const fetchClientNames = async (search?: string) => {
     try {
@@ -218,7 +240,9 @@ export default function ContentCompass() {
     try {
       setLoadingBlogs(true);
       setError(null);
-      const response = await axios.get(`/api/blogs?topic_id=${topicId}`);
+      const response = await axios.get(
+        `/api/blogs?topic_id=${topicId}${selectedClientId ? `&client_id=${selectedClientId}` : ''}`
+      );
       setBlogs(response.data);
     } catch (err) {
       console.error('Failed to fetch blogs by topic:', err);
@@ -232,7 +256,9 @@ export default function ContentCompass() {
     try {
       setLoadingBlogs(true);
       setError(null);
-      const response = await axios.get(`/api/blogs?industry_id=${industryId}`);
+      const response = await axios.get(
+        `/api/blogs?industry_id=${industryId}${selectedClientId ? `&client_id=${selectedClientId}` : ''}`
+      );
       setBlogs(response.data);
     } catch (err) {
       console.error('Failed to fetch blogs by industry:', err);
@@ -246,7 +272,9 @@ export default function ContentCompass() {
     try {
       setLoadingBlogs(true);
       setError(null);
-      const response = await axios.get(`/api/blogs?region_id=${regionId}`);
+      const response = await axios.get(
+        `/api/blogs?region_id=${regionId}${selectedClientId ? `&client_id=${selectedClientId}` : ''}`
+      );
       setBlogs(response.data);
     } catch (err) {
       console.error('Failed to fetch blogs by region:', err);
@@ -476,9 +504,9 @@ export default function ContentCompass() {
             }}
           >
             <Box sx={{ p: 2, textAlign: 'center' }}>
-              <Typography variant="h6">Specific Article Topic</Typography>
+              <Typography variant="h6">Article Ideas List</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Find blogs that match a particular article topic
+                Find blogs that match an article topic id#
               </Typography>
             </Box>
           </ToggleButton>
@@ -492,7 +520,7 @@ export default function ContentCompass() {
             <Box sx={{ p: 2, textAlign: 'center' }}>
               <Typography variant="h6">General Article</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Find blogs by industry or geographic region
+                Find blogs by industry or location
               </Typography>
             </Box>
           </ToggleButton>
@@ -695,7 +723,7 @@ export default function ContentCompass() {
                   continent.sub_regions &&
                     continent.sub_regions.map(country => (
                       <MenuItem key={country.region_id} value={country.region_id} sx={{ pl: 4 }}>
-                        #{country.region_id} - {country.region_name}{' '}
+                        {country.region_name}{' '}
                         {country.blog_count && `(${country.blog_count} blogs)`}
                       </MenuItem>
                     )),
@@ -752,34 +780,65 @@ export default function ContentCompass() {
           <Typography variant="h6" gutterBottom>
             {heading}
           </Typography>
-          <Button onClick={handleBack} variant="outlined" sx={{ mt: 1 }}>
-            Back
-          </Button>
+          <Box
+            sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}
+          >
+            <Button onClick={handleBack} variant="outlined">
+              Back
+            </Button>
+
+            <Box>
+              <FormControl size="small" sx={{ minWidth: 200 }}>
+                <InputLabel>Filter Content</InputLabel>
+                <Select
+                  value={contentFilter}
+                  onChange={e => setContentFilter(e.target.value as 'all' | 'with' | 'without')}
+                  label="Filter Content"
+                >
+                  <MenuItem value="all">All Blogs ({blogs.length})</MenuItem>
+                  <MenuItem value="with">
+                    With Client Content (
+                    {blogs.filter(blog => blog.post_count && blog.post_count > 0).length})
+                  </MenuItem>
+                  <MenuItem value="without">
+                    Without Client Content (
+                    {blogs.filter(blog => !blog.post_count || blog.post_count === 0).length})
+                  </MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+          </Box>
         </Box>
 
         {loadingBlogs ? (
           <Box display="flex" justifyContent="center" mt={4}>
             <CircularProgress />
           </Box>
-        ) : blogs.length > 0 ? (
+        ) : filteredBlogs.length > 0 ? (
           <Grid container spacing={3} mt={2}>
-            {blogs.map(blog => (
+            {filteredBlogs.map(blog => (
               <Grid item xs={12} sm={6} md={4} key={blog.id || blog.blog_id}>
                 <Card>
                   <CardContent>
                     <Typography variant="h6" component="h2" gutterBottom>
                       {blog.domain}
                     </Typography>
-                    {selectedClientName && (
-                      <Box mt={1}>
+                    <Box mt={1} display="flex" flexWrap="wrap" gap={1}>
+                      {selectedClientName && (
                         <Chip
                           label={`Client: ${selectedClientName}`}
                           size="small"
                           color="primary"
                           variant="outlined"
                         />
-                      </Box>
-                    )}
+                      )}
+                      <Chip
+                        label={`${blog.post_count || 0} existing posts`}
+                        size="small"
+                        color={blog.post_count && blog.post_count > 0 ? 'success' : 'default'}
+                        variant={blog.post_count && blog.post_count > 0 ? 'filled' : 'outlined'}
+                      />
+                    </Box>
                   </CardContent>
                   <Divider />
                   <CardActions sx={{ justifyContent: 'space-between', px: 2, py: 1 }}>
@@ -815,7 +874,7 @@ export default function ContentCompass() {
           </Grid>
         ) : (
           <Typography align="center" sx={{ py: 3 }}>
-            No blogs found for the selected criteria. Please try another selection.
+            No blogs found for the selected criteria. Please try another selection or filter.
           </Typography>
         )}
 
@@ -845,33 +904,37 @@ export default function ContentCompass() {
   };
 
   return (
-    <Container maxWidth="lg">
-      <Paper elevation={3} sx={{ p: 4, mt: 8, mb: 8 }}>
-        <Typography variant="h4" align="center" gutterBottom>
-          Content Compass
-        </Typography>
-        <Typography variant="subtitle1" align="center" color="textSecondary" paragraph>
-          Navigate to the perfect content placement for your clients
-        </Typography>
+    <LayoutContainer>
+      <StyledHeader />
 
-        <Stepper activeStep={activeStep} sx={{ mt: 4, mb: 5 }}>
-          {steps.map(label => (
-            <Step key={label}>
-              <StepLabel>{label}</StepLabel>
-            </Step>
-          ))}
-        </Stepper>
+      <Container maxWidth="lg">
+        <Paper elevation={3} sx={{ p: 4, mt: 8, mb: 8 }}>
+          <Typography variant="h4" align="center" gutterBottom>
+            Content Compass
+          </Typography>
+          <Typography variant="subtitle1" align="center" color="textSecondary" paragraph>
+            Navigate to the perfect content placement for your clients
+          </Typography>
 
-        {error && (
-          <Box mt={2} mb={2}>
-            <Typography color="error" align="center">
-              {error}
-            </Typography>
-          </Box>
-        )}
+          <Stepper activeStep={activeStep} sx={{ mt: 4, mb: 5 }}>
+            {steps.map(label => (
+              <Step key={label}>
+                <StepLabel>{label}</StepLabel>
+              </Step>
+            ))}
+          </Stepper>
 
-        {getStepContent(activeStep)}
-      </Paper>
-    </Container>
+          {error && (
+            <Box mt={2} mb={2}>
+              <Typography color="error" align="center">
+                {error}
+              </Typography>
+            </Box>
+          )}
+
+          {getStepContent(activeStep)}
+        </Paper>
+      </Container>
+    </LayoutContainer>
   );
 }
