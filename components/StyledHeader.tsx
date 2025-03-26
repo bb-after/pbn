@@ -154,7 +154,7 @@ const StyledHeader = () => {
         },
         {
           text: 'Add New Client',
-          href: '/clients/new',
+          href: '/clients/add',
           description: 'Add a new client to the system',
         },
         {
