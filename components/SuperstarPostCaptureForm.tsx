@@ -1,22 +1,18 @@
-import React, { useState, useEffect } from "react";
-import {
-  TextField,
-  Button,
-  FormControl,
-  Select,
-  MenuItem,
-} from "@mui/material";
-import router from "next/router";
-import useValidateUserToken from "../hooks/useValidateUserToken";
+import React, { useState, useEffect } from 'react';
+import { TextField, Button, FormControl, Select, MenuItem } from '@mui/material';
+import router from 'next/router';
+import useValidateUserToken from '../hooks/useValidateUserToken';
+import ClientDropdown from './ClientDropdown';
 
 const SuperstarPostCaptureForm: React.FC = () => {
-  const [url, setUrl] = useState(""); // State for website URL input
-  const [client, setClient] = useState(""); // State for client name input
-  const [categories, setCategories] = useState(""); // State for client name input
+  const [url, setUrl] = useState(''); // State for website URL input
+  const [client, setClient] = useState(''); // State for client name input
+  const [clientId, setClientId] = useState<number | null>(null); // State for client ID
+  const [categories, setCategories] = useState(''); // State for categories/keywords
   const [isSubmissionSuccessful, setIsSubmissionSuccessful] = useState(false);
   const { token } = useValidateUserToken(); // Get the user token using custom hook
 
-  const [selectedUser, setSelectedUser] = useState(""); // State to hold selected user
+  const [selectedUser, setSelectedUser] = useState(''); // State to hold selected user
 
   interface User {
     name: string;
@@ -28,19 +24,17 @@ const SuperstarPostCaptureForm: React.FC = () => {
     // Function to fetch users
     const fetchUsers = async () => {
       try {
-        const response = await fetch("/api/getAllUsers");
+        const response = await fetch('/api/getAllUsers');
         const data = await response.json();
         setUsers(data.rows);
 
         // Preselect the current user based on token
-        const currentUser = data.rows.find(
-          (user: User) => user.user_token === token
-        );
+        const currentUser = data.rows.find((user: User) => user.user_token === token);
         if (currentUser) {
           setSelectedUser(currentUser.user_token); // Preselect user in dropdown
         }
       } catch (error) {
-        console.error("Failed to fetch users:", error);
+        console.error('Failed to fetch users:', error);
       }
     };
 
@@ -53,50 +47,53 @@ const SuperstarPostCaptureForm: React.FC = () => {
   };
 
   // Handle changes to the Client Name input
-  const handleClientChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setClient(event.target.value);
+  const handleClientChange = (value: string) => {
+    setClient(value);
   };
 
-  // Handle changes to the Client Name input
+  // Handle client ID changes
+  const handleClientIdChange = (id: number | null) => {
+    setClientId(id);
+  };
+
+  // Handle changes to the Categories input
   const handleCategoryChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setCategories(event.target.value);
   };
 
   // Function to submit the captured data to the backend
   const postToSuperstarSubmissions = async () => {
-    if (!url || !client || !selectedUser) {
-      alert("Please fill out all required fields.");
+    if (!url || !client || !clientId || !selectedUser) {
+      alert('Please fill out all required fields.');
       return;
     }
 
     try {
-      const response = await fetch(
-        "/api/capture-superstar-submission-by-wordpress-url",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            url, // URL of the article already posted on WordPress
-            clientName: client, // Name of the client
-            userToken: selectedUser, // Use selected user token
-            categories: categories,
-          }),
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
-      );
+      const response = await fetch('/api/capture-superstar-submission-by-wordpress-url', {
+        method: 'POST',
+        body: JSON.stringify({
+          url, // URL of the article already posted on WordPress
+          clientName: client, // Name of the client
+          clientId: clientId, // ID of the client
+          userToken: selectedUser, // Use selected user token
+          categories: categories,
+        }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
       const data = await response.json();
       if (response.ok) {
         setIsSubmissionSuccessful(true);
         alert(`Submission saved successfully!`);
-        router.push("/superstar-site-submissions"); // Redirect to submission list page
+        router.push('/superstar-site-submissions'); // Redirect to submission list page
       } else {
         alert(`Error saving submission: ${data.message}`);
       }
     } catch (error) {
-      console.error("Error saving submission:", error);
-      alert("Failed to save submission. Please try again.");
+      console.error('Error saving submission:', error);
+      alert('Failed to save submission. Please try again.');
     }
   };
 
@@ -114,15 +111,15 @@ const SuperstarPostCaptureForm: React.FC = () => {
           onChange={handleUrlChange}
         />
 
-        {/* Input for Client Name */}
-        <TextField
-          label="Client Name"
+        {/* Client Dropdown */}
+        <ClientDropdown
           value={client}
+          onChange={handleClientChange}
+          onClientIdChange={handleClientIdChange}
           fullWidth
           margin="normal"
           required
-          placeholder="Enter the Client Name"
-          onChange={handleClientChange}
+          label="Client Name"
         />
 
         <TextField
@@ -139,10 +136,10 @@ const SuperstarPostCaptureForm: React.FC = () => {
         {/* Dropdown for User Selection */}
         <Select
           value={selectedUser}
-          onChange={(e) => setSelectedUser(e.target.value)}
+          onChange={e => setSelectedUser(e.target.value)}
           displayEmpty
           required
-          inputProps={{ "aria-label": "Without label" }}
+          inputProps={{ 'aria-label': 'Without label' }}
         >
           <MenuItem value="">
             <em>Select User *</em>
@@ -162,7 +159,7 @@ const SuperstarPostCaptureForm: React.FC = () => {
         onClick={postToSuperstarSubmissions}
         variant="contained"
         color="primary"
-        disabled={!url || !client || !selectedUser} // Disable button if any field is empty
+        disabled={!url || !client || !clientId || !selectedUser} // Disable button if any field is empty
       >
         Submit
       </Button>
