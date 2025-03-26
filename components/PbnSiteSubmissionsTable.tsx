@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from 'react';
 import {
   Box,
   Button,
@@ -15,25 +15,22 @@ import {
   Select,
   MenuItem,
   TablePagination,
-} from "@mui/material";
+} from '@mui/material';
+import { useRouter } from 'next/router';
 
-const handleDeleteSubmission = async (
-  submissionId: number,
-  submissionUrl: string,
-  type: "pbn"
-) => {
+const handleDeleteSubmission = async (submissionId: number, submissionUrl: string, type: 'pbn') => {
   try {
     const response = await fetch(`/api/deleteFromWordPress`, {
-      method: "DELETE",
+      method: 'DELETE',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({ submissionId, submissionUrl, type }),
     });
 
     const data = await response.json();
     if (response.ok) {
-      alert("Submission deleted successfully!");
+      alert('Submission deleted successfully!');
       window.location.reload();
       // Refresh your submissions list or handle UI updates here
     } else {
@@ -41,16 +38,18 @@ const handleDeleteSubmission = async (
       alert(`Error deleting submission: ${data.error}`);
     }
   } catch (error) {
-    console.error("Error deleting submission:", error);
-    alert("Failed to delete submission. Please try again.");
+    console.error('Error deleting submission:', error);
+    alert('Failed to delete submission. Please try again.');
   }
 };
 
 const PbnSiteSubmissionsTable = () => {
+  const router = useRouter();
   const [submissions, setSubmissions] = useState([]);
-  const [search, setSearch] = useState(""); // new state for the search query
-  const [selectedUser, setSelectedUser] = useState("");
-  const [selectedClient, setSelectedClient] = useState("");
+  const [search, setSearch] = useState(''); // new state for the search query
+  const [selectedUser, setSelectedUser] = useState('');
+  const [selectedClient, setSelectedClient] = useState('');
+  const [selectedClientId, setSelectedClientId] = useState('');
   interface User {
     name: string;
     user_token: string; // Adjust this type based on the actual data, e.g., string, number, etc.
@@ -58,8 +57,10 @@ const PbnSiteSubmissionsTable = () => {
   }
   const [users, setUsers] = useState<User[]>([]);
   interface Client {
+    client_id: number;
     client_name: string;
-    post_count: number;
+    pbn_posts?: number;
+    is_active: number;
   }
   const [clients, setClients] = useState<Client[]>([]);
 
@@ -70,7 +71,7 @@ const PbnSiteSubmissionsTable = () => {
   const [expandedRows, setExpandedRows] = useState<ExpandedRowsType>({});
 
   const handleToggle = (id: string) => {
-    setExpandedRows((prevState) => ({
+    setExpandedRows(prevState => ({
       ...prevState,
       [id]: !prevState[id],
     }));
@@ -79,15 +80,29 @@ const PbnSiteSubmissionsTable = () => {
   const fetchData = useCallback(async () => {
     try {
       const response = await fetch(
-        `/api/pbn-site-submissions?page=${page}&rowsPerPage=${rowsPerPage}&search=${search}&userToken=${selectedUser}&clientName=${selectedClient}`
+        `/api/pbn-site-submissions?page=${page}&rowsPerPage=${rowsPerPage}&search=${search}&userToken=${selectedUser}&clientName=${selectedClient}&clientId=${selectedClientId}`
       );
       const data = await response.json();
       setSubmissions(data.rows);
       setTotalCount(data.totalCount);
     } catch (error) {
-      console.error("Error fetching submissions:", error);
+      console.error('Error fetching submissions:', error);
     }
-  }, [search, selectedUser, selectedClient, page, rowsPerPage]);
+  }, [search, selectedUser, selectedClient, selectedClientId, page, rowsPerPage]);
+
+  // Check for URL parameters on initial load
+  useEffect(() => {
+    if (router.isReady) {
+      const { clientId } = router.query;
+
+      if (clientId) {
+        setSelectedClientId(clientId as string);
+
+        // We don't need to make an additional API call here
+        // Instead, when clients are loaded, we'll find the matching client and set it
+      }
+    }
+  }, [router.isReady, router.query]);
 
   useEffect(() => {
     fetchData();
@@ -96,11 +111,11 @@ const PbnSiteSubmissionsTable = () => {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const response = await fetch("/api/getUsers");
+        const response = await fetch('/api/getUsers');
         const data = await response.json();
         setUsers(data.rows);
       } catch (error) {
-        console.error("Error fetching users:", error);
+        console.error('Error fetching users:', error);
       }
     };
     fetchUsers();
@@ -109,19 +124,51 @@ const PbnSiteSubmissionsTable = () => {
   useEffect(() => {
     const fetchClients = async () => {
       try {
-        const response = await fetch("/api/pbn-site-submissions?getClientCounts=true");
+        const response = await fetch('/api/clients?active=true&includeStats=true');
         const data = await response.json();
-        setClients(data.clients || []);
+        setClients(data || []);
+
+        // If we have a selected clientId, find the matching client and set its name
+        if (selectedClientId && data && data.length > 0) {
+          const selectedClient = data.find(
+            (client: Client) => client.client_id.toString() === selectedClientId
+          );
+          if (selectedClient) {
+            setSelectedClient(selectedClient.client_name);
+          }
+        }
       } catch (error) {
-        console.error("Error fetching clients:", error);
+        console.error('Error fetching clients:', error);
       }
     };
     fetchClients();
-  }, []);
+  }, [selectedClientId]);
 
   // Search handler
   const handleSearch = () => {
     fetchData(); // fetch data using the current search query
+  };
+
+  // Reset all filters
+  const handleResetFilters = () => {
+    setSearch('');
+    setSelectedUser('');
+    setSelectedClient('');
+    setSelectedClientId('');
+    setPage(0);
+
+    // Remove clientId from URL if it exists
+    if (router.query.clientId) {
+      const { clientId, ...restQuery } = router.query;
+      router.replace(
+        {
+          pathname: router.pathname,
+          query: restQuery,
+        },
+        undefined,
+        { shallow: true }
+      );
+    }
   };
 
   const handleChangePage = (event: unknown, newPage: number) => {
@@ -129,9 +176,7 @@ const PbnSiteSubmissionsTable = () => {
     setPage(newPage);
   };
 
-  const handleChangeRowsPerPage = (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0); // Reset page to 0 when rows per page change
   };
@@ -156,15 +201,14 @@ const PbnSiteSubmissionsTable = () => {
 
       <div
         style={{
-          padding: "2rem",
-          borderRadius: "3px",
-          margin: "2rem",
-          background: "#fff",
+          padding: '2rem',
+          borderRadius: '3px',
+          margin: '2rem',
+          background: '#fff',
         }}
       >
         <Typography variant="h5" gutterBottom>
-          <Link href="https://sales.statuscrawl.io">Portal</Link> &raquo; PBN
-          Site Submissions
+          <Link href="https://sales.statuscrawl.io">Portal</Link> &raquo; PBN Site Submissions
         </Typography>
 
         <Box mr={1}></Box>
@@ -179,9 +223,9 @@ const PbnSiteSubmissionsTable = () => {
           <Box mr={1}>
             <Select
               value={selectedUser}
-              onChange={(e) => setSelectedUser(e.target.value)}
+              onChange={e => setSelectedUser(e.target.value)}
               displayEmpty
-              inputProps={{ "aria-label": "Without label" }}
+              inputProps={{ 'aria-label': 'Without label' }}
               style={{ minWidth: '120px' }}
             >
               <MenuItem value="">
@@ -197,17 +241,30 @@ const PbnSiteSubmissionsTable = () => {
           <Box mr={1}>
             <Select
               value={selectedClient}
-              onChange={(e) => setSelectedClient(e.target.value)}
+              onChange={e => {
+                const clientName = e.target.value;
+                setSelectedClient(clientName);
+
+                // Find the client ID that matches the selected name
+                if (clientName) {
+                  const client = clients.find(c => c.client_name === clientName);
+                  if (client) {
+                    setSelectedClientId(client.client_id.toString());
+                  }
+                } else {
+                  setSelectedClientId('');
+                }
+              }}
               displayEmpty
-              inputProps={{ "aria-label": "Without label" }}
+              inputProps={{ 'aria-label': 'Without label' }}
               style={{ minWidth: '120px' }}
             >
               <MenuItem value="">
                 <em>All Clients</em>
               </MenuItem>
-              {clients.map((client, index) => (
-                <MenuItem key={index} value={client.client_name}>
-                  {client.client_name} ({client.post_count})
+              {clients.map(client => (
+                <MenuItem key={client.client_id} value={client.client_name}>
+                  {client.client_name} ({client.pbn_posts || 0})
                 </MenuItem>
               ))}
             </Select>
@@ -216,13 +273,17 @@ const PbnSiteSubmissionsTable = () => {
             <TextField
               label="Search"
               value={search}
-              onChange={(e) => setSearch(e.target.value)} // update the search query upon change
+              onChange={e => setSearch(e.target.value)} // update the search query upon change
             />
           </Box>
-          <Button onClick={handleSearch} variant="contained">
-            Search
-          </Button>{" "}
-          {/* Trigger the search */}
+          <Box display="flex" flexDirection="column">
+            <Button onClick={handleSearch} variant="contained" sx={{ mb: 1 }}>
+              Search
+            </Button>
+            <Button onClick={handleResetFilters} variant="outlined" color="secondary">
+              Reset Filters
+            </Button>
+          </Box>
         </Box>
 
         <TablePagination
@@ -255,20 +316,16 @@ const PbnSiteSubmissionsTable = () => {
                   <TableCell>{submission.title}</TableCell>
                   <TableCell>
                     {expandedRows[submission.id] ? (
-                      <div
-                        dangerouslySetInnerHTML={renderHTML(
-                          submission?.content
-                        )}
-                      />
+                      <div dangerouslySetInnerHTML={renderHTML(submission?.content)} />
                     ) : (
                       <div
                         dangerouslySetInnerHTML={renderHTML(
-                          submission?.content?.substring(0, 100) + "..."
+                          submission?.content?.substring(0, 100) + '...'
                         )}
                       />
                     )}
                     <Button onClick={() => handleToggle(submission.id)}>
-                      {expandedRows[submission.id] ? "Collapse" : "Expand"}
+                      {expandedRows[submission.id] ? 'Collapse' : 'Expand'}
                     </Button>
                   </TableCell>
                   <TableCell>{submission.name}</TableCell>
@@ -280,11 +337,7 @@ const PbnSiteSubmissionsTable = () => {
                   </TableCell>
                   <TableCell>{submission.created}</TableCell>
                   <TableCell>
-                    <Link
-                      href={submission.submission_response}
-                      underline="none"
-                      target="_blank"
-                    >
+                    <Link href={submission.submission_response} underline="none" target="_blank">
                       <Button size="small" variant="outlined" color="primary">
                         View
                       </Button>
@@ -299,11 +352,7 @@ const PbnSiteSubmissionsTable = () => {
                       variant="outlined"
                       color="error"
                       onClick={() =>
-                        handleDeleteSubmission(
-                          submission.id,
-                          submission.submission_response,
-                          "pbn"
-                        )
+                        handleDeleteSubmission(submission.id, submission.submission_response, 'pbn')
                       }
                     >
                       Delete
