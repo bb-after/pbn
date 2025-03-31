@@ -6,10 +6,6 @@ import {
   Button,
   FormControlLabel,
   Switch,
-  Paper,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Grid,
   Alert,
   Divider,
@@ -29,7 +25,6 @@ interface Region {
   region_name: string;
   region_type: string;
   parent_region_id: number | null;
-  sub_regions?: Region[];
 }
 
 interface Client {
@@ -121,75 +116,73 @@ export default function ClientForm({ client, onSave, onCancel }: ClientFormProps
   };
 
   return (
-    <>
-      <DialogTitle>{isEditMode ? 'Edit Client' : 'Add New Client'}</DialogTitle>
-      <form onSubmit={handleSubmit}>
-        <DialogContent>
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
+    <form onSubmit={handleSubmit}>
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
 
-          <Grid container spacing={3}>
-            <Grid item xs={12}>
-              <TextField
-                label="Client Name"
-                value={clientName}
-                onChange={e => setClientName(e.target.value)}
-                fullWidth
-                variant="outlined"
-                required
-                autoFocus
-              />
-            </Grid>
+      <Grid container spacing={3}>
+        <Grid item xs={12}>
+          <TextField
+            label="Client Name"
+            value={clientName}
+            onChange={e => setClientName(e.target.value)}
+            fullWidth
+            variant="outlined"
+            required
+            autoFocus
+          />
+        </Grid>
 
-            {isEditMode && (
-              <Grid item xs={12}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={isActive}
-                      onChange={e => setIsActive(e.target.checked)}
-                      color="primary"
-                    />
-                  }
-                  label="Active"
+        {isEditMode && (
+          <Grid item xs={12}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={isActive}
+                  onChange={e => setIsActive(e.target.checked)}
+                  color="primary"
                 />
-              </Grid>
-            )}
-
-            <Grid item xs={12}>
-              <Divider sx={{ my: 1 }} />
-              <IndustryMappingSelector
-                selectedIndustries={selectedIndustries}
-                onChange={setSelectedIndustries}
-                description="Select industries that this client specializes in."
-              />
-            </Grid>
-
-            <Grid item xs={12}>
-              <Divider sx={{ my: 1 }} />
-              <RegionMappingSelector
-                selectedRegions={selectedRegions}
-                onChange={setSelectedRegions}
-                description="Select geographic regions that this client targets."
-              />
-            </Grid>
+              }
+              label="Active"
+            />
           </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={onCancel}>Cancel</Button>
-          <Button
-            type="submit"
-            variant="contained"
-            color="primary"
-            disabled={loading || !clientName}
-          >
-            {loading ? <CircularProgress size={24} /> : isEditMode ? 'Update' : 'Create'}
-          </Button>
-        </DialogActions>
-      </form>
-    </>
+        )}
+
+        <Grid item xs={12}>
+          <Divider sx={{ my: 1 }} />
+          <IndustryMappingSelector
+            selectedIndustries={selectedIndustries}
+            onChange={setSelectedIndustries}
+            description="Select industries that this client specializes in."
+          />
+        </Grid>
+
+        <Grid item xs={12}>
+          <Divider sx={{ my: 1 }} />
+          <RegionMappingSelector
+            selectedRegions={selectedRegions}
+            onChange={setSelectedRegions}
+            description="Select geographic regions that this client targets."
+          />
+        </Grid>
+
+        <Grid item xs={12}>
+          <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end', mt: 2 }}>
+            <Button onClick={onCancel}>Cancel</Button>
+            <Button
+              type="submit"
+              variant="contained"
+              color="primary"
+              disabled={loading || !clientName}
+            >
+              {loading ? <CircularProgress size={24} /> : isEditMode ? 'Update' : 'Create'}
+            </Button>
+          </Box>
+        </Grid>
+      </Grid>
+    </form>
   );
 }
