@@ -1,30 +1,28 @@
-"use client";
-import { useState, useEffect } from "react";
-import ZoomBackgroundForm from "components/ZoomBackgroundForm";
-import { ZoomBackgroundDisplay } from "components/ZoomBackgroundDisplay";
-import LayoutContainer from "components/LayoutContainer";
-import StyledHeader from "components/StyledHeader";
-import useValidateUserToken from "hooks/useValidateUserToken";
-import CircularProgress from "@mui/material/CircularProgress";
-import Box from "@mui/material/Box";
-import Typography from "@mui/material/Typography";
+'use client';
+import { useState, useEffect } from 'react';
+import ZoomBackgroundForm from 'components/ZoomBackgroundForm';
+import { ZoomBackgroundDisplay } from 'components/ZoomBackgroundDisplay';
+import LayoutContainer from 'components/LayoutContainer';
+import StyledHeader from 'components/StyledHeader';
+import useValidateUserToken from 'hooks/useValidateUserToken';
+import CircularProgress from '@mui/material/CircularProgress';
+import Box from '@mui/material/Box';
+import Typography from '@mui/material/Typography';
 
-export async function generateZoomBackground(
-  formData: FormData
-): Promise<string> {
-  const response = await fetch("/api/generateZoomBackground", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+export async function generateZoomBackground(formData: FormData): Promise<string> {
+  const response = await fetch('/api/generateZoomBackground', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      company: formData.get("company"),
-      clientName: formData.get("clientName"),
-      prompt: formData.get("prompt"),
+      company: formData.get('company'),
+      clientName: formData.get('clientName'),
+      prompt: formData.get('prompt'),
     }),
   });
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || "Failed to generate background");
+    throw new Error(error.error || 'Failed to generate background');
   }
 
   const data = await response.json();
@@ -37,12 +35,7 @@ export default function Home() {
 
   if (isLoading) {
     return (
-      <Box
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-        height="100vh"
-      >
+      <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
         <CircularProgress />
       </Box>
     );
@@ -73,10 +66,10 @@ export default function Home() {
             User token not found
           </Typography>
           <Typography variant="body1">
-            Please re-log in via{" "}
-            <a href="https://sales.statuscrawl.io" style={{ color: "blue" }}>
+            Please re-log in via{' '}
+            <a href="https://sales.statuscrawl.io" style={{ color: 'blue' }}>
               sales.statuscrawl.io
-            </a>{" "}
+            </a>{' '}
             and try again.
           </Typography>
         </Box>
