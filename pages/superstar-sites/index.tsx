@@ -27,8 +27,8 @@ import { styled } from '@mui/system';
 import LayoutContainer from 'components/LayoutContainer';
 import StyledHeader from 'components/StyledHeader';
 import useValidateUserToken from 'hooks/useValidateUserToken';
-import { handleWPLogin } from '../utils/handle-wp-login';
-import { colors } from '../utils/colors';
+import { handleWPLogin } from '../../utils/handle-wp-login';
+import { colors } from '../../utils/colors';
 import debounce from 'lodash/debounce';
 
 interface ClientPostInfo {

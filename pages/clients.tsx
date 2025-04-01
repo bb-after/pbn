@@ -96,8 +96,6 @@ export default function ClientsPage() {
   const [orderBy, setOrderBy] = useState<keyof Client>('client_name');
   const [searchTerm, setSearchTerm] = useState('');
   const [showActiveOnly, setShowActiveOnly] = useState(true);
-  const [openDialog, setOpenDialog] = useState(false);
-  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [mergingClient, setMergingClient] = useState<Client | null>(null);
   const [targetClientId, setTargetClientId] = useState<number | ''>('');
 
@@ -176,16 +174,6 @@ export default function ClientsPage() {
     setSearchTerm('');
   };
 
-  const handleAddClient = () => {
-    setSelectedClient(null);
-    setOpenDialog(true);
-  };
-
-  const handleEditClient = (client: Client) => {
-    setSelectedClient(client);
-    setOpenDialog(true);
-  };
-
   const handleDeleteClient = async (client: Client) => {
     if (confirm(`Are you sure you want to delete or deactivate client "${client.client_name}"?`)) {
       try {
@@ -196,15 +184,6 @@ export default function ClientsPage() {
         alert('An error occurred while deleting the client.');
       }
     }
-  };
-
-  const handleCloseDialog = () => {
-    setOpenDialog(false);
-  };
-
-  const handleSaveClient = () => {
-    setOpenDialog(false);
-    fetchClients();
   };
 
   const handleMergeClick = (client: Client) => {
@@ -269,14 +248,11 @@ export default function ClientsPage() {
         <Paper elevation={3} sx={{ p: 3, mt: 3 }}>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
             <Typography variant="h5">Client Management</Typography>
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<AddIcon />}
-              onClick={handleAddClient}
-            >
-              Add Client
-            </Button>
+            <Link href="/clients/new" passHref>
+              <Button variant="contained" color="primary" startIcon={<AddIcon />} component="a">
+                Add Client
+              </Button>
+            </Link>
           </Box>
 
           <Box mb={3}>
@@ -472,7 +448,7 @@ export default function ClientsPage() {
                             <IconButton
                               size="small"
                               color="primary"
-                              onClick={() => handleEditClient(client)}
+                              onClick={() => router.push(`/clients/edit/${client.client_id}`)}
                             >
                               <EditIcon />
                             </IconButton>
@@ -511,15 +487,6 @@ export default function ClientsPage() {
           )}
         </Paper>
       </Container>
-
-      {/* Client Edit Dialog */}
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
-        <ClientForm
-          client={selectedClient}
-          onSave={handleSaveClient}
-          onCancel={handleCloseDialog}
-        />
-      </Dialog>
 
       {/* Client Merge Dialog */}
       <Dialog open={Boolean(mergingClient)} onClose={handleMergeClose} maxWidth="sm" fullWidth>
