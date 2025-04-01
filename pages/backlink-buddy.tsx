@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Container,
   Paper,
@@ -18,6 +18,13 @@ import {
   CardContent,
   CardActions,
   Divider,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
+  FormControl,
+  FormLabel,
+  Autocomplete,
+  CircularProgress,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -48,7 +55,9 @@ const quillModules = {
 const quillFormats = ['header', 'bold', 'italic', 'underline', 'list', 'bullet', 'link'];
 
 interface BacklinkFormData {
+  urlType: 'existing' | 'custom';
   url: string;
+  selectedArticleId: number | null;
   pbnCount: number;
   keywords: string[];
   clientName: string;
@@ -61,6 +70,14 @@ interface ArticlePreview {
   isEditing: boolean;
 }
 
+interface SuperstarArticle {
+  id: number;
+  title: string;
+  url: string;
+  domain: string;
+  display: string;
+}
+
 const steps = ['Enter Details', 'Review Articles', 'Publish'];
 
 export default function BacklinkBuddyPage() {
@@ -68,7 +85,9 @@ export default function BacklinkBuddyPage() {
   const { isValidUser } = useValidateUserToken();
   const [activeStep, setActiveStep] = useState(0);
   const [formData, setFormData] = useState<BacklinkFormData>({
+    urlType: 'existing',
     url: '',
+    selectedArticleId: null,
     pbnCount: 1,
     keywords: [],
     clientName: '',
@@ -79,6 +98,77 @@ export default function BacklinkBuddyPage() {
   const [submitting, setSubmitting] = useState(false);
   const [articlePreviews, setArticlePreviews] = useState<ArticlePreview[]>([]);
   const [generating, setGenerating] = useState(false);
+  const [superstarArticles, setSuperstarArticles] = useState<SuperstarArticle[]>([]);
+  const [loadingArticles, setLoadingArticles] = useState(false);
+  const [selectedArticle, setSelectedArticle] = useState<SuperstarArticle | null>(null);
+  const [articleSearchInput, setArticleSearchInput] = useState('');
+
+  // Fetch superstar articles when client changes
+  useEffect(() => {
+    if (formData.clientId) {
+      fetchSuperstarArticles(formData.clientId);
+      // Clear selected article when client changes
+      setSelectedArticle(null);
+      // Reset URL if in "existing" mode
+      if (formData.urlType === 'existing') {
+        setFormData(prev => ({
+          ...prev,
+          url: '',
+          selectedArticleId: null,
+        }));
+      }
+    } else {
+      setSuperstarArticles([]);
+      setSelectedArticle(null);
+    }
+  }, [formData.clientId]);
+
+  // Update URL when selected article changes
+  useEffect(() => {
+    if (selectedArticle) {
+      setFormData(prev => ({
+        ...prev,
+        url: selectedArticle.url,
+        selectedArticleId: selectedArticle.id,
+      }));
+    }
+  }, [selectedArticle]);
+
+  // Handle URL type change
+  const handleUrlTypeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newUrlType = e.target.value as 'existing' | 'custom';
+
+    // Reset URL and selected article when switching types
+    if (newUrlType === 'existing') {
+      setFormData(prev => ({
+        ...prev,
+        urlType: newUrlType,
+        url: selectedArticle?.url || '',
+        selectedArticleId: selectedArticle?.id || null,
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        urlType: newUrlType,
+        selectedArticleId: null,
+      }));
+    }
+  };
+
+  const fetchSuperstarArticles = async (clientId: number) => {
+    setLoadingArticles(true);
+    try {
+      const response = await axios.get(
+        `/api/superstar-articles/by-client?clientId=${clientId}&search=${articleSearchInput}`
+      );
+      setSuperstarArticles(response.data);
+    } catch (error) {
+      console.error('Error fetching superstar articles:', error);
+      setSuperstarArticles([]);
+    } finally {
+      setLoadingArticles(false);
+    }
+  };
 
   const handleAddKeyword = () => {
     if (currentKeyword.trim() && !formData.keywords.includes(currentKeyword.trim())) {
@@ -97,13 +187,40 @@ export default function BacklinkBuddyPage() {
     }));
   };
 
+  // Validate form before proceeding
+  const validateForm = (): boolean => {
+    // Check client selection
+    if (!formData.clientId) {
+      setError('Please select a client');
+      return false;
+    }
+
+    // Check URL based on type
+    if (formData.urlType === 'existing' && !selectedArticle) {
+      setError('Please select a Superstar article');
+      return false;
+    } else if (formData.urlType === 'custom' && (!formData.url || !formData.url.trim())) {
+      setError('Please enter a valid URL');
+      return false;
+    }
+
+    // Check keywords
+    if (formData.keywords.length === 0) {
+      setError('Please add at least one keyword');
+      return false;
+    }
+
+    // All checks passed
+    return true;
+  };
+
   const handleNext = async () => {
     if (activeStep === 0) {
-      // Validate inputs
-      if (!formData.url || !formData.clientId || formData.keywords.length === 0) {
-        setError('Please fill in all required fields');
+      // Validate inputs using the new validation function
+      if (!validateForm()) {
         return;
       }
+
       setError(null);
       setGenerating(true);
 
@@ -191,15 +308,83 @@ export default function BacklinkBuddyPage() {
       case 0:
         return (
           <Stack spacing={3}>
-            <TextField
-              label="URL to Backlink"
-              value={formData.url}
-              onChange={e => setFormData(prev => ({ ...prev, url: e.target.value }))}
+            <ClientDropdown
+              value={formData.clientName}
+              onChange={newValue => setFormData(prev => ({ ...prev, clientName: newValue }))}
+              onClientIdChange={newClientId => {
+                setFormData(prev => ({ ...prev, clientId: newClientId }));
+                setLoadingArticles(true); // Show loading immediately on client change
+              }}
               fullWidth
               required
-              type="url"
-              placeholder="https://example.com/page-to-link-to"
+              margin="normal"
+              variant="outlined"
             />
+
+            <FormControl component="fieldset">
+              <FormLabel component="legend">URL Source</FormLabel>
+              <RadioGroup
+                row
+                name="urlType"
+                value={formData.urlType}
+                onChange={handleUrlTypeChange}
+              >
+                <FormControlLabel
+                  value="existing"
+                  control={<Radio />}
+                  label="Existing Superstar Article"
+                />
+                <FormControlLabel value="custom" control={<Radio />} label="Custom URL" />
+              </RadioGroup>
+            </FormControl>
+
+            {formData.urlType === 'existing' ? (
+              <Autocomplete
+                id="superstar-article-select"
+                options={superstarArticles}
+                getOptionLabel={option => option.display}
+                value={selectedArticle}
+                onChange={(_, newValue) => setSelectedArticle(newValue)}
+                onInputChange={(_, newInputValue) => {
+                  setArticleSearchInput(newInputValue);
+                  if (formData.clientId) {
+                    fetchSuperstarArticles(formData.clientId);
+                  }
+                }}
+                loading={loadingArticles}
+                loadingText="Loading articles..."
+                renderInput={params => (
+                  <TextField
+                    {...params}
+                    label="Select Superstar Article"
+                    variant="outlined"
+                    fullWidth
+                    required
+                    InputProps={{
+                      ...params.InputProps,
+                      endAdornment: (
+                        <>
+                          {loadingArticles ? <CircularProgress color="inherit" size={20} /> : null}
+                          {params.InputProps.endAdornment}
+                        </>
+                      ),
+                    }}
+                  />
+                )}
+                disabled={!formData.clientId}
+                noOptionsText={formData.clientId ? 'No articles found' : 'Select a client first'}
+              />
+            ) : (
+              <TextField
+                label="Custom URL to Backlink"
+                value={formData.url}
+                onChange={e => setFormData(prev => ({ ...prev, url: e.target.value }))}
+                fullWidth
+                required
+                type="url"
+                placeholder="https://example.com/page-to-link-to"
+              />
+            )}
 
             <TextField
               label="Number of PBN Articles"
@@ -250,18 +435,6 @@ export default function BacklinkBuddyPage() {
                 ))}
               </Box>
             </Box>
-
-            <ClientDropdown
-              value={formData.clientName}
-              onChange={newValue => setFormData(prev => ({ ...prev, clientName: newValue }))}
-              onClientIdChange={newClientId =>
-                setFormData(prev => ({ ...prev, clientId: newClientId }))
-              }
-              fullWidth
-              required
-              margin="normal"
-              variant="outlined"
-            />
           </Stack>
         );
 
@@ -379,15 +552,15 @@ export default function BacklinkBuddyPage() {
           </Alert>
         ) : (
           <Paper sx={{ p: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 4 }}>
-              <Typography variant="h5" component="h1" sx={{ flexGrow: 1 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 4 }}>
+              <Typography variant="h4" component="h1" sx={{ mb: 3, textAlign: 'center' }}>
                 Backlink Buddy
               </Typography>
-              <Box sx={{ height: 50, width: 120, position: 'relative' }}>
+              <Box sx={{ height: 120, width: 'auto', position: 'relative', mb: 2 }}>
                 <img
-                  src="/backlink-buddy-logo.png"
+                  src="/images/backlink-buddy-logo.png"
                   alt="Backlink Buddy Logo"
-                  style={{ height: '100%', objectFit: 'contain' }}
+                  style={{ height: '100%', maxWidth: '300px', objectFit: 'contain' }}
                 />
               </Box>
             </Box>

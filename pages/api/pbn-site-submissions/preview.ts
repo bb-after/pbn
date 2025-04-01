@@ -94,12 +94,13 @@ You are an expert content writer tasked with creating a short, engaging blog pos
       sourceUrl: '',
       sourceContent: '',
       useSourceContent: false,
-      engine: 'gpt-4', // Or your preferred engine
+      engine: 'claude-3-7-sonnet-20250219', // Or your preferred engine
       language: 'English',
       backlinks: [], // Let the prompt handle links now
       tone: [], // Tone defined in the prompt
       otherInstructions: detailedPrompt,
-      temperature: 0.7, // Adjust temperature as needed for creativity/consistency
+      temperature: 0.7, // Adjust temperature as needed for creativity/consistency,
+      customPrompt: detailedPrompt, // Add this property to override the default prompt
     });
 
     if (!aiResponseString) {
@@ -110,19 +111,50 @@ You are an expert content writer tasked with creating a short, engaging blog pos
     let title = 'Generated Article Preview';
     let content = '<p>Error: Could not parse AI response.</p>';
     try {
-      // Attempt to find JSON within the response, handling potential markdown code blocks
-      const jsonMatch = aiResponseString.match(/```json\s*([\s\S]*?)\s*```|({[\s\S]*})/);
-      if (!jsonMatch || (!jsonMatch[1] && !jsonMatch[2])) {
-        throw new Error('No valid JSON object found in AI response.');
-      }
-      const jsonString = jsonMatch[1] || jsonMatch[2]; // Get the content inside ```json ... ``` or the assumed JSON object
-      const parsedResponse = JSON.parse(jsonString);
+      // First, clean any control characters that might be in the response
+      const cleanedResponse = aiResponseString.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
 
-      if (typeof parsedResponse.title === 'string' && typeof parsedResponse.content === 'string') {
-        title = parsedResponse.title.trim();
-        content = parsedResponse.content.trim();
-      } else {
-        throw new Error('Parsed JSON does not contain valid title and content strings.');
+      // Try parsing as direct JSON first
+      try {
+        const directJson = JSON.parse(cleanedResponse);
+        if (typeof directJson.title === 'string' && typeof directJson.content === 'string') {
+          title = directJson.title.trim();
+          content = directJson.content.trim();
+          console.log('Successfully parsed direct JSON response');
+          // We got valid JSON, skip the regex matching
+        } else {
+          throw new Error(
+            'Direct JSON parse succeeded but did not contain valid title and content'
+          );
+        }
+      } catch (directJsonError: any) {
+        console.log('Direct JSON parse failed, trying regex extraction:', directJsonError.message);
+
+        // If direct parsing fails, try to extract JSON from markdown code blocks or just find JSON-like structure
+        const jsonMatch = cleanedResponse.match(/```(?:json)?\s*([\s\S]*?)\s*```|({[\s\S]*})/);
+        if (!jsonMatch || (!jsonMatch[1] && !jsonMatch[2])) {
+          throw new Error('No valid JSON object found in AI response.');
+        }
+
+        const jsonString = jsonMatch[1] || jsonMatch[2]; // Get content inside ```json ... ``` or the assumed JSON object
+
+        // Clean the extracted JSON string
+        const cleanedJsonString = jsonString
+          .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove control characters
+          .replace(/\\'/g, "'") // Handle escaped single quotes
+          .replace(/\t/g, ' '); // Replace tabs with spaces
+
+        const parsedResponse = JSON.parse(cleanedJsonString);
+
+        if (
+          typeof parsedResponse.title === 'string' &&
+          typeof parsedResponse.content === 'string'
+        ) {
+          title = parsedResponse.title.trim();
+          content = parsedResponse.content.trim();
+        } else {
+          throw new Error('Parsed JSON does not contain valid title and content strings.');
+        }
       }
     } catch (parseError: any) {
       console.error('Error parsing AI JSON response:', parseError);

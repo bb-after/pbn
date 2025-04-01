@@ -20,9 +20,7 @@ export async function getClientNameFromTranscript(transcript: string): Promise<s
   try {
     const apiKey = getAnthropicApiKey();
     const promptMessage = `Given the following transcript, identify and return only the client's name. If you can't determine a specific client name, return "Uncategorized".  Format the client name in bold: **Client Name**.\n\nTranscript:\n${transcript}\n\n`;
-    const messages = [
-      { role: 'user', content: promptMessage },
-    ];
+    const messages = [{ role: 'user', content: promptMessage }];
     const response = await axios.post(
       'https://api.anthropic.com/v1/messages',
       {
@@ -41,8 +39,8 @@ export async function getClientNameFromTranscript(transcript: string): Promise<s
 
     console.log('Anthropic API Response:', response.data);
     const clientName = response.data.content[0].text.trim();
-    const match = clientName.match(/\*\*(.*?)\*\*/); 
-    return match ? match[1] : "Uncategorized";
+    const match = clientName.match(/\*\*(.*?)\*\*/);
+    return match ? match[1] : 'Uncategorized';
   } catch (error: any) {
     console.error('Anthropic API Error:', error.response?.data || error.message || error);
     throw new Error('Failed to fetch response from Anthropic API.');
@@ -69,7 +67,7 @@ const getOpenAIClient = (() => {
 })();
 
 // Function to Trim Keywords
-const trimKeywords = (keywords: string[]) => keywords.map((keyword) => keyword.trim());
+const trimKeywords = (keywords: string[]) => keywords.map(keyword => keyword.trim());
 
 // Content Trimming for Token Limit
 const trimContentToFitTokenLimit = (contentArray: any[], maxTokens: number) => {
@@ -100,15 +98,25 @@ export const callOpenAI = async (inputData: any) => {
 
   const { engine = 'gpt-4o-mini', sourceContent = '', sourceUrl } = inputData;
 
-  const keywords = Array.isArray(inputData.keywords) ? inputData.keywords : [inputData.keywords];
-  const keywordsToExclude = Array.isArray(inputData.keywordsToExclude) ? inputData.keywordsToExclude : [inputData.keywordsToExclude];
-
-  const promptMessage = `Write an article approximately ${inputData.wordCount} words long, incorporating these keywords: "${keywords.join(', ')}". Avoid: "${keywordsToExclude.join(', ')}". Use a ${inputData.tone} tone.`;
+  // Use customPrompt if provided, otherwise construct the default prompt
+  let promptMessage;
+  if (inputData.customPrompt) {
+    promptMessage = inputData.customPrompt;
+  } else {
+    const keywords = Array.isArray(inputData.keywords) ? inputData.keywords : [inputData.keywords];
+    const keywordsToExclude = Array.isArray(inputData.keywordsToExclude)
+      ? inputData.keywordsToExclude
+      : [inputData.keywordsToExclude];
+    promptMessage = `Write an article approximately ${inputData.wordCount} words long, incorporating these keywords: "${keywords.join(', ')}". Avoid: "${keywordsToExclude.join(', ')}". Use a ${inputData.tone} tone.`;
+  }
 
   if (engine === 'gpt-4o-mini' || engine === 'gpt-4') {
     const gptMessage = trimContentToFitTokenLimit(
       [
-        { role: 'system', content: `Write as a professional SEO expert fluent in ${inputData.language}.` },
+        {
+          role: 'system',
+          content: `Write as a professional SEO expert fluent in ${inputData.language}.`,
+        },
         { role: 'user', content: promptMessage },
       ],
       maxTokens
@@ -132,9 +140,7 @@ export const callOpenAI = async (inputData: any) => {
     const anthropicApiKey = validateAnthropicKey();
     try {
       const apiKey = getAnthropicApiKey();
-      const messages = [
-        { role: 'user', content: promptMessage },
-      ];
+      const messages = [{ role: 'user', content: promptMessage }];
       const response = await axios.post(
         'https://api.anthropic.com/v1/messages',
         {
@@ -150,14 +156,13 @@ export const callOpenAI = async (inputData: any) => {
           },
         }
       );
-  
+
       console.log('Anthropic API Response:', response.data);
       return response.data.content[0].text;
     } catch (error: any) {
       console.error('Anthropic API Error:', error.response?.data || error.message || error);
       throw new Error('Failed to fetch response from Anthropic API.');
     }
-  
   }
 
   throw new Error(`Unsupported AI engine: ${engine}`);
@@ -176,10 +181,13 @@ export const callOpenAIToRewriteArticle = async (content: string, inputData: any
   const { engine = 'gpt-4o-mini' } = inputData;
 
   if (engine === 'gpt-4o-mini' || engine === 'gpt-4') {
-    const gptMessage = trimContentToFitTokenLimit([
-      { role: 'system', content: 'Act as a high-level SEO expert and copywriter.' },
-      { role: 'user', content: promptMessage },
-    ], maxTokens);
+    const gptMessage = trimContentToFitTokenLimit(
+      [
+        { role: 'system', content: 'Act as a high-level SEO expert and copywriter.' },
+        { role: 'user', content: promptMessage },
+      ],
+      maxTokens
+    );
 
     try {
       const openai = getOpenAIClient();
@@ -197,9 +205,7 @@ export const callOpenAIToRewriteArticle = async (content: string, inputData: any
     }
   } else if (engine.match(/claude-/)) {
     const anthropicApiKey = getAnthropicApiKey();
-    const messages = [
-      { role: 'user', content: promptMessage },
-    ];
+    const messages = [{ role: 'user', content: promptMessage }];
 
     try {
       const response = await axios.post(
@@ -229,10 +235,9 @@ export const callOpenAIToRewriteArticle = async (content: string, inputData: any
   }
 };
 
-
 export const bulkReplaceLinks = (content: string): string => {
   if (!content || typeof content !== 'string') {
-    console.error("Invalid content provided.");
+    console.error('Invalid content provided.');
     return content;
   }
 
@@ -247,20 +252,25 @@ export const bulkReplaceLinks = (content: string): string => {
   return updatedContent;
 };
 
-
 // Insert Backlinks
-export const insertBacklinks = async (backlinkValues: string[], openAIResponse: string): Promise<string> => {
+export const insertBacklinks = async (
+  backlinkValues: string[],
+  openAIResponse: string
+): Promise<string> => {
   if (backlinkValues.length < 1) {
     console.log('No backlinks provided. Returning original response.');
-    return openAIResponse || "";
+    return openAIResponse || '';
   }
 
   const prompt = `Add the following backlinks into the content: ${backlinkValues.join(', ')}`;
 
-  const gptMessage = trimContentToFitTokenLimit([
-    { role: 'user', content: openAIResponse },
-    { role: 'user', content: prompt },
-  ], maxTokens);
+  const gptMessage = trimContentToFitTokenLimit(
+    [
+      { role: 'user', content: openAIResponse },
+      { role: 'user', content: prompt },
+    ],
+    maxTokens
+  );
 
   try {
     const openai = getOpenAIClient();
@@ -279,10 +289,9 @@ export const insertBacklinks = async (backlinkValues: string[], openAIResponse: 
     return hyperLinkReplacementText;
   } catch (error: any) {
     console.error('OpenAI API Error:', error.message || error);
-    return openAIResponse || "";
+    return openAIResponse || '';
   }
 };
-
 
 // Parse Title from Article
 export const parseTitleFromArticle = (input: string): string => {
@@ -303,36 +312,37 @@ export const callOpenAISuperstarVersion = async (inputData: any) => {
   var initialGptMessage = inputData.promptMessage;
 
   const gptMessage = trimContentToFitTokenLimit(initialGptMessage, maxTokens);
-  console.log('.....',gptMessage);
+  console.log('.....', gptMessage);
   try {
-      const openai = getOpenAIClient();
-      const GPTRequest = async (message: any) => {
-          const response = await openai.chat.completions
-          .create({
-              model: modelType,
-              temperature: 0.8,
-              messages: message,
-          });
+    const openai = getOpenAIClient();
+    const GPTRequest = async (message: any) => {
+      const response = await openai.chat.completions.create({
+        model: modelType,
+        temperature: 0.8,
+        messages: message,
+      });
 
-          return response;
-      };
+      return response;
+    };
 
-      const response = GPTRequest(gptMessage);
-      const content = (await response).choices[0].message.content;
+    const response = GPTRequest(gptMessage);
+    const content = (await response).choices[0].message.content;
 
-      // Second request to generate SEO-friendly blog title
-      const seoTitleMessage = [
-          { role: 'system', content: 'You are an assistant that generates SEO-friendly blog titles.' },
-          { role: 'user', content: `Generate an SEO-friendly blog title for the following content: ${content}` },
-      ];
+    // Second request to generate SEO-friendly blog title
+    const seoTitleMessage = [
+      { role: 'system', content: 'You are an assistant that generates SEO-friendly blog titles.' },
+      {
+        role: 'user',
+        content: `Generate an SEO-friendly blog title for the following content: ${content}`,
+      },
+    ];
 
-      const titleResponse = await GPTRequest(seoTitleMessage);
-      const seoTitle = titleResponse.choices[0].message.content;
+    const titleResponse = await GPTRequest(seoTitleMessage);
+    const seoTitle = titleResponse.choices[0].message.content;
 
-      return { content, seoTitle };
-
+    return { content, seoTitle };
   } catch (error) {
-      console.error('OpenAI API Error:', error);
-      throw new Error('Failed to fetch response from OpenAI API.');
+    console.error('OpenAI API Error:', error);
+    throw new Error('Failed to fetch response from OpenAI API.');
   }
 };
