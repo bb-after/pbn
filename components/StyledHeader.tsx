@@ -173,6 +173,11 @@ const StyledHeader = () => {
       group: 'Other Tools',
       items: [
         {
+          text: 'Backlink Buddy',
+          href: '/backlink-buddy',
+          description: 'Create multiple PBN articles with targeted backlinks',
+        },
+        {
           text: 'Wiki Scraper',
           href: '/company-info',
           description: 'Extract company information from Wikipedia',
