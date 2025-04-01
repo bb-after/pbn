@@ -20,18 +20,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     connection = await mysql.createConnection(dbConfig);
 
-    // Fetch all industries
+    // Fetch all regions
     const [rows] = await connection.execute(
-      `SELECT industry_id, industry_name 
-       FROM industries
-       ORDER BY industry_name ASC`
+      `SELECT region_id, region_name, region_type, parent_region_id
+       FROM geo_regions
+       ORDER BY region_name ASC`
     );
 
     return res.status(200).json(rows);
   } catch (error: any) {
-    console.error('Error fetching industries:', error);
+    console.error('Error fetching regions:', error);
     return res.status(500).json({
-      error: error.message || 'Failed to fetch industries',
+      error: error.message || 'Failed to fetch regions',
     });
   } finally {
     if (connection) {

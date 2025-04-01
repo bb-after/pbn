@@ -32,10 +32,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 }
 
 async function getClients(req: NextApiRequest, res: NextApiResponse, connection: mysql.Connection) {
-  const { search, active, includeStats } = req.query;
+  const { search, active, includeStats, industryId, regionId } = req.query;
 
+  // Main client query
   let query = `
-    SELECT c.client_id, c.client_name, c.is_active, c.created_at, c.updated_at
+    SELECT 
+      c.client_id, 
+      c.client_name, 
+      c.is_active, 
+      c.created_at, 
+      c.updated_at
   `;
 
   if (includeStats === 'true') {
@@ -47,6 +53,16 @@ async function getClients(req: NextApiRequest, res: NextApiResponse, connection:
 
   query += ` FROM clients c `;
 
+  // Add joins for filtering by industry or region
+  if (industryId) {
+    query += ` JOIN clients_industry_mapping cim ON c.client_id = cim.client_id `;
+  }
+
+  if (regionId) {
+    query += ` JOIN clients_region_mapping crm ON c.client_id = crm.client_id `;
+  }
+
+  // Left joins for stats
   if (includeStats === 'true') {
     query += `
       LEFT JOIN superstar_site_submissions ss ON c.client_id = ss.client_id
@@ -55,15 +71,29 @@ async function getClients(req: NextApiRequest, res: NextApiResponse, connection:
   }
 
   let whereConditions = [];
+  const params = [];
 
   if (search) {
     whereConditions.push(`c.client_name LIKE ?`);
+    params.push(`%${search}%`);
   }
 
   if (active === 'true') {
     whereConditions.push(`c.is_active = 1`);
   } else if (active === 'false') {
     whereConditions.push(`c.is_active = 0`);
+  }
+
+  // Add industry filter
+  if (industryId) {
+    whereConditions.push(`cim.industry_id = ?`);
+    params.push(industryId);
+  }
+
+  // Add region filter
+  if (regionId) {
+    whereConditions.push(`crm.region_id = ?`);
+    params.push(regionId);
   }
 
   if (whereConditions.length > 0) {
@@ -76,13 +106,40 @@ async function getClients(req: NextApiRequest, res: NextApiResponse, connection:
 
   query += ` ORDER BY c.client_name ASC`;
 
-  const params = [];
-  if (search) {
-    params.push(`%${search}%`);
-  }
-
+  // Execute the main client query
   const [rows] = await connection.execute(query, params);
-  return res.status(200).json(rows);
+  const clients = Array.isArray(rows) ? rows : [];
+
+  // Fetch industries and regions for each client
+  const clientsWithMappings = await Promise.all(
+    clients.map(async (client: any) => {
+      // Get industries
+      const [industryRows] = await connection.execute<mysql.RowDataPacket[]>(
+        `SELECT i.industry_id, i.industry_name
+         FROM clients_industry_mapping cim
+         JOIN industries i ON cim.industry_id = i.industry_id
+         WHERE cim.client_id = ?`,
+        [client.client_id]
+      );
+
+      // Get regions
+      const [regionRows] = await connection.execute<mysql.RowDataPacket[]>(
+        `SELECT r.region_id, r.region_name, r.region_type
+         FROM clients_region_mapping crm
+         JOIN geo_regions r ON crm.region_id = r.region_id
+         WHERE crm.client_id = ?`,
+        [client.client_id]
+      );
+
+      return {
+        ...client,
+        industries: industryRows,
+        regions: regionRows,
+      };
+    })
+  );
+
+  return res.status(200).json(clientsWithMappings);
 }
 
 async function createClient(
