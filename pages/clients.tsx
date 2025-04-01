@@ -39,7 +39,6 @@ import axios from 'axios';
 import { useRouter } from 'next/router';
 import LayoutContainer from '../components/LayoutContainer';
 import StyledHeader from '../components/StyledHeader';
-import ClientForm from '../components/ClientForm';
 import useValidateUserToken from 'hooks/useValidateUserToken';
 import Link from 'next/link';
 
