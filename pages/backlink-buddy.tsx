@@ -29,7 +29,6 @@ import useValidateUserToken from 'hooks/useValidateUserToken';
 import dynamic from 'next/dynamic';
 import axios from 'axios';
 import { useRouter } from 'next/router';
-import Image from 'next/image';
 
 // Import ReactQuill dynamically to avoid SSR issues
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
@@ -372,65 +371,68 @@ export default function BacklinkBuddyPage() {
   return (
     <LayoutContainer>
       <StyledHeader />
-      <Container maxWidth="md">
-        <Box
-          display="flex"
-          justifyContent="center"
-          mb={4}
-          sx={{ position: 'relative', width: '300px', height: '300px', margin: '0 auto' }}
-        >
-          <Image
-            src="/images/backlink-buddy-logo.png"
-            alt="Backlink Buddy"
-            fill
-            style={{ objectFit: 'contain' }}
-            priority
-          />
-        </Box>
-        <Paper elevation={3} sx={{ p: 4, mt: 3, mb: 3 }}>
-          <Typography variant="h5" gutterBottom>
-            Backlink Buddy
-          </Typography>
-          <Typography variant="body1" color="text.secondary" paragraph>
-            Create multiple PBN articles with targeted backlinks to your specified URL.
-          </Typography>
 
-          <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
-            {steps.map(label => (
-              <Step key={label}>
-                <StepLabel>{label}</StepLabel>
-              </Step>
-            ))}
-          </Stepper>
+      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+        {!isValidUser ? (
+          <Alert severity="warning">
+            You need to be logged in to use this tool. Please log in and try again.
+          </Alert>
+        ) : (
+          <Paper sx={{ p: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 4 }}>
+              <Typography variant="h5" component="h1" sx={{ flexGrow: 1 }}>
+                Backlink Buddy
+              </Typography>
+              <Box sx={{ height: 50, width: 120, position: 'relative' }}>
+                <img
+                  src="/backlink-buddy-logo.png"
+                  alt="Backlink Buddy Logo"
+                  style={{ height: '100%', objectFit: 'contain' }}
+                />
+              </Box>
+            </Box>
 
-          {error && (
-            <Alert severity="error" sx={{ mb: 3 }}>
-              {error}
-            </Alert>
-          )}
+            <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
+              {steps.map(label => (
+                <Step key={label}>
+                  <StepLabel>{label}</StepLabel>
+                </Step>
+              ))}
+            </Stepper>
 
-          {renderStepContent()}
-
-          <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between' }}>
-            <Button onClick={handleBack} disabled={activeStep === 0 || generating || submitting}>
-              Back
-            </Button>
-            {activeStep === steps.length - 1 ? (
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={handlePublish}
-                disabled={submitting}
-              >
-                {submitting ? 'Publishing...' : 'Publish Articles'}
-              </Button>
-            ) : (
-              <Button variant="contained" onClick={handleNext} disabled={generating || submitting}>
-                {generating ? 'Generating Articles...' : 'Next'}
-              </Button>
+            {error && (
+              <Alert severity="error" sx={{ mb: 3 }}>
+                {error}
+              </Alert>
             )}
-          </Box>
-        </Paper>
+
+            {renderStepContent()}
+
+            <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between' }}>
+              <Button onClick={handleBack} disabled={activeStep === 0 || generating || submitting}>
+                Back
+              </Button>
+              {activeStep === steps.length - 1 ? (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handlePublish}
+                  disabled={submitting}
+                >
+                  {submitting ? 'Publishing...' : 'Publish Articles'}
+                </Button>
+              ) : (
+                <Button
+                  variant="contained"
+                  onClick={handleNext}
+                  disabled={generating || submitting}
+                >
+                  {generating ? 'Generating Articles...' : 'Next'}
+                </Button>
+              )}
+            </Box>
+          </Paper>
+        )}
       </Container>
     </LayoutContainer>
   );
