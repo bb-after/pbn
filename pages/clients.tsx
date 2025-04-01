@@ -28,11 +28,13 @@ import {
   Select,
   MenuItem,
   Tooltip,
+  Autocomplete,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import MergeIcon from '@mui/icons-material/MergeType';
+import FilterAltIcon from '@mui/icons-material/FilterAlt';
 import axios from 'axios';
 import { useRouter } from 'next/router';
 import LayoutContainer from '../components/LayoutContainer';
@@ -40,6 +42,17 @@ import StyledHeader from '../components/StyledHeader';
 import ClientForm from '../components/ClientForm';
 import useValidateUserToken from 'hooks/useValidateUserToken';
 import Link from 'next/link';
+
+interface Industry {
+  industry_id: number;
+  industry_name: string;
+}
+
+interface Region {
+  region_id: number;
+  region_name: string;
+  region_type: string;
+}
 
 interface Client {
   client_id: number;
@@ -49,6 +62,8 @@ interface Client {
   updated_at: string;
   superstar_posts?: number;
   pbn_posts?: number;
+  industries?: Industry[];
+  regions?: Region[];
 }
 
 type Order = 'asc' | 'desc';
@@ -63,6 +78,8 @@ interface HeadCell {
 const headCells: HeadCell[] = [
   { id: 'client_id', label: 'ID', numeric: true, sortable: true },
   { id: 'client_name', label: 'Client Name', numeric: false, sortable: true },
+  { id: 'industries', label: 'Industries', numeric: false, sortable: false },
+  { id: 'regions', label: 'Regions', numeric: false, sortable: false },
   { id: 'is_active', label: 'Status', numeric: false, sortable: true },
   { id: 'superstar_posts', label: 'Superstar Posts', numeric: true, sortable: true },
   { id: 'pbn_posts', label: 'PBN Posts', numeric: true, sortable: true },
@@ -84,11 +101,19 @@ export default function ClientsPage() {
   const [mergingClient, setMergingClient] = useState<Client | null>(null);
   const [targetClientId, setTargetClientId] = useState<number | ''>('');
 
+  // New state for filters
+  const [allIndustries, setAllIndustries] = useState<Industry[]>([]);
+  const [allRegions, setAllRegions] = useState<Region[]>([]);
+  const [selectedIndustryId, setSelectedIndustryId] = useState<number | null>(null);
+  const [selectedRegionId, setSelectedRegionId] = useState<number | null>(null);
+
   useEffect(() => {
     if (isValidUser) {
       fetchClients();
+      fetchIndustries();
+      fetchRegions();
     }
-  }, [isValidUser, showActiveOnly]);
+  }, [isValidUser, showActiveOnly, selectedIndustryId, selectedRegionId]);
 
   const fetchClients = async () => {
     setLoading(true);
@@ -97,6 +122,8 @@ export default function ClientsPage() {
         params: {
           active: showActiveOnly ? 'true' : undefined,
           includeStats: 'true',
+          industryId: selectedIndustryId,
+          regionId: selectedRegionId,
         },
       });
       setClients(response.data);
@@ -104,6 +131,24 @@ export default function ClientsPage() {
       console.error('Error fetching clients:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchIndustries = async () => {
+    try {
+      const response = await axios.get('/api/industries');
+      setAllIndustries(response.data);
+    } catch (error) {
+      console.error('Error fetching industries:', error);
+    }
+  };
+
+  const fetchRegions = async () => {
+    try {
+      const response = await axios.get('/api/regions');
+      setAllRegions(response.data);
+    } catch (error) {
+      console.error('Error fetching regions:', error);
     }
   };
 
@@ -115,6 +160,20 @@ export default function ClientsPage() {
 
   const handleSearch = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
+  };
+
+  const handleIndustryFilterChange = (value: number | null) => {
+    setSelectedIndustryId(value);
+  };
+
+  const handleRegionFilterChange = (value: number | null) => {
+    setSelectedRegionId(value);
+  };
+
+  const handleResetFilters = () => {
+    setSelectedIndustryId(null);
+    setSelectedRegionId(null);
+    setSearchTerm('');
   };
 
   const handleAddClient = () => {
@@ -222,7 +281,7 @@ export default function ClientsPage() {
 
           <Box mb={3}>
             <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12} md={3}>
                 <TextField
                   label="Search Clients"
                   variant="outlined"
@@ -231,17 +290,59 @@ export default function ClientsPage() {
                   onChange={handleSearch}
                 />
               </Grid>
-              <Grid item xs={12} md={6}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={showActiveOnly}
-                      onChange={e => setShowActiveOnly(e.target.checked)}
-                      color="primary"
-                    />
-                  }
-                  label="Show Active Clients Only"
-                />
+              <Grid item xs={12} md={3}>
+                <FormControl fullWidth>
+                  <Autocomplete
+                    id="industry-filter"
+                    options={allIndustries}
+                    getOptionLabel={option => option.industry_name}
+                    value={allIndustries.find(i => i.industry_id === selectedIndustryId) || null}
+                    onChange={(_, newValue) =>
+                      handleIndustryFilterChange(newValue ? newValue.industry_id : null)
+                    }
+                    renderInput={params => (
+                      <TextField {...params} label="Filter by Industry" variant="outlined" />
+                    )}
+                  />
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <FormControl fullWidth>
+                  <Autocomplete
+                    id="region-filter"
+                    options={allRegions}
+                    getOptionLabel={option => option.region_name}
+                    value={allRegions.find(r => r.region_id === selectedRegionId) || null}
+                    onChange={(_, newValue) =>
+                      handleRegionFilterChange(newValue ? newValue.region_id : null)
+                    }
+                    renderInput={params => (
+                      <TextField {...params} label="Filter by Region" variant="outlined" />
+                    )}
+                  />
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <Box display="flex" alignItems="center" gap={2}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={showActiveOnly}
+                        onChange={e => setShowActiveOnly(e.target.checked)}
+                        color="primary"
+                      />
+                    }
+                    label="Active Only"
+                  />
+                  <Button
+                    variant="outlined"
+                    startIcon={<FilterAltIcon />}
+                    onClick={handleResetFilters}
+                    disabled={!selectedIndustryId && !selectedRegionId && !searchTerm}
+                  >
+                    Clear Filters
+                  </Button>
+                </Box>
               </Grid>
             </Grid>
           </Box>
@@ -282,6 +383,46 @@ export default function ClientsPage() {
                       <TableRow key={client.client_id}>
                         <TableCell align="right">{client.client_id}</TableCell>
                         <TableCell>{client.client_name}</TableCell>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                            {client.industries && client.industries.length > 0 ? (
+                              client.industries.map(industry => (
+                                <Chip
+                                  key={industry.industry_id}
+                                  label={industry.industry_name}
+                                  size="small"
+                                  color="primary"
+                                  variant="outlined"
+                                  sx={{ mr: 0.5, mb: 0.5 }}
+                                />
+                              ))
+                            ) : (
+                              <Typography variant="body2" color="text.secondary">
+                                None
+                              </Typography>
+                            )}
+                          </Box>
+                        </TableCell>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                            {client.regions && client.regions.length > 0 ? (
+                              client.regions.map(region => (
+                                <Chip
+                                  key={region.region_id}
+                                  label={region.region_name}
+                                  size="small"
+                                  color="secondary"
+                                  variant="outlined"
+                                  sx={{ mr: 0.5, mb: 0.5 }}
+                                />
+                              ))
+                            ) : (
+                              <Typography variant="body2" color="text.secondary">
+                                None
+                              </Typography>
+                            )}
+                          </Box>
+                        </TableCell>
                         <TableCell>
                           <Chip
                             label={client.is_active ? 'Active' : 'Inactive'}

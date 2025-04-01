@@ -1,70 +1,41 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import mysql from 'mysql2/promise';
 
-// Database configuration
-const dbConfig = {
-  host: process.env.DB_HOST_NAME,
-  user: process.env.DB_USER_NAME,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_DATABASE,
-};
-
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.setHeader('Allow', ['GET']);
+    return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  // Check if we should include blog counts
-  const withCount = req.query.with_count === 'true';
+  // Database configuration
+  const dbConfig = {
+    host: process.env.DB_HOST_NAME,
+    user: process.env.DB_USER_NAME,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_DATABASE,
+  };
+
+  let connection: mysql.Connection | null = null;
 
   try {
-    // Create a connection to the database
-    const connection = await mysql.createConnection(dbConfig);
+    connection = await mysql.createConnection(dbConfig);
 
-    // Build the query based on parameters
-    let query = `
-      SELECT 
-        i.industry_id, 
-        i.industry_name
-    `;
+    // Fetch all industries
+    const [rows] = await connection.execute(
+      `SELECT industry_id, industry_name 
+       FROM industries
+       ORDER BY industry_name ASC`
+    );
 
-    // Add blog count if requested
-    if (withCount) {
-      query += `,
-        COUNT(DISTINCT ssim.superstar_site_id) as blog_count`;
-    }
-
-    query += `
-      FROM 
-        industries i
-    `;
-
-    // Add join for blog count
-    if (withCount) {
-      query += `
-      LEFT JOIN 
-        superstar_sites_industry_mapping ssim ON i.industry_id = ssim.industry_id
-      `;
-    }
-
-    // Add group by and order by
-    query += `
-      GROUP BY 
-        i.industry_id, i.industry_name
-      ORDER BY 
-        i.industry_name ASC
-    `;
-
-    // Execute the query
-    const [industries] = await connection.query(query);
-
-    // Close the database connection
-    await connection.end();
-
-    // Return the industries as JSON
-    res.status(200).json(industries);
-  } catch (error) {
+    return res.status(200).json(rows);
+  } catch (error: any) {
     console.error('Error fetching industries:', error);
-    res.status(500).json({ error: 'Failed to fetch industries' });
+    return res.status(500).json({
+      error: error.message || 'Failed to fetch industries',
+    });
+  } finally {
+    if (connection) {
+      await connection.end();
+    }
   }
 }
