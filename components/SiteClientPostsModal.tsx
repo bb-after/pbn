@@ -42,8 +42,8 @@ interface Post {
 interface SiteClientPostsModalProps {
   open: boolean;
   onClose: () => void;
-  siteId?: number;
-  siteName?: string;
+  siteId: number;
+  siteName: string;
 }
 
 const SiteClientPostsModal: React.FC<SiteClientPostsModalProps> = ({
