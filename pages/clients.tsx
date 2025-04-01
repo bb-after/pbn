@@ -273,7 +273,7 @@ export default function ClientsPage() {
                                 variant="text"
                                 size="small"
                                 component={Link}
-                                href={`/superstar-site-submissions`}
+                                href={`/superstar-site-submissions?clientId=${client.client_id}`}
                                 sx={{ minWidth: 'auto', p: 0, fontWeight: 'bold' }}
                               >
                                 {client.superstar_posts}
@@ -291,7 +291,7 @@ export default function ClientsPage() {
                                 variant="text"
                                 size="small"
                                 component={Link}
-                                href={`/pbn-site-submissions`}
+                                href={`/pbn-site-submissions?clientId=${client.client_id}`}
                                 sx={{ minWidth: 'auto', p: 0, fontWeight: 'bold' }}
                               >
                                 {client.pbn_posts}
