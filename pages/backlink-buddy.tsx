@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Container,
   Paper,
@@ -25,10 +25,19 @@ import {
   FormLabel,
   Autocomplete,
   CircularProgress,
+  MenuItem,
+  Select,
+  InputLabel,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import ShuffleIcon from '@mui/icons-material/Shuffle';
 import LayoutContainer from 'components/LayoutContainer';
 import StyledHeader from 'components/StyledHeader';
 import ClientDropdown from 'components/ClientDropdown';
@@ -36,6 +45,8 @@ import useValidateUserToken from 'hooks/useValidateUserToken';
 import dynamic from 'next/dynamic';
 import axios from 'axios';
 import { useRouter } from 'next/router';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import Image from 'next/image';
 
 // Import ReactQuill dynamically to avoid SSR issues
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
@@ -54,20 +65,30 @@ const quillModules = {
 
 const quillFormats = ['header', 'bold', 'italic', 'underline', 'list', 'bullet', 'link'];
 
-interface BacklinkFormData {
+interface Backlink {
   urlType: 'existing' | 'custom';
   url: string;
+  keyword: string;
   selectedArticleId: number | null;
-  pbnCount: number;
-  keywords: string[];
+}
+
+interface ArticleData {
+  id: string; // Unique identifier for each article
+  backlinks: Backlink[];
+  useDefaultBacklinks: boolean; // Whether to use Article 1's backlinks
+}
+
+interface BacklinkFormData {
   clientName: string;
   clientId: number | null;
+  articles: ArticleData[];
 }
 
 interface ArticlePreview {
   title: string;
   content: string;
   isEditing: boolean;
+  articleId: string; // To match with the original article
 }
 
 interface SuperstarArticle {
@@ -78,22 +99,43 @@ interface SuperstarArticle {
   display: string;
 }
 
+const MAX_BACKLINKS_PER_ARTICLE = 4;
 const steps = ['Enter Details', 'Review Articles', 'Publish'];
+
+// Helper function to create a new article
+const createArticle = (isFirst: boolean = false): ArticleData => ({
+  id: Date.now().toString(),
+  backlinks: [createBacklink()],
+  useDefaultBacklinks: !isFirst, // First article doesn't use default backlinks
+});
+
+// Helper function to create a new backlink
+const createBacklink = (): Backlink => ({
+  urlType: 'existing',
+  url: '',
+  keyword: '',
+  selectedArticleId: null,
+});
+
+// Helper function to shuffle an array
+const shuffleArray = <T extends unknown>(array: T[]): T[] => {
+  const newArray = [...array];
+  for (let i = newArray.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+  }
+  return newArray;
+};
 
 export default function BacklinkBuddyPage() {
   const router = useRouter();
-  const { isValidUser } = useValidateUserToken();
+  const { isValidUser, token } = useValidateUserToken();
   const [activeStep, setActiveStep] = useState(0);
   const [formData, setFormData] = useState<BacklinkFormData>({
-    urlType: 'existing',
-    url: '',
-    selectedArticleId: null,
-    pbnCount: 1,
-    keywords: [],
     clientName: '',
     clientId: null,
+    articles: [createArticle(true)], // First article is created with useDefaultBacklinks=false
   });
-  const [currentKeyword, setCurrentKeyword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [articlePreviews, setArticlePreviews] = useState<ArticlePreview[]>([]);
@@ -102,89 +144,263 @@ export default function BacklinkBuddyPage() {
   const [loadingArticles, setLoadingArticles] = useState(false);
   const [selectedArticle, setSelectedArticle] = useState<SuperstarArticle | null>(null);
   const [articleSearchInput, setArticleSearchInput] = useState('');
+  const [copySourceArticleId, setCopySourceArticleId] = useState<string>('');
+  const [showBacklinksWarning, setShowBacklinksWarning] = useState<string | null>(null);
+  const [regeneratingArticles, setRegeneratingArticles] = useState<{ [key: string]: boolean }>({});
 
-  // Fetch superstar articles when client changes
+  const fetchSuperstarArticles = useCallback(
+    async (clientId: number) => {
+      setLoadingArticles(true);
+      try {
+        const response = await axios.get(
+          `/api/superstar-articles/by-client?clientId=${clientId}&search=${articleSearchInput}`
+        );
+        setSuperstarArticles(response.data);
+      } catch (error) {
+        console.error('Error fetching superstar articles:', error);
+        setSuperstarArticles([]);
+      } finally {
+        setLoadingArticles(false);
+      }
+    },
+    [articleSearchInput]
+  );
+
+  // Update dependency arrays in both useEffects
   useEffect(() => {
     if (formData.clientId) {
       fetchSuperstarArticles(formData.clientId);
-      // Clear selected article when client changes
-      setSelectedArticle(null);
-      // Reset URL if in "existing" mode
-      if (formData.urlType === 'existing') {
-        setFormData(prev => ({
-          ...prev,
-          url: '',
-          selectedArticleId: null,
-        }));
-      }
     } else {
       setSuperstarArticles([]);
       setSelectedArticle(null);
     }
-  }, [formData.clientId]);
+  }, [formData.clientId, fetchSuperstarArticles]);
 
-  // Update URL when selected article changes
   useEffect(() => {
-    if (selectedArticle) {
-      setFormData(prev => ({
-        ...prev,
-        url: selectedArticle.url,
-        selectedArticleId: selectedArticle.id,
-      }));
+    const hasExistingBacklinks = formData.articles.some(article =>
+      article.backlinks.some(backlink => backlink.urlType === 'existing')
+    );
+
+    if (formData.clientId && hasExistingBacklinks) {
+      fetchSuperstarArticles(formData.clientId);
     }
-  }, [selectedArticle]);
+  }, [formData.clientId, formData.articles, fetchSuperstarArticles]);
 
-  // Handle URL type change
-  const handleUrlTypeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newUrlType = e.target.value as 'existing' | 'custom';
-
-    // Reset URL and selected article when switching types
-    if (newUrlType === 'existing') {
-      setFormData(prev => ({
-        ...prev,
-        urlType: newUrlType,
-        url: selectedArticle?.url || '',
-        selectedArticleId: selectedArticle?.id || null,
-      }));
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        urlType: newUrlType,
-        selectedArticleId: null,
-      }));
-    }
-  };
-
-  const fetchSuperstarArticles = async (clientId: number) => {
-    setLoadingArticles(true);
-    try {
-      const response = await axios.get(
-        `/api/superstar-articles/by-client?clientId=${clientId}&search=${articleSearchInput}`
-      );
-      setSuperstarArticles(response.data);
-    } catch (error) {
-      console.error('Error fetching superstar articles:', error);
-      setSuperstarArticles([]);
-    } finally {
-      setLoadingArticles(false);
-    }
-  };
-
-  const handleAddKeyword = () => {
-    if (currentKeyword.trim() && !formData.keywords.includes(currentKeyword.trim())) {
-      setFormData(prev => ({
-        ...prev,
-        keywords: [...prev.keywords, currentKeyword.trim()],
-      }));
-      setCurrentKeyword('');
-    }
-  };
-
-  const handleRemoveKeyword = (keywordToRemove: string) => {
+  const handleAddArticle = () => {
     setFormData(prev => ({
       ...prev,
-      keywords: prev.keywords.filter(k => k !== keywordToRemove),
+      articles: [...prev.articles, createArticle()], // New articles use default backlinks by default
     }));
+  };
+
+  const handleRemoveArticle = (articleId: string) => {
+    if (formData.articles.length <= 1) {
+      setError('You must have at least one article');
+      return;
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      articles: prev.articles.filter(article => article.id !== articleId),
+    }));
+  };
+
+  const handleAddBacklink = (articleId: string) => {
+    const article = formData.articles.find(a => a.id === articleId);
+    if (!article || article.backlinks.length >= MAX_BACKLINKS_PER_ARTICLE) return;
+
+    setFormData(prev => ({
+      ...prev,
+      articles: prev.articles.map(a =>
+        a.id === articleId ? { ...a, backlinks: [...a.backlinks, createBacklink()] } : a
+      ),
+    }));
+  };
+
+  const handleRemoveBacklink = (articleId: string, backlinkIndex: number) => {
+    const article = formData.articles.find(a => a.id === articleId);
+    if (!article || article.backlinks.length <= 1) return; // Keep at least one backlink
+
+    setFormData(prev => ({
+      ...prev,
+      articles: prev.articles.map(a =>
+        a.id === articleId
+          ? { ...a, backlinks: a.backlinks.filter((_, i) => i !== backlinkIndex) }
+          : a
+      ),
+    }));
+  };
+
+  const handleUrlTypeChange = (
+    articleId: string,
+    backlinkIndex: number,
+    newValue: 'existing' | 'custom'
+  ) => {
+    console.log('handleUrlTypeChange called with:', {
+      articleId,
+      backlinkIndex,
+      newValue,
+      currentBacklink: formData.articles.find(a => a.id === articleId)?.backlinks[backlinkIndex],
+    });
+
+    // If switching to existing, ensure we have articles loaded
+    if (newValue === 'existing' && formData.clientId) {
+      fetchSuperstarArticles(formData.clientId);
+    }
+
+    setFormData(prev => {
+      const updatedData = {
+        ...prev,
+        articles: prev.articles.map(a =>
+          a.id === articleId
+            ? {
+                ...a,
+                backlinks: a.backlinks.map((b, i) =>
+                  i === backlinkIndex
+                    ? {
+                        ...b,
+                        urlType: newValue,
+                        ...(newValue === 'custom' ? { url: '', selectedArticleId: null } : {}),
+                      }
+                    : b
+                ),
+              }
+            : a
+        ),
+      };
+
+      console.log('URL type change updated data:', {
+        oldBacklink: prev.articles.find(a => a.id === articleId)?.backlinks[backlinkIndex],
+        newBacklink: updatedData.articles.find(a => a.id === articleId)?.backlinks[backlinkIndex],
+      });
+
+      return updatedData;
+    });
+  };
+
+  const handleBacklinkChange = (
+    articleId: string,
+    backlinkIndex: number,
+    field: keyof Backlink,
+    value: any
+  ) => {
+    setFormData(prev => ({
+      ...prev,
+      articles: prev.articles.map(a =>
+        a.id === articleId
+          ? {
+              ...a,
+              backlinks: a.backlinks.map((b, i) =>
+                i === backlinkIndex ? { ...b, [field]: value } : b
+              ),
+            }
+          : a
+      ),
+    }));
+  };
+
+  const handleArticleUrlSelection = (
+    articleId: string,
+    backlinkIndex: number,
+    selectedSuperstarArticle: SuperstarArticle | null
+  ) => {
+    console.log('handleArticleUrlSelection called with:', {
+      articleId,
+      backlinkIndex,
+      selectedSuperstarArticle,
+    });
+
+    setFormData(prev => {
+      const updatedData = {
+        ...prev,
+        articles: prev.articles.map(a =>
+          a.id === articleId
+            ? {
+                ...a,
+                backlinks: a.backlinks.map((b, i) =>
+                  i === backlinkIndex
+                    ? {
+                        ...b,
+                        url: selectedSuperstarArticle?.url || '',
+                        selectedArticleId: selectedSuperstarArticle?.id || null,
+                        urlType: selectedSuperstarArticle ? 'existing' : b.urlType,
+                      }
+                    : b
+                ),
+              }
+            : a
+        ),
+      };
+
+      console.log('Updated form data:', {
+        oldBacklink: prev.articles.find(a => a.id === articleId)?.backlinks[backlinkIndex],
+        newBacklink: updatedData.articles.find(a => a.id === articleId)?.backlinks[backlinkIndex],
+      });
+
+      return updatedData;
+    });
+  };
+
+  const handleCopyBacklinks = (targetArticleId: string, sourceArticleId: string) => {
+    if (targetArticleId === sourceArticleId) return;
+
+    const sourceArticle = formData.articles.find(a => a.id === sourceArticleId);
+    if (!sourceArticle || !sourceArticle.backlinks.length) return;
+
+    // Copy backlinks from source to target article
+    setFormData(prev => ({
+      ...prev,
+      articles: prev.articles.map(a =>
+        a.id === targetArticleId ? { ...a, backlinks: [...sourceArticle.backlinks] } : a
+      ),
+    }));
+
+    setCopySourceArticleId(''); // Reset selection
+  };
+
+  const getDefaultBacklinks = (): Backlink[] => {
+    const firstArticle = formData.articles[0];
+    return firstArticle ? [...firstArticle.backlinks] : [];
+  };
+
+  const toggleUseDefaultBacklinks = (articleId: string) => {
+    const article = formData.articles.find(a => a.id === articleId);
+    if (!article) return;
+
+    // If switching from custom to default backlinks and has custom backlinks defined, show warning
+    if (!article.useDefaultBacklinks && hasCustomBacklinks(articleId)) {
+      setShowBacklinksWarning(articleId);
+      return;
+    }
+
+    applyBacklinksToggle(articleId);
+  };
+
+  const applyBacklinksToggle = (articleId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      articles: prev.articles.map(a =>
+        a.id === articleId
+          ? {
+              ...a,
+              useDefaultBacklinks: !a.useDefaultBacklinks,
+              // If switching to default, use first article's backlinks
+              backlinks: !a.useDefaultBacklinks ? getDefaultBacklinks() : a.backlinks,
+            }
+          : a
+      ),
+    }));
+    setShowBacklinksWarning(null);
+  };
+
+  const hasCustomBacklinks = (articleId: string): boolean => {
+    const article = formData.articles.find(a => a.id === articleId);
+    if (!article) return false;
+
+    // Check if any backlink has data
+    return article.backlinks.some(
+      backlink => backlink.keyword || backlink.url || backlink.selectedArticleId
+    );
   };
 
   // Validate form before proceeding
@@ -195,19 +411,46 @@ export default function BacklinkBuddyPage() {
       return false;
     }
 
-    // Check URL based on type
-    if (formData.urlType === 'existing' && !selectedArticle) {
-      setError('Please select a Superstar article');
-      return false;
-    } else if (formData.urlType === 'custom' && (!formData.url || !formData.url.trim())) {
-      setError('Please enter a valid URL');
-      return false;
+    // Check first article's backlinks (they're used as default)
+    const firstArticle = formData.articles[0];
+    for (const backlink of firstArticle.backlinks) {
+      // Check URL based on type
+      if (backlink.urlType === 'existing' && !backlink.selectedArticleId) {
+        setError('Please select a Superstar article for all backlinks in Article 1');
+        return false;
+      } else if (backlink.urlType === 'custom' && (!backlink.url || !backlink.url.trim())) {
+        setError('Please enter a valid URL for all backlinks in Article 1');
+        return false;
+      }
+
+      // Check keyword
+      if (!backlink.keyword || !backlink.keyword.trim()) {
+        setError('Please enter a keyword for all backlinks in Article 1');
+        return false;
+      }
     }
 
-    // Check keywords
-    if (formData.keywords.length === 0) {
-      setError('Please add at least one keyword');
-      return false;
+    // For other articles, only validate if they use custom backlinks
+    for (let i = 1; i < formData.articles.length; i++) {
+      const article = formData.articles[i];
+      if (!article.useDefaultBacklinks) {
+        for (const backlink of article.backlinks) {
+          // Check URL based on type
+          if (backlink.urlType === 'existing' && !backlink.selectedArticleId) {
+            setError(`Please select a Superstar article for all backlinks in Article ${i + 1}`);
+            return false;
+          } else if (backlink.urlType === 'custom' && (!backlink.url || !backlink.url.trim())) {
+            setError(`Please enter a valid URL for all backlinks in Article ${i + 1}`);
+            return false;
+          }
+
+          // Check keyword
+          if (!backlink.keyword || !backlink.keyword.trim()) {
+            setError(`Please enter a keyword for all backlinks in Article ${i + 1}`);
+            return false;
+          }
+        }
+      }
     }
 
     // All checks passed
@@ -216,7 +459,7 @@ export default function BacklinkBuddyPage() {
 
   const handleNext = async () => {
     if (activeStep === 0) {
-      // Validate inputs using the new validation function
+      // Validate inputs using the validation function
       if (!validateForm()) {
         return;
       }
@@ -227,26 +470,47 @@ export default function BacklinkBuddyPage() {
       try {
         // Generate article previews
         const previews = await Promise.all(
-          Array(formData.pbnCount)
-            .fill(null)
-            .map(async () => {
-              const response = await axios.post('/api/pbn-site-submissions/preview', {
-                url: formData.url,
-                keywords: formData.keywords,
-                client: formData.clientName,
-              });
-              return {
-                title: response.data.title || '',
-                content: response.data.content || '',
-                isEditing: false,
-              };
-            })
+          formData.articles.map(async article => {
+            // For articles using default backlinks, use the first article's backlinks
+            const backlinksToUse = article.useDefaultBacklinks
+              ? getDefaultBacklinks()
+              : article.backlinks;
+
+            // For the prompt, shuffle the backlinks to randomize their order
+            const shuffledBacklinks = shuffleArray(backlinksToUse);
+
+            // Extract the first backlink URL as the main URL (API requires a single URL)
+            const mainUrl = shuffledBacklinks[0]?.url || '';
+
+            // Extract keywords from backlinks
+            const keywords = shuffledBacklinks.map(b => b.keyword);
+
+            const response = await axios.post('/api/pbn-site-submissions/preview', {
+              url: mainUrl,
+              keywords: keywords,
+              client: formData.clientName,
+              backlinks: shuffledBacklinks.map(bl => ({
+                url: bl.url,
+                keyword: bl.keyword,
+              })),
+              randomizeOrder: true, // Signal to backend to randomize the order
+            });
+
+            return {
+              title: response.data.title || '',
+              content: response.data.content || '',
+              isEditing: false,
+              articleId: article.id,
+            };
+          })
         );
         setArticlePreviews(previews);
         setActiveStep(prev => prev + 1);
       } catch (error: any) {
         console.error('Error generating previews:', error);
-        setError(error.message || 'Failed to generate article previews');
+        setError(
+          error.response?.data?.message || error.message || 'Failed to generate article previews'
+        );
       } finally {
         setGenerating(false);
       }
@@ -279,27 +543,116 @@ export default function BacklinkBuddyPage() {
     setError(null);
 
     try {
-      // Submit each article
-      await Promise.all(
-        articlePreviews.map(async article => {
-          await axios.post('/api/pbn-site-submissions', {
-            client: formData.clientName,
-            clientId: formData.clientId,
-            category: 'General',
-            title: article.title,
-            content: article.content,
-            type: 'individual',
-          });
-        })
-      );
+      // Prepare articles data for bulk submission
+      const articles = articlePreviews.map(article => {
+        // Find the corresponding article data to get backlink info
+        const articleData = formData.articles.find(a => a.id === article.articleId);
+        const backlinks = articleData?.useDefaultBacklinks
+          ? getDefaultBacklinks()
+          : articleData?.backlinks || [];
+
+        return {
+          title: article.title,
+          content: article.content,
+          // Add backlinks as metadata for tracking
+          backlinks: backlinks.map(b => ({
+            url: b.url,
+            keyword: b.keyword,
+          })),
+        };
+      });
+
+      // Use bulkPostToWordPress endpoint to submit all articles at once
+      await axios.post('/api/bulkPostToWordPress', {
+        articles,
+        clientName: formData.clientName,
+        clientId: formData.clientId,
+        category: 'General',
+        userToken: token, // Pass the actual user token instead of null
+        source: 'backlink-buddy',
+      });
 
       // Redirect to submissions page
       router.push('/pbn-site-submissions');
     } catch (error: any) {
       console.error('Error publishing articles:', error);
-      setError(error.message || 'Failed to publish articles');
+      setError(error.response?.data?.message || error.message || 'Failed to publish articles');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Check if an article has valid backlinks (for copy option)
+  const hasValidBacklinks = (articleId: string): boolean => {
+    const article = formData.articles.find(a => a.id === articleId);
+    if (!article) return false;
+
+    return article.backlinks.some(
+      backlink =>
+        (backlink.urlType === 'existing' && backlink.selectedArticleId) ||
+        (backlink.urlType === 'custom' && backlink.url && backlink.keyword)
+    );
+  };
+
+  // Get valid articles for backlink copying
+  const getArticlesWithValidBacklinks = (): ArticleData[] => {
+    return formData.articles.filter(article => hasValidBacklinks(article.id));
+  };
+
+  const handleRegenerateArticle = async (articleId: string) => {
+    setRegeneratingArticles(prev => ({ ...prev, [articleId]: true }));
+    setError(null);
+
+    try {
+      // Find the corresponding article data
+      const articleData = formData.articles.find(a => a.id === articleId);
+      if (!articleData) {
+        throw new Error('Article data not found');
+      }
+
+      // Get the backlinks to use
+      const backlinksToUse = articleData.useDefaultBacklinks
+        ? getDefaultBacklinks()
+        : articleData.backlinks;
+
+      // For the prompt, shuffle the backlinks to randomize their order
+      const shuffledBacklinks = shuffleArray(backlinksToUse);
+
+      // Extract the first backlink URL as the main URL (API requires a single URL)
+      const mainUrl = shuffledBacklinks[0]?.url || '';
+
+      // Extract keywords from backlinks
+      const keywords = shuffledBacklinks.map(b => b.keyword);
+
+      const response = await axios.post('/api/pbn-site-submissions/preview', {
+        url: mainUrl,
+        keywords: keywords,
+        client: formData.clientName,
+        backlinks: shuffledBacklinks.map(bl => ({
+          url: bl.url,
+          keyword: bl.keyword,
+        })),
+        randomizeOrder: true,
+      });
+
+      // Update the article preview
+      setArticlePreviews(prev =>
+        prev.map(article =>
+          article.articleId === articleId
+            ? {
+                ...article,
+                title: response.data.title || '',
+                content: response.data.content || '',
+                isEditing: false,
+              }
+            : article
+        )
+      );
+    } catch (error: any) {
+      console.error('Error regenerating article:', error);
+      setError(error.response?.data?.message || error.message || 'Failed to regenerate article');
+    } finally {
+      setRegeneratingArticles(prev => ({ ...prev, [articleId]: false }));
     }
   };
 
@@ -307,7 +660,7 @@ export default function BacklinkBuddyPage() {
     switch (activeStep) {
       case 0:
         return (
-          <Stack spacing={3}>
+          <Stack spacing={4}>
             <ClientDropdown
               value={formData.clientName}
               onChange={newValue => setFormData(prev => ({ ...prev, clientName: newValue }))}
@@ -321,119 +674,309 @@ export default function BacklinkBuddyPage() {
               variant="outlined"
             />
 
-            <FormControl component="fieldset">
-              <FormLabel component="legend">URL Source</FormLabel>
-              <RadioGroup
-                row
-                name="urlType"
-                value={formData.urlType}
-                onChange={handleUrlTypeChange}
-              >
-                <FormControlLabel
-                  value="existing"
-                  control={<Radio />}
-                  label="Existing Superstar Article"
-                />
-                <FormControlLabel value="custom" control={<Radio />} label="Custom URL" />
-              </RadioGroup>
-            </FormControl>
+            <Typography variant="h6" gutterBottom>
+              Articles ({formData.articles.length})
+            </Typography>
 
-            {formData.urlType === 'existing' ? (
-              <Autocomplete
-                id="superstar-article-select"
-                options={superstarArticles}
-                getOptionLabel={option => option.display}
-                value={selectedArticle}
-                onChange={(_, newValue) => setSelectedArticle(newValue)}
-                onInputChange={(_, newInputValue) => {
-                  setArticleSearchInput(newInputValue);
-                  if (formData.clientId) {
-                    fetchSuperstarArticles(formData.clientId);
-                  }
-                }}
-                loading={loadingArticles}
-                loadingText="Loading articles..."
-                renderInput={params => (
-                  <TextField
-                    {...params}
-                    label="Select Superstar Article"
-                    variant="outlined"
-                    fullWidth
-                    required
-                    InputProps={{
-                      ...params.InputProps,
-                      endAdornment: (
-                        <>
-                          {loadingArticles ? <CircularProgress color="inherit" size={20} /> : null}
-                          {params.InputProps.endAdornment}
-                        </>
-                      ),
+            {formData.articles.map((article, articleIndex) => (
+              <Card key={article.id} variant="outlined" sx={{ mb: 3 }}>
+                <CardContent>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      mb: 2,
                     }}
-                  />
-                )}
-                disabled={!formData.clientId}
-                noOptionsText={formData.clientId ? 'No articles found' : 'Select a client first'}
-              />
-            ) : (
-              <TextField
-                label="Custom URL to Backlink"
-                value={formData.url}
-                onChange={e => setFormData(prev => ({ ...prev, url: e.target.value }))}
-                fullWidth
-                required
-                type="url"
-                placeholder="https://example.com/page-to-link-to"
-              />
-            )}
+                  >
+                    <Typography variant="subtitle1">Article {articleIndex + 1}</Typography>
+                    <Box>
+                      {articleIndex > 0 && (
+                        <FormControl component="fieldset" size="small" sx={{ mr: 2 }}>
+                          <RadioGroup
+                            row
+                            value={article.useDefaultBacklinks ? 'default' : 'custom'}
+                            onChange={() => toggleUseDefaultBacklinks(article.id)}
+                          >
+                            <FormControlLabel
+                              value="default"
+                              control={<Radio size="small" />}
+                              label="Use Article 1 Backlinks"
+                            />
+                            <FormControlLabel
+                              value="custom"
+                              control={<Radio size="small" />}
+                              label="Set Custom Backlinks"
+                            />
+                          </RadioGroup>
+                        </FormControl>
+                      )}
 
-            <TextField
-              label="Number of PBN Articles"
-              value={formData.pbnCount}
-              onChange={e =>
-                setFormData(prev => ({
-                  ...prev,
-                  pbnCount: Math.min(Math.max(1, parseInt(e.target.value) || 1), 5),
-                }))
-              }
-              type="number"
-              inputProps={{ min: 1, max: 5 }}
-              fullWidth
-              required
-            />
-
-            <Box>
-              <TextField
-                label="Add Keywords"
-                value={currentKeyword}
-                onChange={e => setCurrentKeyword(e.target.value)}
-                onKeyPress={e => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAddKeyword();
-                  }
-                }}
-                fullWidth
-                placeholder="Enter keyword and press Enter or Add"
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton onClick={handleAddKeyword} edge="end">
-                        <AddIcon />
+                      <IconButton
+                        color="error"
+                        onClick={() => handleRemoveArticle(article.id)}
+                        disabled={formData.articles.length <= 1}
+                      >
+                        <DeleteIcon />
                       </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-              <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                {formData.keywords.map((keyword, index) => (
-                  <Chip
-                    key={index}
-                    label={keyword}
-                    onDelete={() => handleRemoveKeyword(keyword)}
-                    color="primary"
-                  />
-                ))}
-              </Box>
+                    </Box>
+                  </Box>
+
+                  {showBacklinksWarning === article.id && (
+                    <Alert
+                      severity="warning"
+                      sx={{ mb: 2 }}
+                      action={
+                        <>
+                          <Button
+                            color="inherit"
+                            size="small"
+                            onClick={() => setShowBacklinksWarning(null)}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            color="warning"
+                            size="small"
+                            onClick={() => applyBacklinksToggle(article.id)}
+                          >
+                            Continue
+                          </Button>
+                        </>
+                      }
+                    >
+                      Switching to Article 1 backlinks will remove your custom backlinks. Are you
+                      sure?
+                    </Alert>
+                  )}
+
+                  {/* Only show backlinks editor for Article 1 or for articles with custom backlinks */}
+                  {(articleIndex === 0 || !article.useDefaultBacklinks) && (
+                    <>
+                      <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>
+                        Backlinks ({article.backlinks.length}/{MAX_BACKLINKS_PER_ARTICLE})
+                      </Typography>
+
+                      {article.backlinks.map((backlink, backlinkIndex) => (
+                        <Box
+                          key={backlinkIndex}
+                          sx={{
+                            p: 2,
+                            mb: 2,
+                            border: '1px solid',
+                            borderColor: 'divider',
+                            borderRadius: 1,
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              mb: 2,
+                            }}
+                          >
+                            <Typography variant="subtitle2">
+                              Backlink {backlinkIndex + 1}
+                            </Typography>
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => handleRemoveBacklink(article.id, backlinkIndex)}
+                              disabled={article.backlinks.length <= 1}
+                              title="Remove backlink"
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Box>
+
+                          <Stack spacing={2}>
+                            <TextField
+                              label="Keyword"
+                              value={backlink.keyword}
+                              onChange={e =>
+                                handleBacklinkChange(
+                                  article.id,
+                                  backlinkIndex,
+                                  'keyword',
+                                  e.target.value
+                                )
+                              }
+                              fullWidth
+                              required
+                              size="small"
+                            />
+
+                            <FormControl component="fieldset" size="small">
+                              <FormLabel component="legend">URL Source</FormLabel>
+                              <RadioGroup
+                                row
+                                name={`urlType-${article.id}-${backlinkIndex}`}
+                                value={backlink.urlType}
+                                onChange={e =>
+                                  handleUrlTypeChange(
+                                    article.id,
+                                    backlinkIndex,
+                                    e.target.value as 'existing' | 'custom'
+                                  )
+                                }
+                              >
+                                <FormControlLabel
+                                  value="existing"
+                                  control={<Radio size="small" />}
+                                  label="Existing Superstar Article"
+                                />
+                                <FormControlLabel
+                                  value="custom"
+                                  control={<Radio size="small" />}
+                                  label="Custom URL"
+                                />
+                              </RadioGroup>
+                            </FormControl>
+
+                            {backlink.urlType === 'existing' ? (
+                              <Autocomplete
+                                key={`${article.id}-${backlinkIndex}-${backlink.urlType}`}
+                                id={`superstar-article-select-${article.id}-${backlinkIndex}`}
+                                options={superstarArticles}
+                                getOptionLabel={option => option.display || ''}
+                                isOptionEqualToValue={(option, value) => option.id === value.id}
+                                value={(() => {
+                                  const value = backlink.selectedArticleId
+                                    ? superstarArticles.find(
+                                        a => a.id === backlink.selectedArticleId
+                                      )
+                                    : null;
+                                  console.log('Autocomplete value calculation:', {
+                                    articleId: article.id,
+                                    backlinkIndex,
+                                    selectedArticleId: backlink.selectedArticleId,
+                                    foundValue: value,
+                                    availableOptions: superstarArticles.length,
+                                  });
+                                  return value;
+                                })()}
+                                onChange={(_, newValue) => {
+                                  console.log('Autocomplete onChange triggered:', {
+                                    articleId: article.id,
+                                    backlinkIndex,
+                                    newValue,
+                                  });
+                                  handleArticleUrlSelection(article.id, backlinkIndex, newValue);
+                                }}
+                                onInputChange={(_, newInputValue, reason) => {
+                                  console.log('Autocomplete onInputChange:', {
+                                    articleId: article.id,
+                                    backlinkIndex,
+                                    newInputValue,
+                                    reason,
+                                  });
+                                  if (reason === 'input') {
+                                    setArticleSearchInput(newInputValue);
+                                    if (formData.clientId) {
+                                      fetchSuperstarArticles(formData.clientId);
+                                    }
+                                  }
+                                }}
+                                loading={loadingArticles}
+                                loadingText="Loading articles..."
+                                noOptionsText={
+                                  formData.clientId ? 'No articles found' : 'Select a client first'
+                                }
+                                renderInput={params => (
+                                  <TextField
+                                    {...params}
+                                    label="Select Superstar Article"
+                                    variant="outlined"
+                                    fullWidth
+                                    required
+                                    size="small"
+                                    error={!formData.clientId}
+                                    helperText={
+                                      !formData.clientId ? 'Please select a client first' : ''
+                                    }
+                                    InputProps={{
+                                      ...params.InputProps,
+                                      endAdornment: (
+                                        <>
+                                          {loadingArticles ? (
+                                            <CircularProgress color="inherit" size={20} />
+                                          ) : null}
+                                          {params.InputProps.endAdornment}
+                                        </>
+                                      ),
+                                    }}
+                                  />
+                                )}
+                                disabled={!formData.clientId}
+                              />
+                            ) : (
+                              <TextField
+                                label="Custom URL"
+                                value={backlink.url}
+                                onChange={e =>
+                                  handleBacklinkChange(
+                                    article.id,
+                                    backlinkIndex,
+                                    'url',
+                                    e.target.value
+                                  )
+                                }
+                                fullWidth
+                                required
+                                type="url"
+                                size="small"
+                                placeholder="https://example.com/page-to-link-to"
+                              />
+                            )}
+                          </Stack>
+                        </Box>
+                      ))}
+
+                      {article.backlinks.length < MAX_BACKLINKS_PER_ARTICLE && (
+                        <Button
+                          variant="outlined"
+                          color="primary"
+                          startIcon={<AddIcon />}
+                          onClick={() => handleAddBacklink(article.id)}
+                          sx={{ mt: 1 }}
+                        >
+                          Add Backlink
+                        </Button>
+                      )}
+                    </>
+                  )}
+
+                  {articleIndex > 0 && article.useDefaultBacklinks && (
+                    <Box sx={{ mt: 2, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Using Backlinks from Article 1:
+                      </Typography>
+                      <List dense disablePadding>
+                        {getDefaultBacklinks().map((backlink, idx) => (
+                          <ListItem key={idx} disablePadding sx={{ py: 0.5 }}>
+                            <ListItemText
+                              primary={`${backlink.keyword} → ${backlink.url}`}
+                              primaryTypographyProps={{ variant: 'body2' }}
+                            />
+                          </ListItem>
+                        ))}
+                      </List>
+                    </Box>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+
+            <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<AddIcon />}
+                onClick={handleAddArticle}
+              >
+                Add Another Article
+              </Button>
             </Box>
           </Stack>
         );
@@ -444,6 +987,17 @@ export default function BacklinkBuddyPage() {
             {articlePreviews.map((article, index) => (
               <Card key={index} variant="outlined">
                 <CardContent>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      mb: 2,
+                    }}
+                  >
+                    <Typography variant="h6">Article {index + 1}</Typography>
+                  </Box>
+
                   {article.isEditing ? (
                     <>
                       <TextField
@@ -464,7 +1018,7 @@ export default function BacklinkBuddyPage() {
                             fontSize: '1rem',
                             fontFamily: 'inherit',
                           },
-                          mb: 6, // Add margin to account for Quill toolbar
+                          mb: 6,
                         }}
                       >
                         <ReactQuill
@@ -510,6 +1064,14 @@ export default function BacklinkBuddyPage() {
                   <Button startIcon={<EditIcon />} onClick={() => handleArticleEdit(index)}>
                     {article.isEditing ? 'Save Changes' : 'Edit Article'}
                   </Button>
+                  <Button
+                    startIcon={<RefreshIcon />}
+                    onClick={() => handleRegenerateArticle(article.articleId)}
+                    disabled={regeneratingArticles[article.articleId]}
+                    color="secondary"
+                  >
+                    {regeneratingArticles[article.articleId] ? 'Regenerating...' : 'Regenerate'}
+                  </Button>
                 </CardActions>
               </Card>
             ))}
@@ -519,11 +1081,36 @@ export default function BacklinkBuddyPage() {
       case 2:
         return (
           <Stack spacing={3}>
-            <Typography variant="body1">
-              Ready to publish {articlePreviews.length} articles with backlinks to {formData.url}
-            </Typography>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              <Typography variant="body1">
+                You&apos;re about to publish {articlePreviews.length} article
+                {articlePreviews.length > 1 ? 's' : ''} with backlinks.
+              </Typography>
+            </Alert>
+
+            <Box sx={{ my: 2 }}>
+              <Typography variant="h6" gutterBottom>
+                Articles to publish:
+              </Typography>
+              <List>
+                {articlePreviews.map((article, index) => (
+                  <ListItem key={index} divider>
+                    <ListItemText
+                      primary={article.title}
+                      secondary={`Article ${index + 1}${
+                        index < formData.articles.length &&
+                        formData.articles[index].useDefaultBacklinks
+                          ? ' (Using Article 1 Backlinks)'
+                          : ''
+                      }`}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </Box>
+
             <Typography variant="body2" color="text.secondary">
-              Keywords used: {formData.keywords.join(', ')}
+              Click &quot;Publish Articles&quot; to submit these articles to your PBN sites.
             </Typography>
           </Stack>
         );
@@ -553,14 +1140,14 @@ export default function BacklinkBuddyPage() {
         ) : (
           <Paper sx={{ p: 3 }}>
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 4 }}>
-              <Typography variant="h4" component="h1" sx={{ mb: 3, textAlign: 'center' }}>
-                Backlink Buddy
-              </Typography>
-              <Box sx={{ height: 120, width: 'auto', position: 'relative', mb: 2 }}>
-                <img
+              <Box sx={{ height: 200, width: 'auto', position: 'relative', mb: 2 }}>
+                <Image
                   src="/images/backlink-buddy-logo.png"
                   alt="Backlink Buddy Logo"
-                  style={{ height: '100%', maxWidth: '300px', objectFit: 'contain' }}
+                  width={400}
+                  height={200}
+                  style={{ objectFit: 'contain' }}
+                  priority
                 />
               </Box>
             </Box>
