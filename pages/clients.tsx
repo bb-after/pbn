@@ -495,20 +495,24 @@ export default function ClientsPage() {
             Merge &ldquo;{mergingClient?.client_name}&rdquo; (ID: {mergingClient?.client_id}) into:
           </Typography>
           <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel>Target Client</InputLabel>
-            <Select
-              value={targetClientId}
-              onChange={e => setTargetClientId(e.target.value as number)}
-              label="Target Client"
-            >
-              {clients
-                .filter(c => c.client_id !== mergingClient?.client_id)
-                .map(client => (
-                  <MenuItem key={client.client_id} value={client.client_id}>
-                    #{client.client_id} - {client.client_name}
-                  </MenuItem>
-                ))}
-            </Select>
+            <Autocomplete
+              options={clients.filter(c => c.client_id !== mergingClient?.client_id)}
+              getOptionLabel={option => `#${option.client_id} - ${option.client_name}`}
+              value={clients.find(c => c.client_id === targetClientId) || null}
+              onChange={(_, newValue) => setTargetClientId(newValue ? newValue.client_id : '')}
+              renderInput={params => (
+                <TextField
+                  {...params}
+                  label="Target Client"
+                  placeholder="Start typing to search..."
+                />
+              )}
+              renderOption={(props, option) => (
+                <li {...props}>
+                  #{option.client_id} - {option.client_name}
+                </li>
+              )}
+            />
           </FormControl>
           <Typography color="warning.main" sx={{ mt: 2 }}>
             Warning: This action cannot be undone. All posts and mappings will be moved to the

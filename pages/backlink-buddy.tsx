@@ -65,6 +65,23 @@ const quillModules = {
 
 const quillFormats = ['header', 'bold', 'italic', 'underline', 'list', 'bullet', 'link'];
 
+// Helper function to ensure all links open in new tabs
+const processContentLinks = (content: string): string => {
+  if (!content) return '';
+
+  // Use DOMParser to safely parse the HTML content
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(content, 'text/html');
+
+  // Find all links and add target="_blank" and rel="noopener noreferrer"
+  doc.querySelectorAll('a').forEach(link => {
+    link.setAttribute('target', '_blank');
+    link.setAttribute('rel', 'noopener noreferrer');
+  });
+
+  return doc.body.innerHTML;
+};
+
 interface Backlink {
   urlType: 'existing' | 'custom';
   url: string;
@@ -1055,7 +1072,9 @@ export default function BacklinkBuddyPage() {
                           },
                         }}
                       >
-                        <div dangerouslySetInnerHTML={{ __html: article.content }} />
+                        <div
+                          dangerouslySetInnerHTML={{ __html: processContentLinks(article.content) }}
+                        />
                       </Box>
                     </>
                   )}
