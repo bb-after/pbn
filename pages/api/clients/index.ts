@@ -34,7 +34,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 async function getClients(req: NextApiRequest, res: NextApiResponse, connection: mysql.Connection) {
   const { search, active, includeStats, industryId, regionId } = req.query;
 
-  // Main client query
+  // Main client query with optimized stats using single pass aggregation
   let query = `
     SELECT 
       c.client_id, 
@@ -45,9 +45,15 @@ async function getClients(req: NextApiRequest, res: NextApiResponse, connection:
   `;
 
   if (includeStats === 'true') {
-    query += `
-      , (SELECT COUNT(*) FROM superstar_site_submissions WHERE client_id = c.client_id) as superstar_posts
-      , (SELECT COUNT(*) FROM pbn_site_submissions WHERE client_id = c.client_id) as pbn_posts
+    query = `
+      SELECT 
+        c.client_id, 
+        c.client_name, 
+        c.is_active, 
+        c.created_at, 
+        c.updated_at,
+        COUNT(DISTINCT ss.id) as superstar_posts,
+        COUNT(DISTINCT ps.id) as pbn_posts
     `;
   }
 
@@ -62,7 +68,7 @@ async function getClients(req: NextApiRequest, res: NextApiResponse, connection:
     query += ` JOIN clients_region_mapping crm ON c.client_id = crm.client_id `;
   }
 
-  // Left joins for stats
+  // Left joins for stats - only add if includeStats is true
   if (includeStats === 'true') {
     query += `
       LEFT JOIN superstar_site_submissions ss ON c.client_id = ss.client_id
@@ -84,13 +90,11 @@ async function getClients(req: NextApiRequest, res: NextApiResponse, connection:
     whereConditions.push(`c.is_active = 0`);
   }
 
-  // Add industry filter
   if (industryId) {
     whereConditions.push(`cim.industry_id = ?`);
     params.push(industryId);
   }
 
-  // Add region filter
   if (regionId) {
     whereConditions.push(`crm.region_id = ?`);
     params.push(regionId);
@@ -101,7 +105,7 @@ async function getClients(req: NextApiRequest, res: NextApiResponse, connection:
   }
 
   if (includeStats === 'true') {
-    query += ` GROUP BY c.client_id`;
+    query += ` GROUP BY c.client_id, c.client_name, c.is_active, c.created_at, c.updated_at`;
   }
 
   query += ` ORDER BY c.client_name ASC`;
@@ -110,34 +114,61 @@ async function getClients(req: NextApiRequest, res: NextApiResponse, connection:
   const [rows] = await connection.execute(query, params);
   const clients = Array.isArray(rows) ? rows : [];
 
-  // Fetch industries and regions for each client
-  const clientsWithMappings = await Promise.all(
-    clients.map(async (client: any) => {
-      // Get industries
-      const [industryRows] = await connection.execute<mysql.RowDataPacket[]>(
-        `SELECT i.industry_id, i.industry_name
-         FROM clients_industry_mapping cim
-         JOIN industries i ON cim.industry_id = i.industry_id
-         WHERE cim.client_id = ?`,
-        [client.client_id]
-      );
+  // Fetch all industries and regions in bulk instead of per client
+  const clientIds = clients.map((client: any) => client.client_id);
 
-      // Get regions
-      const [regionRows] = await connection.execute<mysql.RowDataPacket[]>(
-        `SELECT r.region_id, r.region_name, r.region_type
-         FROM clients_region_mapping crm
-         JOIN geo_regions r ON crm.region_id = r.region_id
-         WHERE crm.client_id = ?`,
-        [client.client_id]
-      );
+  let industriesMap = new Map();
+  let regionsMap = new Map();
 
-      return {
-        ...client,
-        industries: industryRows,
-        regions: regionRows,
-      };
-    })
-  );
+  if (clientIds.length > 0) {
+    // Bulk fetch industries for all clients
+    const [industryRows] = await connection.execute<mysql.RowDataPacket[]>(
+      `SELECT cim.client_id, i.industry_id, i.industry_name
+       FROM clients_industry_mapping cim
+       JOIN industries i ON cim.industry_id = i.industry_id
+       WHERE cim.client_id IN (?)`,
+      [clientIds]
+    );
+
+    // Group industries by client_id
+    industryRows.forEach((row: any) => {
+      if (!industriesMap.has(row.client_id)) {
+        industriesMap.set(row.client_id, []);
+      }
+      industriesMap.get(row.client_id).push({
+        industry_id: row.industry_id,
+        industry_name: row.industry_name,
+      });
+    });
+
+    // Bulk fetch regions for all clients
+    const [regionRows] = await connection.execute<mysql.RowDataPacket[]>(
+      `SELECT crm.client_id, r.region_id, r.region_name, r.region_type
+       FROM clients_region_mapping crm
+       JOIN geo_regions r ON crm.region_id = r.region_id
+       WHERE crm.client_id IN (?)`,
+      [clientIds]
+    );
+
+    // Group regions by client_id
+    regionRows.forEach((row: any) => {
+      if (!regionsMap.has(row.client_id)) {
+        regionsMap.set(row.client_id, []);
+      }
+      regionsMap.get(row.client_id).push({
+        region_id: row.region_id,
+        region_name: row.region_name,
+        region_type: row.region_type,
+      });
+    });
+  }
+
+  // Map the industries and regions to each client
+  const clientsWithMappings = clients.map((client: any) => ({
+    ...client,
+    industries: industriesMap.get(client.client_id) || [],
+    regions: regionsMap.get(client.client_id) || [],
+  }));
 
   return res.status(200).json(clientsWithMappings);
 }
