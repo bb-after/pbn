@@ -10,13 +10,16 @@ axios.defaults.timeout = 30000; // 30 seconds
 interface Article {
   title: string;
   content: string;
+  backlinks?: any[]; // Adding backlinks for tracking purposes
 }
 
 interface BulkPostToWordPressRequest {
   articles: Article[];
   userToken: string;
   clientName: string;
+  clientId?: number; // Adding clientId for tracking
   category: string;
+  source?: string; // Adding source for tracking
 }
 
 // MySQL connection configuration
@@ -27,15 +30,13 @@ const dbConfig = {
   database: process.env.DB_DATABASE,
 };
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { articles, userToken, clientName, category } = req.body as BulkPostToWordPressRequest;
+  const { articles, userToken, clientName, clientId, category, source } =
+    req.body as BulkPostToWordPressRequest;
 
   // Validate input
   if (!articles || !Array.isArray(articles) || articles.length === 0) {
@@ -49,7 +50,7 @@ export default async function handler(
   try {
     // Create a MySQL connection
     const connection = await mysql.createConnection(dbConfig);
-    
+
     // Get all eligible active PBN sites
     const [queryResult] = await connection.execute(
       `SELECT * FROM pbn_sites 
@@ -66,9 +67,36 @@ export default async function handler(
     const successfulSubmissions = [];
     const failedSubmissions = [];
 
+    // Log to backlink_buddy_logs if source is 'backlink-buddy'
+    if (source === 'backlink-buddy') {
+      try {
+        await connection.execute(
+          'INSERT INTO backlink_buddy_logs (user_token, client_id, client_name, action_type, article_count, details) VALUES (?, ?, ?, ?, ?, ?)',
+          [
+            userToken,
+            clientId || null,
+            clientName,
+            'publish',
+            articles.length,
+            JSON.stringify({
+              articleTitles: articles.map(a => a.title),
+              backlinksCount: articles.reduce(
+                (sum, article) => sum + (article.backlinks?.length || 0),
+                0
+              ),
+            }),
+          ]
+        );
+        console.log('Logged backlink buddy publish activity');
+      } catch (logError) {
+        console.error('Error logging backlink buddy activity:', logError);
+        // Continue with the process even if logging fails
+      }
+    }
+
     for (let i = 0; i < articles.length; i++) {
       const article = articles[i];
-      
+
       // For each article, select a random PBN site
       const [randomSiteResult] = await connection.execute(
         `SELECT * FROM pbn_sites 
@@ -84,9 +112,9 @@ export default async function handler(
         ORDER BY RAND() LIMIT 1;`,
         [clientName]
       );
-      
+
       const randomSites: RowDataPacket[] = randomSiteResult as RowDataPacket[];
-      
+
       // If no site is available that hasn't been used in the last 3 months, get any random active site
       let site;
       if (!randomSites || randomSites.length === 0) {
@@ -101,7 +129,7 @@ export default async function handler(
           console.error('Invalid site data:', site);
           failedSubmissions.push({
             title: article.title,
-            error: 'Invalid PBN site data'
+            error: 'Invalid PBN site data',
           });
           continue;
         }
@@ -117,7 +145,7 @@ export default async function handler(
           failedSubmissions.push({
             title: article.title,
             error: 'Content already uploaded to PBN',
-            existingUrl: exists[0].submission_response
+            existingUrl: exists[0].submission_response,
           });
           continue;
         }
@@ -126,7 +154,7 @@ export default async function handler(
           username: site.login,
           password: site.password,
         };
-        
+
         // Ensure the category exists (and get its ID)
         let categoryId;
         try {
@@ -135,7 +163,7 @@ export default async function handler(
           console.error(`Error getting/creating category for "${article.title}":`, categoryError);
           failedSubmissions.push({
             title: article.title,
-            error: 'Failed to create category'
+            error: 'Failed to create category',
           });
           continue;
         }
@@ -150,43 +178,55 @@ export default async function handler(
               status: 'publish',
               categories: categoryId ? [categoryId] : [],
             },
-            { 
+            {
               auth,
-              timeout: 30000 // 30 seconds timeout
+              timeout: 30000, // 30 seconds timeout
             }
           );
-          
+
           if (!response.data || !response.data.link) {
             throw new Error('Invalid response from WordPress API');
           }
-          
+
           // Get WordPress post ID
           const wordpressPostId = response.data.id;
-          
+
           // Record the submission in the database with WordPress post ID
           await connection.execute(
             'INSERT INTO pbn_site_submissions (pbn_site_id, title, content, categories, user_token, submission_response, client_name, wordpress_post_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            [site.id, article.title, article.content, category, userToken, response.data.link, clientName, wordpressPostId]
+            [
+              site.id,
+              article.title,
+              article.content,
+              category,
+              userToken,
+              response.data.link,
+              clientName,
+              wordpressPostId,
+            ]
           );
 
           successfulSubmissions.push({
             title: article.title,
             link: response.data.link,
             siteId: site.id,
-            siteDomain: site.domain
+            siteDomain: site.domain,
           });
         } catch (postError: any) {
-          console.error(`Error posting article "${article.title}" to WordPress:`, postError.message);
+          console.error(
+            `Error posting article "${article.title}" to WordPress:`,
+            postError.message
+          );
           failedSubmissions.push({
             title: article.title,
-            error: `Failed to post to WordPress: ${postError.message}`
+            error: `Failed to post to WordPress: ${postError.message}`,
           });
         }
       } catch (error: any) {
         console.error(`Error processing article "${article.title}":`, error.message);
         failedSubmissions.push({
           title: article.title,
-          error: `Error: ${error.message}`
+          error: `Error: ${error.message}`,
         });
       }
     }
@@ -199,7 +239,7 @@ export default async function handler(
       failedCount: failedSubmissions.length,
       successful: successfulSubmissions,
       failed: failedSubmissions,
-      links: successfulSubmissions.map(sub => sub.link)
+      links: successfulSubmissions.map(sub => sub.link),
     });
   } catch (error) {
     console.error('Bulk upload error:', error);

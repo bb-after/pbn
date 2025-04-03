@@ -522,6 +522,28 @@ export default function BacklinkBuddyPage() {
           })
         );
         setArticlePreviews(previews);
+
+        // Log content generation activity
+        try {
+          await axios.post('/api/log-backlink-buddy', {
+            userToken: token,
+            clientId: formData.clientId,
+            clientName: formData.clientName,
+            actionType: 'content_generation',
+            articleCount: formData.articles.length,
+            details: {
+              articleIds: formData.articles.map(a => a.id),
+              backlinksCount: formData.articles.reduce(
+                (sum, article) => sum + article.backlinks.length,
+                0
+              ),
+            },
+          });
+        } catch (logError) {
+          console.error('Error logging backlink buddy activity:', logError);
+          // Continue with the process even if logging fails
+        }
+
         setActiveStep(prev => prev + 1);
       } catch (error: any) {
         console.error('Error generating previews:', error);
@@ -665,6 +687,24 @@ export default function BacklinkBuddyPage() {
             : article
         )
       );
+
+      // Log regenerate activity
+      try {
+        await axios.post('/api/log-backlink-buddy', {
+          userToken: token,
+          clientId: formData.clientId,
+          clientName: formData.clientName,
+          actionType: 'regenerate',
+          articleCount: 1,
+          details: {
+            articleId: articleId,
+            backlinksCount: backlinksToUse.length,
+          },
+        });
+      } catch (logError) {
+        console.error('Error logging backlink buddy regenerate activity:', logError);
+        // Continue with the process even if logging fails
+      }
     } catch (error: any) {
       console.error('Error regenerating article:', error);
       setError(error.response?.data?.message || error.message || 'Failed to regenerate article');
