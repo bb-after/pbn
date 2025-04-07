@@ -3,6 +3,7 @@ import { Container, Paper, Typography, Box, CircularProgress } from '@mui/materi
 import LayoutContainer from '../../../components/LayoutContainer';
 import StyledHeader from '../../../components/StyledHeader';
 import ClientForm from '../../../components/ClientForm';
+import ClientContactList from '../../../components/ClientContactList';
 import { useRouter } from 'next/router';
 import useValidateUserToken from 'hooks/useValidateUserToken';
 import axios from 'axios';
@@ -84,6 +85,11 @@ export default function EditClientPage() {
             Edit Client: {client.client_name}
           </Typography>
           <ClientForm client={client} onSave={handleSave} onCancel={handleCancel} />
+
+          {/* Client Contacts Management Section */}
+          {client && (
+            <ClientContactList clientId={client.client_id} clientName={client.client_name} />
+          )}
         </Paper>
       </Container>
     </LayoutContainer>
