@@ -128,7 +128,7 @@ async function addVersion(
       newVersionNumber,
       fileUrl,
       comments || null,
-      userInfo.user_id || null,
+      userInfo.id || null,
     ];
 
     const [insertResult] = await connection.query(insertQuery, insertValues);

@@ -89,13 +89,14 @@ interface ApprovalRequest {
     contact_id: number | null;
     contact_name: string | null;
     created_at: string;
+    commenter_name?: string;
   }> | null;
 }
 
 export default function ApprovalRequestDetailPage() {
   const router = useRouter();
   const { id } = router.query;
-  const { isValidUser, isLoading } = useValidateUserToken();
+  const { isValidUser, isLoading, token } = useValidateUserToken();
 
   // State for request data
   const [request, setRequest] = useState<ApprovalRequest | null>(null);
@@ -152,6 +153,13 @@ export default function ApprovalRequestDetailPage() {
     }
   }, [fetchRequestDetails, request]);
 
+  useEffect(() => {
+    // Redirect to login if user is not valid and loading is finished
+    if (!isLoading && !isValidUser) {
+      router.push('/login'); // Redirect to your staff login page
+    }
+  }, [isLoading, isValidUser, router]);
+
   // Handle tab change
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -188,10 +196,20 @@ export default function ApprovalRequestDetailPage() {
     setSubmittingComment(true);
 
     try {
-      await axios.post(`/api/approval-requests/${id}/comments`, {
-        comment: newComment,
-        versionId: request?.versions[0]?.version_id,
-      });
+      // Prepare headers
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['x-auth-token'] = token;
+      }
+
+      await axios.post(
+        `/api/approval-requests/${id}/comments`,
+        {
+          comment: newComment,
+          versionId: request?.versions[0]?.version_id,
+        },
+        { headers } // Pass headers to axios
+      );
 
       setNewComment('');
       fetchRequestDetails();
@@ -283,18 +301,10 @@ export default function ApprovalRequestDetailPage() {
     }
   };
 
-  if (isLoading || (loading && !request)) {
+  if (!isValidUser || (isLoading && !request)) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
         <CircularProgress />
-      </Box>
-    );
-  }
-
-  if (!isValidUser) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
-        <Typography variant="h6">Unauthorized access. Please log in.</Typography>
       </Box>
     );
   }
@@ -550,7 +560,7 @@ export default function ApprovalRequestDetailPage() {
                                     primary={
                                       <Box display="flex" justifyContent="space-between">
                                         <Typography variant="subtitle2">
-                                          {comment.contact_name || 'Staff'}
+                                          {comment.commenter_name || 'Unknown'}
                                         </Typography>
                                         <Typography variant="caption" color="textSecondary">
                                           {new Date(comment.created_at).toLocaleString()}
@@ -597,22 +607,26 @@ export default function ApprovalRequestDetailPage() {
                               <ListItemText primary={contact.name} secondary={contact.email} />
                               <Box display="flex">
                                 <Tooltip title={contact.has_viewed ? 'Viewed' : 'Not viewed'}>
-                                  <IconButton size="small" disabled>
-                                    {contact.has_viewed ? (
-                                      <VisibilityIcon color="success" />
-                                    ) : (
-                                      <VisibilityOffIcon color="disabled" />
-                                    )}
-                                  </IconButton>
+                                  <span>
+                                    <IconButton size="small" disabled>
+                                      {contact.has_viewed ? (
+                                        <VisibilityIcon color="success" />
+                                      ) : (
+                                        <VisibilityOffIcon color="disabled" />
+                                      )}
+                                    </IconButton>
+                                  </span>
                                 </Tooltip>
                                 <Tooltip title={contact.has_approved ? 'Approved' : 'Not approved'}>
-                                  <IconButton size="small" disabled>
-                                    {contact.has_approved ? (
-                                      <CheckIcon color="success" />
-                                    ) : (
-                                      <CloseIcon color="disabled" />
-                                    )}
-                                  </IconButton>
+                                  <span>
+                                    <IconButton size="small" disabled>
+                                      {contact.has_approved ? (
+                                        <CheckIcon color="success" />
+                                      ) : (
+                                        <CloseIcon color="disabled" />
+                                      )}
+                                    </IconButton>
+                                  </span>
                                 </Tooltip>
                               </Box>
                             </ListItem>

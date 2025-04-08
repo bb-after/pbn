@@ -149,11 +149,14 @@ async function getApprovalRequest(requestId: number, res: NextApiResponse) {
         arc.created_by_id,
         arc.contact_id,
         cc.name as contact_name,
+        u.name as staff_name,
         arc.created_at
       FROM 
         approval_request_comments arc
       LEFT JOIN
         client_contacts cc ON arc.contact_id = cc.contact_id
+      LEFT JOIN
+        users u ON arc.created_by_id = u.id
       WHERE 
         arc.request_id = ?
       ORDER BY 
@@ -162,12 +165,18 @@ async function getApprovalRequest(requestId: number, res: NextApiResponse) {
 
     const [commentRows] = await pool.query(commentsQuery, [requestId]);
 
+    // Map comments to include commenter_name
+    const comments = (commentRows as any[]).map(comment => ({
+      ...comment,
+      commenter_name: comment.contact_name || comment.staff_name || 'Unknown',
+    }));
+
     // Combine all data
     const responseData = {
       ...request,
       contacts: contactRows,
       versions: versionRows,
-      comments: commentRows,
+      comments: comments,
     };
 
     return res.status(200).json(responseData);
