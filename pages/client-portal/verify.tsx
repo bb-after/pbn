@@ -41,10 +41,8 @@ export default function VerifyLoginPage() {
 
       setVerified(true);
 
-      // Redirect to the client portal after a short delay
-      setTimeout(() => {
-        router.push('/client-portal');
-      }, 2000);
+      // Redirect to the client portal immediately
+      router.push('/client-portal');
     } catch (error: any) {
       console.error('Error verifying token:', error);
       if (error.response) {

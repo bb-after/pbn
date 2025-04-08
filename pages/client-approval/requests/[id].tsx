@@ -43,6 +43,8 @@ import {
   Comment as CommentIcon,
   History as HistoryIcon,
   ArrowBack as BackIcon,
+  Email as EmailIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import LayoutContainer from '../../../components/LayoutContainer';
 import StyledHeader from '../../../components/StyledHeader';
@@ -119,6 +121,12 @@ export default function ApprovalRequestDetailPage() {
   const [newFile, setNewFile] = useState<File | null>(null);
   const [newVersionComment, setNewVersionComment] = useState('');
   const [uploadingFile, setUploadingFile] = useState(false);
+
+  // State for resending notification
+  const [resendingContactId, setResendingContactId] = useState<number | null>(null);
+  const [removingContactId, setRemovingContactId] = useState<number | null>(null);
+  const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
+  const [contactToRemove, setContactToRemove] = useState<{ id: number; name: string } | null>(null);
 
   // Fetch request details
   const fetchRequestDetails = useCallback(async () => {
@@ -277,6 +285,76 @@ export default function ApprovalRequestDetailPage() {
     } catch (error) {
       console.error('Error archiving request:', error);
       setError('Failed to archive request');
+    }
+  };
+
+  // Handle resending notification to a specific contact
+  const handleResendNotification = async (contactId: number) => {
+    if (resendingContactId) return; // Prevent concurrent resends
+
+    setResendingContactId(contactId);
+    setError(null);
+
+    try {
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['x-auth-token'] = token;
+      }
+
+      await axios.post(
+        `/api/approval-requests/${id}/resend-notification`,
+        { contactId }, // Send contactId in the body
+        { headers }
+      );
+
+      // Optionally show a success message (e.g., using a Snackbar)
+      console.log(`Notification resent successfully to contact ${contactId}`);
+    } catch (err: any) {
+      console.error('Error resending notification:', err);
+      setError(err.response?.data?.error || 'Failed to resend notification');
+    } finally {
+      setResendingContactId(null);
+    }
+  };
+
+  // --- Contact Removal Functions ---
+  const handleOpenRemoveDialog = (contact: { id: number; name: string }) => {
+    setContactToRemove(contact);
+    setConfirmRemoveOpen(true);
+  };
+
+  const handleCloseRemoveDialog = () => {
+    setConfirmRemoveOpen(false);
+    setContactToRemove(null);
+  };
+
+  const handleConfirmRemoveContact = async () => {
+    if (!contactToRemove) return;
+
+    setRemovingContactId(contactToRemove.id);
+    setError(null);
+    handleCloseRemoveDialog(); // Close dialog immediately
+
+    try {
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['x-auth-token'] = token;
+      }
+
+      await axios.post(
+        `/api/approval-requests/${id}/remove-contact`,
+        { contactId: contactToRemove.id }, // Send contactId in the body
+        { headers }
+      );
+
+      // Refresh request details to update the list
+      fetchRequestDetails();
+      console.log(`Contact ${contactToRemove.name} removed successfully`);
+    } catch (err: any) {
+      console.error('Error removing contact:', err);
+      setError(err.response?.data?.error || 'Failed to remove contact');
+    } finally {
+      setRemovingContactId(null);
     }
   };
 
@@ -600,35 +678,76 @@ export default function ApprovalRequestDetailPage() {
 
                         <List>
                           {request.contacts.map(contact => (
-                            <ListItem key={contact.contact_id}>
+                            <ListItem
+                              key={contact.contact_id}
+                              secondaryAction={
+                                <Box display="flex" alignItems="center">
+                                  <Tooltip title={contact.has_viewed ? 'Viewed' : 'Not viewed'}>
+                                    <span>
+                                      <IconButton size="small" disabled>
+                                        {contact.has_viewed ? (
+                                          <VisibilityIcon color="success" />
+                                        ) : (
+                                          <VisibilityOffIcon color="disabled" />
+                                        )}
+                                      </IconButton>
+                                    </span>
+                                  </Tooltip>
+                                  <Tooltip
+                                    title={contact.has_approved ? 'Approved' : 'Not approved'}
+                                  >
+                                    <span>
+                                      <IconButton size="small" disabled>
+                                        {contact.has_approved ? (
+                                          <CheckIcon color="success" />
+                                        ) : (
+                                          <CloseIcon color="disabled" />
+                                        )}
+                                      </IconButton>
+                                    </span>
+                                  </Tooltip>
+                                  <Tooltip title="Resend Notification">
+                                    <IconButton
+                                      size="small"
+                                      color="primary"
+                                      onClick={() => handleResendNotification(contact.contact_id)}
+                                      disabled={resendingContactId === contact.contact_id}
+                                      sx={{ ml: 1 }}
+                                    >
+                                      {resendingContactId === contact.contact_id ? (
+                                        <CircularProgress size={20} />
+                                      ) : (
+                                        <EmailIcon fontSize="small" />
+                                      )}
+                                    </IconButton>
+                                  </Tooltip>
+                                  <Tooltip title="Remove Contact">
+                                    <IconButton
+                                      size="small"
+                                      color="error"
+                                      onClick={() =>
+                                        handleOpenRemoveDialog({
+                                          id: contact.contact_id,
+                                          name: contact.name,
+                                        })
+                                      }
+                                      disabled={removingContactId === contact.contact_id}
+                                      sx={{ ml: 0.5 }}
+                                    >
+                                      {removingContactId === contact.contact_id ? (
+                                        <CircularProgress size={20} />
+                                      ) : (
+                                        <DeleteIcon fontSize="small" />
+                                      )}
+                                    </IconButton>
+                                  </Tooltip>
+                                </Box>
+                              }
+                            >
                               <ListItemIcon>
                                 <PersonIcon />
                               </ListItemIcon>
                               <ListItemText primary={contact.name} secondary={contact.email} />
-                              <Box display="flex">
-                                <Tooltip title={contact.has_viewed ? 'Viewed' : 'Not viewed'}>
-                                  <span>
-                                    <IconButton size="small" disabled>
-                                      {contact.has_viewed ? (
-                                        <VisibilityIcon color="success" />
-                                      ) : (
-                                        <VisibilityOffIcon color="disabled" />
-                                      )}
-                                    </IconButton>
-                                  </span>
-                                </Tooltip>
-                                <Tooltip title={contact.has_approved ? 'Approved' : 'Not approved'}>
-                                  <span>
-                                    <IconButton size="small" disabled>
-                                      {contact.has_approved ? (
-                                        <CheckIcon color="success" />
-                                      ) : (
-                                        <CloseIcon color="disabled" />
-                                      )}
-                                    </IconButton>
-                                  </span>
-                                </Tooltip>
-                              </Box>
                             </ListItem>
                           ))}
                         </List>
@@ -845,6 +964,28 @@ export default function ApprovalRequestDetailPage() {
             disabled={uploadingFile || !newFile}
           >
             {uploadingFile ? <CircularProgress size={24} /> : 'Upload'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirmation Dialog for Contact Removal */}
+      <Dialog open={confirmRemoveOpen} onClose={handleCloseRemoveDialog}>
+        <DialogTitle>Remove Contact?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to remove contact &quot;{contactToRemove?.name}&quot;? They will
+            no longer have access to this approval request.
+            {request && request.contacts.length === 1 && contactToRemove && (
+              <Typography color="error" sx={{ mt: 1, fontWeight: 'bold' }}>
+                Warning: This is the last contact associated with this request.
+              </Typography>
+            )}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseRemoveDialog}>Cancel</Button>
+          <Button onClick={handleConfirmRemoveContact} color="error" variant="contained">
+            Remove
           </Button>
         </DialogActions>
       </Dialog>

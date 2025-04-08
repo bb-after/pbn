@@ -293,3 +293,61 @@ export async function sendNewVersionEmail(contact: any, request: any, version: a
     textBody,
   });
 }
+
+/**
+ * Send notification to client when a staff member adds a comment
+ */
+export async function sendNewStaffCommentEmail(
+  contactEmail: string,
+  staffName: string,
+  requestTitle: string,
+  requestId: number,
+  commentText: string
+): Promise<void> {
+  // Create link to the client portal request page
+  const portalLink = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/client-portal/requests/${requestId}`;
+
+  // HTML email content
+  const htmlBody = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2>New Comment on Content Request</h2>
+      <p>Hello,</p>
+      <p>A new comment has been added by <strong>${staffName || 'Staff'}</strong> regarding the content request: <strong>${requestTitle}</strong>.</p>
+      <div style="background-color: #f5f5f5; border-left: 4px solid #2196F3; padding: 15px; margin: 20px 0;">
+          <h4 style="margin-top: 0;">Comment:</h4>
+          <p><em>${commentText}</em></p>
+      </div>
+      <p>You can view the request and the full comment thread here:</p>
+      <p style="text-align: center; margin: 30px 0;">
+        <a href="${portalLink}" style="background-color: #2196F3; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block; font-weight: bold;">
+          View Request
+        </a>
+      </p>
+      <p>Thank you,<br>Content Approval Team</p>
+    </div>
+  `;
+
+  // Plain text version
+  const textBody = `
+    New Comment on Content Request
+    
+    Hello,
+    
+    A new comment has been added by ${staffName || 'Staff'} regarding the content request: ${requestTitle}.
+    
+    Comment: ${commentText}
+    
+    You can view the request and the full comment thread here:
+    ${portalLink}
+    
+    Thank you,
+    Content Approval Team
+  `;
+
+  await sendEmail({
+    to: contactEmail,
+    subject: `New Comment on "${requestTitle}"`,
+    htmlBody,
+    textBody,
+  });
+}
