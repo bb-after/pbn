@@ -34,7 +34,7 @@ export async function validateUserToken(req: NextApiRequest) {
 
       return {
         isValid: true,
-        user_id: rows[0].user_id,
+        user_id: rows[0].id,
         username: rows[0].username,
       };
     } finally {

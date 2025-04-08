@@ -1,5 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import mysql from 'mysql2/promise';
+import { validateUserToken } from '../../validate-user-token'; // Import validation function
+import nodemailer from 'nodemailer'; // Import nodemailer
 
 // Create a connection pool
 const pool = mysql.createPool({
@@ -11,6 +13,35 @@ const pool = mysql.createPool({
   connectionLimit: 10,
 });
 
+// Helper function to send email (basic implementation)
+async function sendEmail(to: string, subject: string, html: string) {
+  try {
+    // Configure Nodemailer (use environment variables for credentials)
+    let transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT || '587'),
+      secure: (process.env.SMTP_PORT || '587') === '465', // true for 465, false for other ports
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
+
+    // Send mail
+    await transporter.sendMail({
+      from: `"Your App Name" <${process.env.SMTP_FROM_EMAIL}>`, // Sender address
+      to: to, // List of receivers
+      subject: subject, // Subject line
+      html: html, // HTML body content
+    });
+
+    console.log(`Email sent successfully to ${to}`);
+  } catch (error) {
+    console.error(`Error sending email to ${to}:`, error);
+    // Log the error but don't necessarily block the API response
+  }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { id } = req.query;
 
@@ -20,9 +51,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const requestId = Number(id);
 
-  // Temporarily disable auth validation for testing
-  // const userInfo = await validateUserToken(req);
-  const userInfo = { isValid: true, user_id: 'test-user' };
+  // Validate user token for staff access
+  const userInfo = await validateUserToken(req);
 
   const isClientPortal = req.headers['x-client-portal'] === 'true';
 
@@ -39,11 +69,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .status(403)
         .json({ error: 'Forbidden - Contact does not have access to this request' });
     }
+  } else if (!userInfo.isValid) {
+    // For staff access, validate user token
+    return res.status(401).json({ error: 'Unauthorized' });
   }
-  // else if (!userInfo.isValid) {
-  //   // For staff access, validate user token
-  //   return res.status(401).json({ error: 'Unauthorized' });
-  // }
 
   switch (req.method) {
     case 'GET':
@@ -83,7 +112,7 @@ async function getComments(requestId: number, res: NextApiResponse) {
       return res.status(404).json({ error: 'Approval request not found' });
     }
 
-    // Get all comments
+    // Get all comments, joining with users table for staff names
     const query = `
       SELECT 
         arc.comment_id, 
@@ -93,11 +122,14 @@ async function getComments(requestId: number, res: NextApiResponse) {
         arc.created_by_id, 
         arc.contact_id,
         cc.name as contact_name, 
+        u.name as staff_name, -- Get staff name from users table (Reverted)
         arc.created_at
       FROM 
         approval_request_comments arc
       LEFT JOIN
         client_contacts cc ON arc.contact_id = cc.contact_id
+      LEFT JOIN
+        users u ON arc.created_by_id = u.id -- Join with users table
       WHERE 
         arc.request_id = ?
       ORDER BY 
@@ -106,7 +138,20 @@ async function getComments(requestId: number, res: NextApiResponse) {
 
     const [rows] = await pool.query(query, [requestId]);
 
-    return res.status(200).json(rows);
+    // Map result to replace staff_name with contact_name where appropriate
+    const comments = (rows as any[]).map(comment => {
+      // Log the raw values before calculating commenter_name
+      console.log('Raw comment data from DB (getComments):', {
+        contact_name: comment.contact_name,
+        staff_name: comment.staff_name,
+      });
+      return {
+        ...comment,
+        commenter_name: comment.contact_name || comment.staff_name || 'Unknown',
+      };
+    });
+
+    return res.status(200).json(comments);
   } catch (error) {
     console.error('Error fetching comments:', error);
     return res.status(500).json({ error: 'Failed to fetch comments' });
@@ -118,7 +163,7 @@ async function addComment(
   requestId: number,
   req: NextApiRequest,
   res: NextApiResponse,
-  userInfo: any,
+  userInfo: any, // Receive userInfo
   isClientPortal: boolean
 ) {
   const { comment, versionId, contactId: clientProvidedContactId } = req.body;
@@ -138,6 +183,7 @@ async function addComment(
 
     let createdById = null;
     let contactId = null;
+    let staffName = null;
 
     if (isClientPortal) {
       // For client portal, use the provided contact ID
@@ -151,8 +197,13 @@ async function addComment(
         return res.status(404).json({ error: 'Contact not found' });
       }
     } else {
-      // For staff portal, use the user ID from token
-      createdById = userInfo.user_id;
+      // For staff portal, use the user ID and name from token
+      if (userInfo.isValid && !userInfo.user_id) {
+        // Log an error if validation passed but user_id is missing
+        console.error('Validation successful but user_id is missing from userInfo:', userInfo);
+      }
+      createdById = userInfo.user_id; // Assign user_id from the userInfo object
+      staffName = userInfo.username; // Get staff name from validated token info
     }
 
     // Add the comment
@@ -165,10 +216,13 @@ async function addComment(
 
     const insertValues = [requestId, versionId || null, comment, createdById, contactId];
 
+    // Log the value being inserted for created_by_id
+    console.log('Inserting comment with createdById:', createdById);
+
     const [result] = await pool.query(insertQuery, insertValues);
     const commentId = (result as any).insertId;
 
-    // Get the created comment
+    // Get the created comment, joining with users table for staff name
     const getCommentQuery = `
       SELECT 
         arc.comment_id, 
@@ -178,20 +232,75 @@ async function addComment(
         arc.created_by_id, 
         arc.contact_id,
         cc.name as contact_name, 
+        u.name as staff_name, -- Get staff name (Reverted)
         arc.created_at
       FROM 
         approval_request_comments arc
       LEFT JOIN
         client_contacts cc ON arc.contact_id = cc.contact_id
+      LEFT JOIN
+        users u ON arc.created_by_id = u.id -- Join with users
       WHERE 
         arc.comment_id = ?
     `;
 
     const [commentRows] = await pool.query(getCommentQuery, [commentId]);
+    const createdComment = (commentRows as any[])[0];
+
+    // Log the raw values before calculating commenter_name for the new comment
+    console.log('Raw comment data from DB (addComment):', {
+      contact_name: createdComment.contact_name,
+      staff_name: createdComment.staff_name,
+    });
+
+    // Prepare comment response
+    const responseComment = {
+      ...createdComment,
+      commenter_name: createdComment.contact_name || createdComment.staff_name || 'Unknown',
+    };
+
+    // Send email notification if comment is from staff
+    if (!isClientPortal && createdById) {
+      try {
+        // Fetch request details (title)
+        const [requestRows]: any = await pool.query(
+          'SELECT title FROM client_approval_requests WHERE request_id = ?',
+          [requestId]
+        );
+        const requestTitle = requestRows[0]?.title || 'a content request';
+
+        // Fetch contacts associated with the request
+        const [contactsResult]: any = await pool.query(
+          'SELECT email FROM client_contacts WHERE contact_id IN (SELECT contact_id FROM approval_request_contacts WHERE request_id = ?)',
+          [requestId]
+        );
+
+        if (contactsResult.length > 0) {
+          const subject = `New comment on "${requestTitle}"`;
+          // Provide a link back to the client portal request page
+          const portalLink = `${process.env.NEXT_PUBLIC_BASE_URL}/client-portal/requests/${requestId}`;
+          const html = `
+            <p>Hello,</p>
+            <p>A new comment has been added by ${staffName || 'Staff'} on the content request: <strong>${requestTitle}</strong>.</p>
+            <p>Comment: "${comment}"</p>
+            <p>You can view the request and comment here:</p>
+            <p><a href="${portalLink}">${portalLink}</a></p>
+            <p>Thank you</p>
+          `;
+
+          for (const contact of contactsResult) {
+            await sendEmail(contact.email, subject, html);
+          }
+        }
+      } catch (emailError) {
+        console.error('Error fetching data or sending notification emails:', emailError);
+        // Log error but don't fail the comment creation
+      }
+    }
 
     return res.status(201).json({
       message: 'Comment added successfully',
-      comment: (commentRows as any[])[0],
+      comment: responseComment, // Return the enhanced comment object
     });
   } catch (error) {
     console.error('Error adding comment:', error);

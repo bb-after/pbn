@@ -183,7 +183,7 @@ async function createApprovalRequest(req: NextApiRequest, res: NextApiResponse, 
       description || null,
       fileUrl,
       fileType || null,
-      userInfo.user_id || null,
+      userInfo.id || null,
     ];
 
     const [requestResult]: any = await connection.query(createRequestQuery, requestValues);
