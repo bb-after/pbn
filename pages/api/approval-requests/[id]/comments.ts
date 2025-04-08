@@ -1,7 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import mysql from 'mysql2/promise';
 import { validateUserToken } from '../../validate-user-token'; // Import validation function
-import nodemailer from 'nodemailer'; // Import nodemailer
+import { sendNewStaffCommentEmail } from '../../../../utils/email'; // Import the new utility function
 
 // Create a connection pool
 const pool = mysql.createPool({
@@ -12,35 +12,6 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
 });
-
-// Helper function to send email (basic implementation)
-async function sendEmail(to: string, subject: string, html: string) {
-  try {
-    // Configure Nodemailer (use environment variables for credentials)
-    let transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: (process.env.SMTP_PORT || '587') === '465', // true for 465, false for other ports
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
-
-    // Send mail
-    await transporter.sendMail({
-      from: `"Your App Name" <${process.env.SMTP_FROM_EMAIL}>`, // Sender address
-      to: to, // List of receivers
-      subject: subject, // Subject line
-      html: html, // HTML body content
-    });
-
-    console.log(`Email sent successfully to ${to}`);
-  } catch (error) {
-    console.error(`Error sending email to ${to}:`, error);
-    // Log the error but don't necessarily block the API response
-  }
-}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { id } = req.query;
@@ -276,24 +247,22 @@ async function addComment(
         );
 
         if (contactsResult.length > 0) {
-          const subject = `New comment on "${requestTitle}"`;
-          // Provide a link back to the client portal request page
-          const portalLink = `${process.env.NEXT_PUBLIC_BASE_URL}/client-portal/requests/${requestId}`;
-          const html = `
-            <p>Hello,</p>
-            <p>A new comment has been added by ${staffName || 'Staff'} on the content request: <strong>${requestTitle}</strong>.</p>
-            <p>Comment: "${comment}"</p>
-            <p>You can view the request and comment here:</p>
-            <p><a href="${portalLink}">${portalLink}</a></p>
-            <p>Thank you</p>
-          `;
-
+          // Use the new utility function
           for (const contact of contactsResult) {
-            await sendEmail(contact.email, subject, html);
+            sendNewStaffCommentEmail(
+              contact.email,
+              staffName || 'Staff', // Use fetched staff name or fallback
+              requestTitle,
+              requestId,
+              comment // The original comment text
+            ).catch(err => {
+              // Log email errors but don't block the response
+              console.error(`Failed to send comment notification to ${contact.email}:`, err);
+            });
           }
         }
       } catch (emailError) {
-        console.error('Error fetching data or sending notification emails:', emailError);
+        console.error('Error fetching data for notification emails:', emailError);
         // Log error but don't fail the comment creation
       }
     }

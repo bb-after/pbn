@@ -1,7 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import mysql from 'mysql2/promise';
 import { sign } from 'jsonwebtoken';
-import cookie from 'cookie';
+import * as cookie from 'cookie';
 
 // Create a connection pool
 const pool = mysql.createPool({
