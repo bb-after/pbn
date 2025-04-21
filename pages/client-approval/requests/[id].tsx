@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Container,
   Typography,
@@ -29,6 +29,12 @@ import {
   DialogActions,
   IconButton,
   Tooltip,
+  TableContainer,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
@@ -45,37 +51,63 @@ import {
   ArrowBack as BackIcon,
   Email as EmailIcon,
   Delete as DeleteIcon,
+  Article as ArticleIcon,
 } from '@mui/icons-material';
 import LayoutContainer from '../../../components/LayoutContainer';
 import StyledHeader from '../../../components/StyledHeader';
 import { useRouter } from 'next/router';
 import useValidateUserToken from 'hooks/useValidateUserToken';
 import axios from 'axios';
+import DOMPurify from 'dompurify';
+
+/// <reference path="../../../client-portal/recogito.d.ts" />
 
 // Interfaces
+interface SectionComment {
+  section_comment_id: number;
+  request_id: number;
+  contact_id: number;
+  start_offset: number;
+  end_offset: number;
+  selected_text: string | null;
+  comment_text: string;
+  created_at: string;
+  contact_name: string;
+}
+
+// Define the structure for a single view record
+interface ContactView {
+  view_id: number;
+  viewed_at: string;
+  email: string;
+}
+
+// Define the structure for contact details including views
+interface ContactWithViews {
+  contact_id: number;
+  name: string;
+  email: string;
+  has_approved: boolean;
+  approved_at: string | null;
+  views: ContactView[]; // Use the new ContactView interface
+}
+
 interface ApprovalRequest {
   request_id: number;
   client_id: number;
   client_name: string;
   title: string;
   description: string | null;
-  file_url: string;
+  file_url: string | null;
   file_type: string | null;
+  inline_content?: string | null;
   status: 'pending' | 'approved' | 'rejected';
   created_by_id: string | null;
   published_url: string | null;
   is_archived: boolean;
   created_at: string;
   updated_at: string;
-  contacts: Array<{
-    contact_id: number;
-    name: string;
-    email: string;
-    has_viewed: boolean;
-    has_approved: boolean;
-    viewed_at: string | null;
-    approved_at: string | null;
-  }>;
+  contacts: ContactWithViews[]; // Use the updated ContactWithViews interface
   versions: Array<{
     version_id: number;
     version_number: number;
@@ -93,6 +125,7 @@ interface ApprovalRequest {
     created_at: string;
     commenter_name?: string;
   }> | null;
+  section_comments?: SectionComment[];
 }
 
 export default function ApprovalRequestDetailPage() {
@@ -127,6 +160,18 @@ export default function ApprovalRequestDetailPage() {
   const [removingContactId, setRemovingContactId] = useState<number | null>(null);
   const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
   const [contactToRemove, setContactToRemove] = useState<{ id: number; name: string } | null>(null);
+
+  // --- Add State for View Log Modal ---
+  const [viewLogModalOpen, setViewLogModalOpen] = useState(false);
+  const [selectedContactViews, setSelectedContactViews] = useState<ContactWithViews | null>(null);
+
+  // --- Add State for Read Only View Modal ---
+  const [readOnlyViewOpen, setReadOnlyViewOpen] = useState(false);
+
+  // --- Recogito Refs & State ---
+  const contentRef = useRef<HTMLDivElement>(null);
+  const recogitoInstance = useRef<any>(null);
+  const [annotations, setAnnotations] = useState<any[]>([]);
 
   // Fetch request details
   const fetchRequestDetails = useCallback(async () => {
@@ -379,6 +424,27 @@ export default function ApprovalRequestDetailPage() {
     }
   };
 
+  // --- Add Modal Handlers ---
+  const handleOpenViewLog = (contact: ContactWithViews) => {
+    setSelectedContactViews(contact);
+    setViewLogModalOpen(true);
+  };
+
+  const handleCloseViewLog = () => {
+    setViewLogModalOpen(false);
+    setSelectedContactViews(null);
+  };
+
+  // --- Add Read Only Modal Handlers ---
+  const handleOpenReadOnlyView = () => {
+    setReadOnlyViewOpen(true);
+  };
+
+  const handleCloseReadOnlyView = () => {
+    setReadOnlyViewOpen(false);
+  };
+  // --- End Read Only Modal Handlers ---
+
   if (!isValidUser || (isLoading && !request)) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
@@ -526,25 +592,62 @@ export default function ApprovalRequestDetailPage() {
                     <Grid item xs={12} md={7}>
                       {/* Current document */}
                       <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-                        <Typography variant="h6" gutterBottom>
-                          Current Document
-                        </Typography>
+                        <Box
+                          display="flex"
+                          justifyContent="space-between"
+                          alignItems="center"
+                          mb={2}
+                        >
+                          <Typography variant="h6" gutterBottom sx={{ mb: 0 }}>
+                            Current Document
+                          </Typography>
+                          {request.inline_content && (
+                            <Button
+                              variant="outlined"
+                              startIcon={<ArticleIcon />}
+                              onClick={handleOpenReadOnlyView}
+                            >
+                              View Final Content
+                            </Button>
+                          )}
+                        </Box>
 
                         <Box display="flex" alignItems="center" my={2}>
                           <DocumentIcon color="primary" sx={{ mr: 2 }} />
                           <Typography variant="body1">
-                            {getFileTypeName(request.file_url)}
+                            {(() => {
+                              if (request.inline_content) {
+                                return (
+                                  <div ref={contentRef} className="annotatable">
+                                    <div
+                                      dangerouslySetInnerHTML={{
+                                        __html: DOMPurify.sanitize(request.inline_content || ''),
+                                      }}
+                                    />
+                                  </div>
+                                );
+                              } else if (request.file_url) {
+                                return (
+                                  <Alert severity="info" sx={{ mt: 2 }}>
+                                    This request has a file attachment instead of inline content.
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      href={request.file_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      startIcon={<DownloadIcon />}
+                                      sx={{ ml: 2 }}
+                                    >
+                                      Download File
+                                    </Button>
+                                  </Alert>
+                                );
+                              } else {
+                                return null;
+                              }
+                            })()}
                           </Typography>
-                          <Box flexGrow={1} />
-                          <Button
-                            variant="outlined"
-                            startIcon={<DownloadIcon />}
-                            href={request.file_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            View / Download
-                          </Button>
                         </Box>
                       </Paper>
 
@@ -682,19 +785,34 @@ export default function ApprovalRequestDetailPage() {
                               key={contact.contact_id}
                               secondaryAction={
                                 <Box display="flex" alignItems="center">
-                                  <Tooltip title={contact.has_viewed ? 'Viewed' : 'Not viewed'}>
+                                  <Tooltip
+                                    title={
+                                      contact.views.length > 0
+                                        ? `Viewed ${contact.views.length} times. Last: ${new Date(contact.views[0].viewed_at).toLocaleString()}`
+                                        : 'Not viewed'
+                                    }
+                                  >
                                     <span>
-                                      <IconButton size="small" disabled>
-                                        {contact.has_viewed ? (
-                                          <VisibilityIcon color="success" />
+                                      <IconButton
+                                        size="small"
+                                        onClick={() => handleOpenViewLog(contact)}
+                                        disabled={contact.views.length === 0}
+                                        color={contact.views.length > 0 ? 'info' : 'default'}
+                                      >
+                                        {contact.views.length > 0 ? (
+                                          <VisibilityIcon />
                                         ) : (
-                                          <VisibilityOffIcon color="disabled" />
+                                          <VisibilityOffIcon />
                                         )}
                                       </IconButton>
                                     </span>
                                   </Tooltip>
                                   <Tooltip
-                                    title={contact.has_approved ? 'Approved' : 'Not approved'}
+                                    title={
+                                      contact.has_approved
+                                        ? `Approved on ${new Date(contact.approved_at!).toLocaleString()}`
+                                        : 'Not approved'
+                                    }
                                   >
                                     <span>
                                       <IconButton size="small" disabled>
@@ -819,17 +937,19 @@ export default function ApprovalRequestDetailPage() {
                                         {version.comments}
                                       </Typography>
                                     )}
-                                    <Button
-                                      variant="outlined"
-                                      size="small"
-                                      startIcon={<DownloadIcon />}
-                                      href={version.file_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      sx={{ mt: 2 }}
-                                    >
-                                      View / Download
-                                    </Button>
+                                    {version.file_url && (
+                                      <Button
+                                        variant="outlined"
+                                        size="small"
+                                        startIcon={<DownloadIcon />}
+                                        href={version.file_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        sx={{ mt: 2 }}
+                                      >
+                                        View / Download
+                                      </Button>
+                                    )}
                                   </>
                                 }
                               />
@@ -849,9 +969,8 @@ export default function ApprovalRequestDetailPage() {
                 {tabValue === 2 && (
                   <Paper elevation={2} sx={{ p: 3 }}>
                     <Typography variant="h6" gutterBottom>
-                      Contact Information
+                      Contact Information & Activity
                     </Typography>
-
                     <List>
                       {request.contacts.map(contact => (
                         <React.Fragment key={contact.contact_id}>
@@ -870,18 +989,25 @@ export default function ApprovalRequestDetailPage() {
                                     <Chip
                                       size="small"
                                       icon={
-                                        contact.has_viewed ? (
+                                        contact.views.length > 0 ? (
                                           <VisibilityIcon />
                                         ) : (
                                           <VisibilityOffIcon />
                                         )
                                       }
                                       label={
-                                        contact.has_viewed
-                                          ? `Viewed on ${new Date(contact.viewed_at!).toLocaleDateString()}`
+                                        contact.views.length > 0
+                                          ? `Viewed ${contact.views.length} times (Last: ${new Date(contact.views[0].viewed_at).toLocaleDateString()})`
                                           : 'Not viewed'
                                       }
-                                      color={contact.has_viewed ? 'info' : 'default'}
+                                      color={contact.views.length > 0 ? 'info' : 'default'}
+                                      title={
+                                        contact.views.length > 0
+                                          ? contact.views
+                                              .map(v => new Date(v.viewed_at).toLocaleString())
+                                              .join('\n')
+                                          : ''
+                                      }
                                     />
                                     <Chip
                                       size="small"
@@ -989,6 +1115,113 @@ export default function ApprovalRequestDetailPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* --- Updated View Log Modal with Table --- */}
+      <Dialog open={viewLogModalOpen} onClose={handleCloseViewLog} maxWidth="sm" fullWidth>
+        <DialogTitle>View History for {selectedContactViews?.name || 'Contact'}</DialogTitle>
+        <DialogContent dividers sx={{ p: 0 }}>
+          {selectedContactViews && selectedContactViews.views.length > 0 ? (
+            <TableContainer component={Paper} elevation={0} square>
+              <Table size="small" aria-label="view history table">
+                <TableHead sx={{ bgcolor: 'grey.100' }}>
+                  <TableRow>
+                    <TableCell>Email</TableCell>
+                    <TableCell>Time Viewed (Local)</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {selectedContactViews.views.map(view => (
+                    <TableRow
+                      key={view.view_id}
+                      sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
+                    >
+                      <TableCell component="th" scope="row">
+                        {view.email}
+                      </TableCell>
+                      <TableCell>
+                        {
+                          /* Add IIFE for debugging */ (() => {
+                            const dateObj = new Date(view.viewed_at);
+
+                            // Get date part using locale
+                            const dateString = dateObj.toLocaleDateString(undefined, {
+                              year: 'numeric',
+                              month: 'numeric',
+                              day: 'numeric',
+                            });
+
+                            // Manually format time part
+                            const hours = dateObj.getHours();
+                            const minutes = dateObj.getMinutes();
+                            const seconds = dateObj.getSeconds();
+                            const ampm = hours >= 12 ? 'PM' : 'AM';
+                            const hours12 = hours % 12 || 12; // Convert 0 to 12
+                            const minutesPadded = minutes.toString().padStart(2, '0');
+                            const secondsPadded = seconds.toString().padStart(2, '0');
+                            const timeString = `${hours12}:${minutesPadded}:${secondsPadded} ${ampm}`;
+
+                            // Combine date and manually formatted time
+                            const finalString = `${dateString}, ${timeString}`;
+
+                            console.log(
+                              `View ID: ${view.view_id} - Raw Timestamp: ${view.viewed_at}`,
+                              '| Parsed Date:',
+                              dateObj,
+                              '| Manual Format Output:',
+                              finalString
+                            );
+                            return finalString; // Render the manually formatted string
+                          })()
+                        }
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : (
+            <DialogContentText sx={{ p: 2, textAlign: 'center' }}>
+              No views recorded for this contact.
+            </DialogContentText>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseViewLog}>Close</Button>
+        </DialogActions>
+      </Dialog>
+      {/* --- End View Log Modal --- */}
+
+      {/* --- Add Read Only View Modal --- */}
+      <Dialog
+        open={readOnlyViewOpen}
+        onClose={handleCloseReadOnlyView}
+        maxWidth="md" // Adjust size as needed
+        fullWidth
+      >
+        <DialogTitle>Final Content Preview</DialogTitle>
+        <DialogContent dividers>
+          {request?.inline_content ? (
+            <Box
+              sx={{
+                // Add basic styling for readability
+                '& p': { my: 1 },
+                '& ul, & ol': { my: 1, pl: 3 },
+                '& h1, & h2, & h3': { my: 2 },
+                '& a': { color: 'primary.main' },
+              }}
+              dangerouslySetInnerHTML={{
+                __html: request.inline_content, // Render the raw HTML
+              }}
+            />
+          ) : (
+            <DialogContentText>No inline content available.</DialogContentText>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseReadOnlyView}>Close</Button>
+        </DialogActions>
+      </Dialog>
+      {/* --- End Read Only View Modal --- */}
     </LayoutContainer>
   );
 }

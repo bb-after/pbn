@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Container,
   Typography,
@@ -45,6 +45,43 @@ import {
 import { useRouter } from 'next/router';
 import useClientAuth from '../../../hooks/useClientAuth';
 import axios from 'axios';
+import DOMPurify from 'dompurify';
+import Head from 'next/head';
+
+/// <reference path="./recogito.d.ts" />
+
+declare global {
+  interface Window {
+    Recogito: any;
+  }
+}
+
+const loadScript = (src: string): Promise<void> => {
+  const existingScript = document.querySelector(`script[src="${src}"]`);
+  if (existingScript) {
+    existingScript.remove();
+  }
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = error => reject(new Error(`Failed to load script: ${src}\n${error}`));
+    document.body.appendChild(script);
+  });
+};
+
+interface SectionComment {
+  section_comment_id: number;
+  request_id: number;
+  contact_id: number;
+  start_offset: number;
+  end_offset: number;
+  selected_text: string | null;
+  comment_text: string;
+  created_at: string;
+  contact_name: string;
+}
 
 interface ApprovalRequest {
   request_id: number;
@@ -52,7 +89,7 @@ interface ApprovalRequest {
   client_name: string;
   title: string;
   description: string | null;
-  file_url: string;
+  file_url: string | null;
   file_type: string | null;
   status: 'pending' | 'approved' | 'rejected';
   created_by_id: string | null;
@@ -84,6 +121,8 @@ interface ApprovalRequest {
     contact_name: string | null;
     created_at: string;
   }> | null;
+  inline_content?: string | null;
+  section_comments?: SectionComment[];
 }
 
 export default function ClientRequestDetailPage() {
@@ -112,6 +151,16 @@ export default function ClientRequestDetailPage() {
   // State for version history dialog
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
 
+  // State for annotations
+  const [annotations, setAnnotations] = useState<any[]>([]);
+
+  // --- Add Ref to track view marking ---
+  const hasMarkedViewRef = useRef(false);
+
+  // --- Recogito Refs & State ---
+  const contentRef = useRef<HTMLDivElement>(null);
+  const recogitoInstance = useRef<any>(null);
+
   // Fetch request details
   const fetchRequestDetails = useCallback(async () => {
     setLoading(true);
@@ -135,20 +184,22 @@ export default function ClientRequestDetailPage() {
 
   // Mark the request as viewed
   const markRequestAsViewed = useCallback(async () => {
+    if (!clientInfo?.contact_id || !id) return;
     try {
       const headers = {
         'x-client-portal': 'true',
-        'x-client-contact-id': clientInfo?.contact_id.toString(),
+        'x-client-contact-id': clientInfo.contact_id.toString(),
       };
-
       await axios.put(
         `/api/approval-requests/${id}`,
         {
           markViewed: true,
-          contactId: clientInfo?.contact_id,
+          contactId: clientInfo.contact_id,
         },
         { headers }
       );
+      console.log('View marked successfully');
+      hasMarkedViewRef.current = true; // Set flag after successful marking
     } catch (error) {
       console.error('Error marking request as viewed:', error);
     }
@@ -158,9 +209,131 @@ export default function ClientRequestDetailPage() {
   useEffect(() => {
     if (id && clientInfo) {
       fetchRequestDetails();
-      markRequestAsViewed();
     }
-  }, [id, clientInfo, fetchRequestDetails, markRequestAsViewed]);
+  }, [id, clientInfo, fetchRequestDetails]);
+
+  // --- Add Effect to mark view AFTER data is loaded ---
+  useEffect(() => {
+    // Only run if we have request data, client info, and haven't marked view yet
+    if (request && clientInfo && !hasMarkedViewRef.current) {
+      // Check if this contact already has views in the fetched data
+      const contactData = request.contacts.find(c => c.contact_id === clientInfo.contact_id);
+
+      // If contact exists in the list BUT has no views logged yet, mark it.
+      // This handles the initial view. Subsequent views trigger the API directly.
+      // We rely on hasMarkedViewRef for strict mode double-runs.
+      if (contactData) {
+        // Ensure contact is part of this request
+        // For simplicity now, just mark if the flag is false.
+        // A more robust check could involve comparing timestamps if needed.
+        console.log('Checking if view needs marking...');
+        markRequestAsViewed();
+      }
+    }
+    // Depend on request, clientInfo, and the stable markRequestAsViewed function
+  }, [request, clientInfo, markRequestAsViewed]);
+
+  // --- Recogito Helper Function ---
+  const convertDbCommentToAnnotation = (dbComment: SectionComment) => {
+    return {
+      '@context': 'http://www.w3.org/ns/anno.jsonld',
+      type: 'Annotation',
+      id: `#section-comment-${dbComment.section_comment_id}`,
+      body: [
+        {
+          type: 'TextualBody',
+          value: dbComment.comment_text,
+          purpose: 'commenting',
+          creator: {
+            id: `mailto:${dbComment.contact_name}`,
+            name: dbComment.contact_name,
+          },
+        },
+      ],
+      target: {
+        selector: [
+          {
+            type: 'TextQuoteSelector',
+            exact: dbComment.selected_text || '',
+          },
+          {
+            type: 'TextPositionSelector',
+            start: dbComment.start_offset,
+            end: dbComment.end_offset,
+          },
+        ],
+      },
+    };
+  };
+  // --- End Recogito Helper Function ---
+
+  // --- Recogito Initialization Effect ---
+  useEffect(() => {
+    if (request?.inline_content && contentRef.current && !recogitoInstance.current) {
+      let isMounted = true;
+
+      const initRecogito = async () => {
+        try {
+          await loadScript('/vendor/recogito.min.js');
+
+          // Debug: Check what's on the window object
+          console.log('Script loaded, checking window.Recogito:', (window as any).Recogito);
+          console.log(
+            'Script loaded, checking window.recogito (lowercase):',
+            (window as any).recogito
+          );
+
+          // Try accessing the constructor from the module object on window
+          const Recogito = (window as any).Recogito?.Recogito || (window as any).Recogito?.default;
+
+          if (!isMounted || !Recogito) {
+            console.error(
+              'Client View: Recogito constructor not found within window.Recogito module object.',
+              (window as any).Recogito
+            );
+            return;
+          }
+
+          // Now Recogito should be the constructor
+          const r = new Recogito({
+            content: contentRef.current!,
+            readOnly: true,
+          });
+
+          r.on('selectAnnotation', (annotation: any) => {
+            console.log('Client Selected annotation:', annotation);
+          });
+
+          if (request.section_comments && request.section_comments.length > 0) {
+            console.log('Client View: Loading annotations:', request.section_comments);
+            try {
+              const loadedAnnotations = request.section_comments.map(convertDbCommentToAnnotation);
+              r.setAnnotations(loadedAnnotations);
+            } catch (error) {
+              console.error('Client View: Error converting/loading annotations:', error);
+            }
+          }
+
+          recogitoInstance.current = r;
+          console.log('Client View: Recogito Initialized (Read-Only) via loadScript');
+        } catch (error) {
+          console.error('Client View: Failed to load or initialize Recogito:', error);
+        }
+      };
+
+      initRecogito();
+
+      return () => {
+        isMounted = false;
+        if (recogitoInstance.current) {
+          console.log('Client View: Destroying Recogito instance...');
+          recogitoInstance.current.destroy();
+          recogitoInstance.current = null;
+        }
+      };
+    }
+  }, [request, clientInfo, id, fetchRequestDetails]);
+  // --- End Recogito Initialization Effect ---
 
   // Handle user menu open
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
@@ -351,6 +524,10 @@ export default function ClientRequestDetailPage() {
 
   return (
     <Box sx={{ flexGrow: 1 }}>
+      <Head>
+        <title>Content Review - {request?.title || 'Request'}</title>
+        <link rel="stylesheet" href="/vendor/recogito.min.css" />
+      </Head>
       {/* Header */}
       <AppBar position="static">
         <Toolbar>
@@ -500,31 +677,65 @@ export default function ClientRequestDetailPage() {
               <Grid container spacing={3}>
                 {/* Left column: document and comments */}
                 <Grid item xs={12} md={8}>
-                  {/* Document card */}
+                  {/* Document card - Updated Rendering Logic */}
                   <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
                     <Typography variant="h6" gutterBottom>
-                      Content for Review
+                      {request.status === 'pending' ? 'Content for Review' : 'Reviewed Content'}
                     </Typography>
 
-                    <Box display="flex" alignItems="center" my={2}>
-                      <DocumentIcon color="primary" sx={{ mr: 2 }} />
-                      <Typography variant="body1">{getFileTypeName(request.file_url)}</Typography>
-                      <Box flexGrow={1} />
-                      <Button
-                        variant="contained"
-                        startIcon={<DownloadIcon />}
-                        href={request.file_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        View / Download
-                      </Button>
-                    </Box>
+                    {(() => {
+                      if (request.inline_content) {
+                        // Render Recogito container for inline content
+                        return (
+                          <div
+                            ref={contentRef}
+                            className="annotatable"
+                            style={{ marginTop: '16px' }}
+                          >
+                            <div
+                              dangerouslySetInnerHTML={{
+                                __html: DOMPurify.sanitize(request.inline_content || ''),
+                              }}
+                            />
+                          </div>
+                        );
+                      } else if (request.file_url) {
+                        // Render download button for file-based requests
+                        return (
+                          <Box display="flex" alignItems="center" my={2}>
+                            <DocumentIcon color="primary" sx={{ mr: 2 }} />
+                            <Typography variant="body1">
+                              {getFileTypeName(request.file_url)}
+                            </Typography>
+                            <Box flexGrow={1} />
+                            <Button
+                              variant="contained"
+                              startIcon={<DownloadIcon />}
+                              href={request.file_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              View / Download
+                            </Button>
+                          </Box>
+                        );
+                      } else {
+                        // Fallback if neither exists
+                        return (
+                          <Typography variant="body2" color="textSecondary" sx={{ mt: 2 }}>
+                            No content available for review.
+                          </Typography>
+                        );
+                      }
+                    })()}
 
-                    <Typography variant="body2" color="textSecondary" sx={{ mt: 2 }}>
-                      Please review the document carefully before providing your approval or
-                      feedback.
-                    </Typography>
+                    {/* Conditional text */}
+                    {request.status === 'pending' && !request.inline_content && (
+                      <Typography variant="body2" color="textSecondary" sx={{ mt: 2 }}>
+                        Please review the document carefully before providing your approval or
+                        feedback.
+                      </Typography>
+                    )}
                   </Paper>
 
                   {/* Comments section */}
