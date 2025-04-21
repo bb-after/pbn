@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import Head from 'next/head';
 import {
   Container,
   Typography,
@@ -52,15 +53,32 @@ import { useRouter } from 'next/router';
 import useValidateUserToken from 'hooks/useValidateUserToken';
 import axios from 'axios';
 
+// Add Recogito types declaration reference (assuming it exists)
+/// <reference path="../../../client-portal/recogito.d.ts" />
+declare module '@recogito/recogito-js';
+
 // Interfaces
+interface SectionComment {
+  section_comment_id: number;
+  request_id: number;
+  contact_id: number;
+  start_offset: number;
+  end_offset: number;
+  selected_text: string | null;
+  comment_text: string;
+  created_at: string;
+  contact_name: string;
+}
+
 interface ApprovalRequest {
   request_id: number;
   client_id: number;
   client_name: string;
   title: string;
   description: string | null;
-  file_url: string;
+  file_url: string | null;
   file_type: string | null;
+  inline_content?: string | null;
   status: 'pending' | 'approved' | 'rejected';
   created_by_id: string | null;
   published_url: string | null;
@@ -79,7 +97,7 @@ interface ApprovalRequest {
   versions: Array<{
     version_id: number;
     version_number: number;
-    file_url: string;
+    file_url: string | null;
     comments: string | null;
     created_by_id: string | null;
     created_at: string;
@@ -93,6 +111,7 @@ interface ApprovalRequest {
     created_at: string;
     commenter_name?: string;
   }> | null;
+  section_comments?: SectionComment[];
 }
 
 export default function ApprovalRequestDetailPage() {
@@ -116,17 +135,16 @@ export default function ApprovalRequestDetailPage() {
   const [newComment, setNewComment] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
 
-  // State for upload dialog
-  const [openUploadDialog, setOpenUploadDialog] = useState(false);
-  const [newFile, setNewFile] = useState<File | null>(null);
-  const [newVersionComment, setNewVersionComment] = useState('');
-  const [uploadingFile, setUploadingFile] = useState(false);
-
   // State for resending notification
   const [resendingContactId, setResendingContactId] = useState<number | null>(null);
   const [removingContactId, setRemovingContactId] = useState<number | null>(null);
   const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
   const [contactToRemove, setContactToRemove] = useState<{ id: number; name: string } | null>(null);
+
+  // Add Recogito Refs & State
+  const contentRef = useRef<HTMLDivElement>(null);
+  const recogitoInstance = useRef<any>(null);
+  const [annotations, setAnnotations] = useState<any[]>([]);
 
   // Fetch request details
   const fetchRequestDetails = useCallback(async () => {
@@ -229,51 +247,6 @@ export default function ApprovalRequestDetailPage() {
     }
   };
 
-  // Handle file selection for new version
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files.length > 0) {
-      setNewFile(event.target.files[0]);
-    }
-  };
-
-  // Handle uploading a new version
-  const handleUploadNewVersion = async () => {
-    if (!newFile) {
-      return;
-    }
-
-    setUploadingFile(true);
-
-    try {
-      // 1. Upload file to S3
-      const formData = new FormData();
-      formData.append('file', newFile);
-      formData.append('clientId', request?.client_id.toString() || '');
-
-      const fileUploadResponse = await axios.post('/api/upload-file', formData);
-      const fileUrl = fileUploadResponse.data.url;
-
-      // 2. Create the new version
-      await axios.post(`/api/approval-requests/${id}/versions`, {
-        fileUrl,
-        comments: newVersionComment,
-      });
-
-      // 3. Reset form and close dialog
-      setNewFile(null);
-      setNewVersionComment('');
-      setOpenUploadDialog(false);
-
-      // 4. Refresh request data
-      fetchRequestDetails();
-    } catch (error) {
-      console.error('Error uploading new version:', error);
-      setError('Failed to upload new version');
-    } finally {
-      setUploadingFile(false);
-    }
-  };
-
   // Handle archiving the request
   const handleArchiveRequest = async () => {
     try {
@@ -358,26 +331,90 @@ export default function ApprovalRequestDetailPage() {
     }
   };
 
-  // Get human-readable file type
-  const getFileTypeName = (fileUrl: string) => {
-    if (!fileUrl) return 'File';
+  // Add Recogito helper function
+  const convertDbCommentToAnnotation = (comment: SectionComment): any => ({
+    '@context': 'http://www.w3.org/ns/anno.jsonld',
+    type: 'Annotation',
+    id: `#section-comment-${comment.section_comment_id}`,
+    body: [
+      {
+        type: 'TextualBody',
+        purpose: 'commenting',
+        value: comment.comment_text,
+        creator: {
+          id: `contact:${comment.contact_id}`,
+          name: comment.contact_name,
+        },
+      },
+    ],
+    target: {
+      selector: [
+        { type: 'TextQuoteSelector', exact: comment.selected_text || '' },
+        { type: 'TextPositionSelector', start: comment.start_offset, end: comment.end_offset },
+      ],
+    },
+  });
 
-    const extension = fileUrl.split('.').pop()?.toLowerCase();
+  // Recogito Initialization/Loading Effect (Staff ReadOnly View)
+  useEffect(() => {
+    let recogito: any = null;
 
-    switch (extension) {
-      case 'pdf':
-        return 'PDF Document';
-      case 'doc':
-      case 'docx':
-        return 'Word Document';
-      case 'jpg':
-      case 'jpeg':
-      case 'png':
-        return 'Image';
-      default:
-        return 'Document';
-    }
-  };
+    const initRecogitoReadOnly = async () => {
+      if (contentRef.current && request?.inline_content && !recogitoInstance.current) {
+        console.log('Staff View: Attempting Recogito init (ReadOnly)...');
+        try {
+          const { Recogito } = await import('@recogito/recogito-js');
+
+          if (contentRef.current && !recogitoInstance.current) {
+            const innerDiv = contentRef.current.querySelector('div');
+            if (innerDiv) {
+              console.log('Staff View: Initializing on inner div (ReadOnly)...');
+              recogito = new Recogito({
+                content: innerDiv,
+                readOnly: true,
+                widgets: [{ widget: 'COMMENT', options: { placeholder: 'Client feedback...' } }],
+              });
+
+              if (request.section_comments && request.section_comments.length > 0) {
+                console.log('Staff View: Loading annotations:', request.section_comments);
+                try {
+                  const loadedAnnotations = request.section_comments.map(
+                    convertDbCommentToAnnotation
+                  );
+                  recogito.setAnnotations(loadedAnnotations);
+                  setAnnotations(loadedAnnotations);
+                } catch (error) {
+                  console.error('Staff View: Error converting/loading annotations:', error);
+                }
+              }
+
+              recogitoInstance.current = recogito;
+              console.log('Staff View: Recogito Initialized (ReadOnly).');
+            } else {
+              console.error('Staff View: Could not find inner div.');
+            }
+          } else {
+            console.log('Staff View: Init aborted post-import.');
+          }
+        } catch (error) {
+          console.error('Staff View: Failed to import/init Recogito:', error);
+        }
+      }
+    };
+
+    const timeoutId = setTimeout(() => {
+      initRecogitoReadOnly();
+    }, 100);
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (recogitoInstance.current) {
+        console.log('Staff View: Destroying Recogito...');
+        recogitoInstance.current.destroy();
+        recogitoInstance.current = null;
+      }
+    };
+  }, [request?.inline_content, request?.section_comments]);
 
   if (!isValidUser || (isLoading && !request)) {
     return (
@@ -396,599 +433,559 @@ export default function ApprovalRequestDetailPage() {
   }
 
   return (
-    <LayoutContainer>
-      <StyledHeader />
-      <Container maxWidth="lg">
-        <Box my={4}>
-          {/* Header with back button */}
-          <Box display="flex" alignItems="center" mb={3}>
-            <IconButton onClick={() => router.push('/client-approval')} sx={{ mr: 2 }}>
-              <BackIcon />
-            </IconButton>
-            <Typography variant="h4">Approval Request Details</Typography>
-          </Box>
+    <>
+      <Head>
+        <link rel="stylesheet" href="/styles/recogito.min.css" />
+      </Head>
 
-          {/* Error alert */}
-          {error && (
-            <Alert severity="error" sx={{ mb: 3 }}>
-              {error}
-            </Alert>
-          )}
+      <LayoutContainer>
+        <StyledHeader />
+        <Container maxWidth="lg">
+          <Box my={4}>
+            <Box display="flex" alignItems="center" mb={3}>
+              <IconButton onClick={() => router.push('/client-approval')} sx={{ mr: 2 }}>
+                <BackIcon />
+              </IconButton>
+              <Typography variant="h4">Approval Request Details</Typography>
+            </Box>
 
-          {request && (
-            <>
-              {/* Request summary card */}
-              <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
-                <Grid container spacing={3}>
-                  <Grid item xs={12} md={8}>
-                    <Box display="flex" alignItems="center" mb={2}>
-                      <Typography variant="h5">{request.title}</Typography>
-                      <Box ml={2}>
-                        <Chip
-                          label={request.status.charAt(0).toUpperCase() + request.status.slice(1)}
-                          color={
-                            request.status === 'approved'
-                              ? 'success'
-                              : request.status === 'rejected'
-                                ? 'error'
-                                : 'warning'
-                          }
-                        />
-                      </Box>
-                    </Box>
+            {error && (
+              <Alert severity="error" sx={{ mb: 3 }}>
+                {error}
+              </Alert>
+            )}
 
-                    <Typography variant="subtitle1" gutterBottom>
-                      Client: {request.client_name}
-                    </Typography>
-
-                    {request.description && (
-                      <Typography variant="body1" sx={{ mt: 2 }}>
-                        {request.description}
-                      </Typography>
-                    )}
-                  </Grid>
-
-                  <Grid item xs={12} md={4}>
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Typography variant="subtitle2" gutterBottom>
-                          Request Info
-                        </Typography>
-                        <Box display="flex" justifyContent="space-between" mb={1}>
-                          <Typography variant="body2" color="textSecondary">
-                            Created:
-                          </Typography>
-                          <Typography variant="body2">
-                            {new Date(request.created_at).toLocaleDateString()}
-                          </Typography>
-                        </Box>
-                        <Box display="flex" justifyContent="space-between" mb={1}>
-                          <Typography variant="body2" color="textSecondary">
-                            Latest Version:
-                          </Typography>
-                          <Typography variant="body2">
-                            {request.versions && request.versions.length > 0
-                              ? request.versions[0].version_number
-                              : 1}
-                          </Typography>
-                        </Box>
-                        <Box display="flex" justifyContent="space-between">
-                          <Typography variant="body2" color="textSecondary">
-                            Approvals:
-                          </Typography>
-                          <Typography variant="body2">
-                            {request.contacts.filter(c => c.has_approved).length} /{' '}
-                            {request.contacts.length}
-                          </Typography>
-                        </Box>
-                      </CardContent>
-                    </Card>
-
-                    <Box display="flex" justifyContent="space-between" mt={2}>
-                      <Button
-                        variant="outlined"
-                        startIcon={<HistoryIcon />}
-                        onClick={() => setTabValue(1)}
-                      >
-                        Versions
-                      </Button>
-                      <Button
-                        variant="contained"
-                        color="primary"
-                        startIcon={<UploadIcon />}
-                        onClick={() => setOpenUploadDialog(true)}
-                      >
-                        New Version
-                      </Button>
-                    </Box>
-                  </Grid>
-                </Grid>
-              </Paper>
-
-              {/* Tabs for content sections */}
-              <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-                <Tabs
-                  value={tabValue}
-                  onChange={handleTabChange}
-                  aria-label="approval request tabs"
-                >
-                  <Tab label="Details & Comments" />
-                  <Tab label="Version History" />
-                  <Tab label="Contacts" />
-                </Tabs>
-              </Box>
-
-              {/* Tab content */}
-              <Box mb={4}>
-                {/* Details & Comments tab */}
-                {tabValue === 0 && (
+            {request && (
+              <>
+                <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
                   <Grid container spacing={3}>
-                    <Grid item xs={12} md={7}>
-                      {/* Current document */}
-                      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-                        <Typography variant="h6" gutterBottom>
-                          Current Document
-                        </Typography>
-
-                        <Box display="flex" alignItems="center" my={2}>
-                          <DocumentIcon color="primary" sx={{ mr: 2 }} />
-                          <Typography variant="body1">
-                            {getFileTypeName(request.file_url)}
-                          </Typography>
-                          <Box flexGrow={1} />
-                          <Button
-                            variant="outlined"
-                            startIcon={<DownloadIcon />}
-                            href={request.file_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            View / Download
-                          </Button>
-                        </Box>
-                      </Paper>
-
-                      {/* Published URL section */}
-                      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-                        <Typography variant="h6" gutterBottom>
-                          Published URL
-                        </Typography>
-
-                        <Box mt={2}>
-                          <Grid container spacing={2} alignItems="flex-end">
-                            <Grid item xs={request.published_url ? 9 : 12}>
-                              <TextField
-                                fullWidth
-                                label="Published URL"
-                                placeholder="https://example.com/published-content"
-                                value={publishedUrl}
-                                onChange={e => setPublishedUrl(e.target.value)}
-                                InputProps={{
-                                  startAdornment: <LinkIcon color="action" sx={{ mr: 1 }} />,
-                                }}
-                              />
-                            </Grid>
-                            {request.published_url && (
-                              <Grid item xs={3}>
-                                <Button
-                                  fullWidth
-                                  href={request.published_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                >
-                                  Visit
-                                </Button>
-                              </Grid>
-                            )}
-                          </Grid>
-                          <Box display="flex" justifyContent="flex-end" mt={2}>
-                            <Button
-                              variant="contained"
-                              onClick={handleUpdatePublishedUrl}
-                              disabled={updatingUrl}
-                            >
-                              {updatingUrl ? <CircularProgress size={24} /> : 'Update URL'}
-                            </Button>
-                          </Box>
-                        </Box>
-                      </Paper>
-
-                      {/* Comments section */}
-                      <Paper elevation={2} sx={{ p: 3 }}>
-                        <Typography variant="h6" gutterBottom>
-                          Comments
-                        </Typography>
-
-                        <Box mt={2} mb={3}>
-                          <TextField
-                            fullWidth
-                            multiline
-                            rows={3}
-                            label="Add a comment"
-                            placeholder="Enter your comment here..."
-                            value={newComment}
-                            onChange={e => setNewComment(e.target.value)}
+                    <Grid item xs={12} md={8}>
+                      <Box display="flex" alignItems="center" mb={2}>
+                        <Typography variant="h5">{request.title}</Typography>
+                        <Box ml={2}>
+                          <Chip
+                            label={request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                            color={
+                              request.status === 'approved'
+                                ? 'success'
+                                : request.status === 'rejected'
+                                  ? 'error'
+                                  : 'warning'
+                            }
                           />
-                          <Box display="flex" justifyContent="flex-end" mt={2}>
-                            <Button
-                              variant="contained"
-                              onClick={handleSubmitComment}
-                              disabled={submittingComment || !newComment.trim()}
-                            >
-                              {submittingComment ? <CircularProgress size={24} /> : 'Post Comment'}
-                            </Button>
-                          </Box>
                         </Box>
+                      </Box>
 
-                        <Divider sx={{ my: 2 }} />
+                      <Typography variant="subtitle1" gutterBottom>
+                        Client: {request.client_name}
+                      </Typography>
 
-                        {request.comments && request.comments.length > 0 ? (
-                          <List>
-                            {request.comments.map(comment => (
-                              <React.Fragment key={comment.comment_id}>
-                                <ListItem alignItems="flex-start">
-                                  <ListItemAvatar>
-                                    <Avatar>
-                                      {comment.contact_name
-                                        ? comment.contact_name.charAt(0).toUpperCase()
-                                        : 'S'}
-                                    </Avatar>
-                                  </ListItemAvatar>
-                                  <ListItemText
-                                    primary={
-                                      <Box display="flex" justifyContent="space-between">
-                                        <Typography variant="subtitle2">
-                                          {comment.commenter_name || 'Unknown'}
-                                        </Typography>
-                                        <Typography variant="caption" color="textSecondary">
-                                          {new Date(comment.created_at).toLocaleString()}
-                                        </Typography>
-                                      </Box>
-                                    }
-                                    secondary={
-                                      <Typography
-                                        component="span"
-                                        variant="body2"
-                                        color="textPrimary"
-                                        sx={{ mt: 1, display: 'block' }}
-                                      >
-                                        {comment.comment}
-                                      </Typography>
-                                    }
-                                  />
-                                </ListItem>
-                                <Divider variant="inset" component="li" />
-                              </React.Fragment>
-                            ))}
-                          </List>
-                        ) : (
-                          <Typography variant="body2" color="textSecondary" align="center">
-                            No comments yet
-                          </Typography>
-                        )}
-                      </Paper>
+                      {request.description && (
+                        <Typography variant="body1" sx={{ mt: 2 }}>
+                          {request.description}
+                        </Typography>
+                      )}
                     </Grid>
 
-                    {/* Contact status sidebar */}
-                    <Grid item xs={12} md={5}>
-                      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-                        <Typography variant="h6" gutterBottom>
-                          Contact Status
-                        </Typography>
-
-                        <List>
-                          {request.contacts.map(contact => (
-                            <ListItem
-                              key={contact.contact_id}
-                              secondaryAction={
-                                <Box display="flex" alignItems="center">
-                                  <Tooltip title={contact.has_viewed ? 'Viewed' : 'Not viewed'}>
-                                    <span>
-                                      <IconButton size="small" disabled>
-                                        {contact.has_viewed ? (
-                                          <VisibilityIcon color="success" />
-                                        ) : (
-                                          <VisibilityOffIcon color="disabled" />
-                                        )}
-                                      </IconButton>
-                                    </span>
-                                  </Tooltip>
-                                  <Tooltip
-                                    title={contact.has_approved ? 'Approved' : 'Not approved'}
-                                  >
-                                    <span>
-                                      <IconButton size="small" disabled>
-                                        {contact.has_approved ? (
-                                          <CheckIcon color="success" />
-                                        ) : (
-                                          <CloseIcon color="disabled" />
-                                        )}
-                                      </IconButton>
-                                    </span>
-                                  </Tooltip>
-                                  <Tooltip title="Resend Notification">
-                                    <IconButton
-                                      size="small"
-                                      color="primary"
-                                      onClick={() => handleResendNotification(contact.contact_id)}
-                                      disabled={resendingContactId === contact.contact_id}
-                                      sx={{ ml: 1 }}
-                                    >
-                                      {resendingContactId === contact.contact_id ? (
-                                        <CircularProgress size={20} />
-                                      ) : (
-                                        <EmailIcon fontSize="small" />
-                                      )}
-                                    </IconButton>
-                                  </Tooltip>
-                                  <Tooltip title="Remove Contact">
-                                    <IconButton
-                                      size="small"
-                                      color="error"
-                                      onClick={() =>
-                                        handleOpenRemoveDialog({
-                                          id: contact.contact_id,
-                                          name: contact.name,
-                                        })
-                                      }
-                                      disabled={removingContactId === contact.contact_id}
-                                      sx={{ ml: 0.5 }}
-                                    >
-                                      {removingContactId === contact.contact_id ? (
-                                        <CircularProgress size={20} />
-                                      ) : (
-                                        <DeleteIcon fontSize="small" />
-                                      )}
-                                    </IconButton>
-                                  </Tooltip>
-                                </Box>
-                              }
-                            >
-                              <ListItemIcon>
-                                <PersonIcon />
-                              </ListItemIcon>
-                              <ListItemText primary={contact.name} secondary={contact.email} />
-                            </ListItem>
-                          ))}
-                        </List>
-                      </Paper>
-
-                      {/* Actions */}
-                      <Paper elevation={2} sx={{ p: 3 }}>
-                        <Typography variant="h6" gutterBottom>
-                          Actions
-                        </Typography>
-
-                        <Button
-                          fullWidth
-                          variant="outlined"
-                          color="warning"
-                          onClick={handleArchiveRequest}
-                          sx={{ mt: 2 }}
-                        >
-                          Archive Request
-                        </Button>
-                      </Paper>
+                    <Grid item xs={12} md={4}>
+                      <Card variant="outlined">
+                        <CardContent>
+                          <Typography variant="subtitle2" gutterBottom>
+                            Request Info
+                          </Typography>
+                          <Box display="flex" justifyContent="space-between" mb={1}>
+                            <Typography variant="body2" color="textSecondary">
+                              Created:
+                            </Typography>
+                            <Typography variant="body2">
+                              {new Date(request.created_at).toLocaleDateString()}
+                            </Typography>
+                          </Box>
+                          <Box display="flex" justifyContent="space-between" mb={1}>
+                            <Typography variant="body2" color="textSecondary">
+                              Latest Version:
+                            </Typography>
+                            <Typography variant="body2">
+                              {request.versions && request.versions.length > 0
+                                ? request.versions[0].version_number
+                                : 1}
+                            </Typography>
+                          </Box>
+                          <Box display="flex" justifyContent="space-between">
+                            <Typography variant="body2" color="textSecondary">
+                              Approvals:
+                            </Typography>
+                            <Typography variant="body2">
+                              {request.contacts.filter(c => c.has_approved).length} /{' '}
+                              {request.contacts.length}
+                            </Typography>
+                          </Box>
+                        </CardContent>
+                      </Card>
                     </Grid>
                   </Grid>
-                )}
+                </Paper>
 
-                {/* Version History tab */}
-                {tabValue === 1 && (
-                  <Paper elevation={2} sx={{ p: 3 }}>
-                    <Typography variant="h6" gutterBottom>
-                      Version History
-                    </Typography>
+                <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+                  <Tabs
+                    value={tabValue}
+                    onChange={handleTabChange}
+                    aria-label="approval request tabs"
+                  >
+                    <Tab label="Details & Comments" />
+                    <Tab label="Version History" />
+                    <Tab label="Contacts" />
+                  </Tabs>
+                </Box>
 
-                    {request.versions && request.versions.length > 0 ? (
-                      <List>
-                        {request.versions.map(version => (
-                          <React.Fragment key={version.version_id}>
-                            <ListItem
-                              alignItems="flex-start"
-                              sx={{
-                                border: '1px solid',
-                                borderColor: 'divider',
-                                borderRadius: 1,
-                                my: 2,
-                              }}
-                            >
-                              <ListItemIcon>
-                                <DocumentIcon fontSize="large" />
-                              </ListItemIcon>
-                              <ListItemText
-                                primary={
-                                  <Box display="flex" justifyContent="space-between">
-                                    <Typography variant="h6">
-                                      Version {version.version_number}
-                                    </Typography>
-                                    <Typography variant="body2" color="textSecondary">
-                                      {new Date(version.created_at).toLocaleString()}
-                                    </Typography>
+                <Box mb={4}>
+                  {tabValue === 0 && (
+                    <Grid container spacing={3}>
+                      <Grid item xs={12} md={7}>
+                        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+                          <Typography variant="h6" gutterBottom>
+                            Content & Annotations
+                          </Typography>
+                          {(() => {
+                            if (request.inline_content) {
+                              return (
+                                <Box
+                                  mt={2}
+                                  sx={{
+                                    '& p': { my: 1.5 },
+                                    '& ul, & ol': { my: 1.5, pl: 3 },
+                                    '& li': { mb: 0.5 },
+                                    '& h1, & h2, & h3, & h4, & h5, & h6': {
+                                      my: 2,
+                                      fontWeight: 'bold',
+                                    },
+                                    '& a': {
+                                      color: 'primary.main',
+                                      textDecoration: 'underline',
+                                      '&:hover': { color: 'primary.dark' },
+                                    },
+                                    '.r6o-annotation': {
+                                      borderBottom: '2px solid yellow',
+                                      backgroundColor: 'rgba(255, 255, 0, 0.2)',
+                                    },
+                                  }}
+                                  ref={contentRef}
+                                >
+                                  <div
+                                    dangerouslySetInnerHTML={{ __html: request.inline_content }}
+                                  />
+                                </Box>
+                              );
+                            } else if (request.file_url) {
+                              return (
+                                <Alert severity="info" sx={{ mt: 2 }}>
+                                  This request contains a file attachment instead of inline content.
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    href={request.file_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    startIcon={<DownloadIcon />}
+                                    sx={{ ml: 2 }}
+                                  >
+                                    Download File
+                                  </Button>
+                                </Alert>
+                              );
+                            } else {
+                              return (
+                                <Alert severity="warning" sx={{ mt: 2 }}>
+                                  Content is not available for this request.
+                                </Alert>
+                              );
+                            }
+                          })()}
+                        </Paper>
+
+                        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+                          <Typography variant="h6" gutterBottom>
+                            Published URL
+                          </Typography>
+
+                          <Box mt={2}>
+                            <Grid container spacing={2} alignItems="flex-end">
+                              <Grid item xs={request.published_url ? 9 : 12}>
+                                <TextField
+                                  fullWidth
+                                  label="Published URL"
+                                  placeholder="https://example.com/published-content"
+                                  value={publishedUrl}
+                                  onChange={e => setPublishedUrl(e.target.value)}
+                                  InputProps={{
+                                    startAdornment: <LinkIcon color="action" sx={{ mr: 1 }} />,
+                                  }}
+                                />
+                              </Grid>
+                              {request.published_url && (
+                                <Grid item xs={3}>
+                                  <Button
+                                    fullWidth
+                                    href={request.published_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    Visit
+                                  </Button>
+                                </Grid>
+                              )}
+                            </Grid>
+                            <Box display="flex" justifyContent="flex-end" mt={2}>
+                              <Button
+                                variant="contained"
+                                onClick={handleUpdatePublishedUrl}
+                                disabled={updatingUrl}
+                              >
+                                {updatingUrl ? <CircularProgress size={24} /> : 'Update URL'}
+                              </Button>
+                            </Box>
+                          </Box>
+                        </Paper>
+
+                        <Paper elevation={2} sx={{ p: 3 }}>
+                          <Typography variant="h6" gutterBottom>
+                            Comments
+                          </Typography>
+
+                          <Box mt={2} mb={3}>
+                            <TextField
+                              fullWidth
+                              multiline
+                              rows={3}
+                              label="Add a comment"
+                              placeholder="Enter your comment here..."
+                              value={newComment}
+                              onChange={e => setNewComment(e.target.value)}
+                            />
+                            <Box display="flex" justifyContent="flex-end" mt={2}>
+                              <Button
+                                variant="contained"
+                                onClick={handleSubmitComment}
+                                disabled={submittingComment || !newComment.trim()}
+                              >
+                                {submittingComment ? (
+                                  <CircularProgress size={24} />
+                                ) : (
+                                  'Post Comment'
+                                )}
+                              </Button>
+                            </Box>
+                          </Box>
+
+                          <Divider sx={{ my: 2 }} />
+
+                          {request.comments && request.comments.length > 0 ? (
+                            <List>
+                              {request.comments.map(comment => (
+                                <React.Fragment key={comment.comment_id}>
+                                  <ListItem alignItems="flex-start">
+                                    <ListItemAvatar>
+                                      <Avatar>
+                                        {comment.contact_name
+                                          ? comment.contact_name.charAt(0).toUpperCase()
+                                          : 'S'}
+                                      </Avatar>
+                                    </ListItemAvatar>
+                                    <ListItemText
+                                      primary={
+                                        <Box display="flex" justifyContent="space-between">
+                                          <Typography variant="subtitle2">
+                                            {comment.commenter_name || 'Unknown'}
+                                          </Typography>
+                                          <Typography variant="caption" color="textSecondary">
+                                            {new Date(comment.created_at).toLocaleString()}
+                                          </Typography>
+                                        </Box>
+                                      }
+                                      secondary={
+                                        <Typography
+                                          component="span"
+                                          variant="body2"
+                                          color="textPrimary"
+                                          sx={{ mt: 1, display: 'block' }}
+                                        >
+                                          {comment.comment}
+                                        </Typography>
+                                      }
+                                    />
+                                  </ListItem>
+                                  <Divider variant="inset" component="li" />
+                                </React.Fragment>
+                              ))}
+                            </List>
+                          ) : (
+                            <Typography variant="body2" color="textSecondary" align="center">
+                              No comments yet
+                            </Typography>
+                          )}
+                        </Paper>
+                      </Grid>
+
+                      <Grid item xs={12} md={5}>
+                        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+                          <Typography variant="h6" gutterBottom>
+                            Contact Status
+                          </Typography>
+
+                          <List>
+                            {request.contacts.map(contact => (
+                              <ListItem
+                                key={contact.contact_id}
+                                secondaryAction={
+                                  <Box display="flex" alignItems="center">
+                                    <Tooltip title={contact.has_viewed ? 'Viewed' : 'Not viewed'}>
+                                      <span>
+                                        <IconButton size="small" disabled>
+                                          {contact.has_viewed ? (
+                                            <VisibilityIcon color="success" />
+                                          ) : (
+                                            <VisibilityOffIcon color="disabled" />
+                                          )}
+                                        </IconButton>
+                                      </span>
+                                    </Tooltip>
+                                    <Tooltip
+                                      title={contact.has_approved ? 'Approved' : 'Not approved'}
+                                    >
+                                      <span>
+                                        <IconButton size="small" disabled>
+                                          {contact.has_approved ? (
+                                            <CheckIcon color="success" />
+                                          ) : (
+                                            <CloseIcon color="disabled" />
+                                          )}
+                                        </IconButton>
+                                      </span>
+                                    </Tooltip>
+                                    <Tooltip title="Resend Notification">
+                                      <IconButton
+                                        size="small"
+                                        color="primary"
+                                        onClick={() => handleResendNotification(contact.contact_id)}
+                                        disabled={resendingContactId === contact.contact_id}
+                                        sx={{ ml: 1 }}
+                                      >
+                                        {resendingContactId === contact.contact_id ? (
+                                          <CircularProgress size={20} />
+                                        ) : (
+                                          <EmailIcon fontSize="small" />
+                                        )}
+                                      </IconButton>
+                                    </Tooltip>
+                                    <Tooltip title="Remove Contact">
+                                      <IconButton
+                                        size="small"
+                                        color="error"
+                                        onClick={() =>
+                                          handleOpenRemoveDialog({
+                                            id: contact.contact_id,
+                                            name: contact.name,
+                                          })
+                                        }
+                                        disabled={removingContactId === contact.contact_id}
+                                        sx={{ ml: 0.5 }}
+                                      >
+                                        {removingContactId === contact.contact_id ? (
+                                          <CircularProgress size={20} />
+                                        ) : (
+                                          <DeleteIcon fontSize="small" />
+                                        )}
+                                      </IconButton>
+                                    </Tooltip>
                                   </Box>
                                 }
+                              >
+                                <ListItemIcon>
+                                  <PersonIcon />
+                                </ListItemIcon>
+                                <ListItemText primary={contact.name} secondary={contact.email} />
+                              </ListItem>
+                            ))}
+                          </List>
+                        </Paper>
+
+                        <Paper elevation={2} sx={{ p: 3 }}>
+                          <Typography variant="h6" gutterBottom>
+                            Actions
+                          </Typography>
+
+                          <Button
+                            fullWidth
+                            variant="outlined"
+                            color="warning"
+                            onClick={handleArchiveRequest}
+                            sx={{ mt: 2 }}
+                          >
+                            Archive Request
+                          </Button>
+                        </Paper>
+                      </Grid>
+                    </Grid>
+                  )}
+
+                  {tabValue === 1 && (
+                    <Paper elevation={2} sx={{ p: 3 }}>
+                      <Typography variant="h6" gutterBottom>
+                        Version History
+                      </Typography>
+
+                      {request.versions && request.versions.length > 0 ? (
+                        <List>
+                          {request.versions.map(version => (
+                            <React.Fragment key={version.version_id}>
+                              <ListItem
+                                alignItems="flex-start"
+                                sx={{
+                                  border: '1px solid',
+                                  borderColor: 'divider',
+                                  borderRadius: 1,
+                                  my: 2,
+                                }}
+                              >
+                                <ListItemIcon>
+                                  <DocumentIcon fontSize="large" />
+                                </ListItemIcon>
+                                <ListItemText
+                                  primary={
+                                    <Box display="flex" justifyContent="space-between">
+                                      <Typography variant="h6">
+                                        Version {version.version_number}
+                                      </Typography>
+                                      <Typography variant="body2" color="textSecondary">
+                                        {new Date(version.created_at).toLocaleString()}
+                                      </Typography>
+                                    </Box>
+                                  }
+                                  secondary={
+                                    <>
+                                      {version.comments && (
+                                        <Typography
+                                          component="span"
+                                          variant="body2"
+                                          color="textPrimary"
+                                          sx={{ mt: 1, display: 'block' }}
+                                        >
+                                          {version.comments}
+                                        </Typography>
+                                      )}
+                                      {version.file_url && (
+                                        <Button
+                                          variant="outlined"
+                                          size="small"
+                                          startIcon={<DownloadIcon />}
+                                          href={version.file_url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          sx={{ mt: 2 }}
+                                        >
+                                          View / Download
+                                        </Button>
+                                      )}
+                                    </>
+                                  }
+                                />
+                              </ListItem>
+                            </React.Fragment>
+                          ))}
+                        </List>
+                      ) : (
+                        <Typography variant="body2" color="textSecondary" align="center">
+                          No version history available
+                        </Typography>
+                      )}
+                    </Paper>
+                  )}
+
+                  {tabValue === 2 && (
+                    <Paper elevation={2} sx={{ p: 3 }}>
+                      <Typography variant="h6" gutterBottom>
+                        Contact Information
+                      </Typography>
+
+                      <List>
+                        {request.contacts.map(contact => (
+                          <React.Fragment key={contact.contact_id}>
+                            <ListItem alignItems="flex-start">
+                              <ListItemAvatar>
+                                <Avatar>{contact.name.charAt(0).toUpperCase()}</Avatar>
+                              </ListItemAvatar>
+                              <ListItemText
+                                primary={contact.name}
                                 secondary={
                                   <>
-                                    {version.comments && (
-                                      <Typography
-                                        component="span"
-                                        variant="body2"
-                                        color="textPrimary"
-                                        sx={{ mt: 1, display: 'block' }}
-                                      >
-                                        {version.comments}
-                                      </Typography>
-                                    )}
-                                    <Button
-                                      variant="outlined"
-                                      size="small"
-                                      startIcon={<DownloadIcon />}
-                                      href={version.file_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      sx={{ mt: 2 }}
-                                    >
-                                      View / Download
-                                    </Button>
+                                    <Typography component="span" variant="body2" display="block">
+                                      {contact.email}
+                                    </Typography>
+                                    <Box mt={1} display="flex" flexWrap="wrap" gap={1}>
+                                      <Chip
+                                        size="small"
+                                        icon={
+                                          contact.has_viewed ? (
+                                            <VisibilityIcon />
+                                          ) : (
+                                            <VisibilityOffIcon />
+                                          )
+                                        }
+                                        label={
+                                          contact.has_viewed
+                                            ? `Viewed on ${new Date(contact.viewed_at!).toLocaleDateString()}`
+                                            : 'Not viewed'
+                                        }
+                                        color={contact.has_viewed ? 'info' : 'default'}
+                                      />
+                                      <Chip
+                                        size="small"
+                                        icon={contact.has_approved ? <CheckIcon /> : <CloseIcon />}
+                                        label={
+                                          contact.has_approved
+                                            ? `Approved on ${new Date(contact.approved_at!).toLocaleDateString()}`
+                                            : 'Not approved'
+                                        }
+                                        color={contact.has_approved ? 'success' : 'default'}
+                                      />
+                                    </Box>
                                   </>
                                 }
                               />
                             </ListItem>
+                            <Divider variant="inset" component="li" />
                           </React.Fragment>
                         ))}
                       </List>
-                    ) : (
-                      <Typography variant="body2" color="textSecondary" align="center">
-                        No version history available
-                      </Typography>
-                    )}
-                  </Paper>
-                )}
-
-                {/* Contacts tab */}
-                {tabValue === 2 && (
-                  <Paper elevation={2} sx={{ p: 3 }}>
-                    <Typography variant="h6" gutterBottom>
-                      Contact Information
-                    </Typography>
-
-                    <List>
-                      {request.contacts.map(contact => (
-                        <React.Fragment key={contact.contact_id}>
-                          <ListItem alignItems="flex-start">
-                            <ListItemAvatar>
-                              <Avatar>{contact.name.charAt(0).toUpperCase()}</Avatar>
-                            </ListItemAvatar>
-                            <ListItemText
-                              primary={contact.name}
-                              secondary={
-                                <>
-                                  <Typography component="span" variant="body2" display="block">
-                                    {contact.email}
-                                  </Typography>
-                                  <Box mt={1} display="flex" flexWrap="wrap" gap={1}>
-                                    <Chip
-                                      size="small"
-                                      icon={
-                                        contact.has_viewed ? (
-                                          <VisibilityIcon />
-                                        ) : (
-                                          <VisibilityOffIcon />
-                                        )
-                                      }
-                                      label={
-                                        contact.has_viewed
-                                          ? `Viewed on ${new Date(contact.viewed_at!).toLocaleDateString()}`
-                                          : 'Not viewed'
-                                      }
-                                      color={contact.has_viewed ? 'info' : 'default'}
-                                    />
-                                    <Chip
-                                      size="small"
-                                      icon={contact.has_approved ? <CheckIcon /> : <CloseIcon />}
-                                      label={
-                                        contact.has_approved
-                                          ? `Approved on ${new Date(contact.approved_at!).toLocaleDateString()}`
-                                          : 'Not approved'
-                                      }
-                                      color={contact.has_approved ? 'success' : 'default'}
-                                    />
-                                  </Box>
-                                </>
-                              }
-                            />
-                          </ListItem>
-                          <Divider variant="inset" component="li" />
-                        </React.Fragment>
-                      ))}
-                    </List>
-                  </Paper>
-                )}
-              </Box>
-            </>
-          )}
-        </Box>
-      </Container>
-
-      {/* Upload New Version Dialog */}
-      <Dialog
-        open={openUploadDialog}
-        onClose={() => setOpenUploadDialog(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Upload New Version</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Uploading a new version will reset the approval status for all contacts and they will
-            receive a notification to review the new version.
-          </DialogContentText>
-
-          <Box mt={3}>
-            <input
-              accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.google-apps.document"
-              style={{ display: 'none' }}
-              id="new-version-file"
-              type="file"
-              onChange={handleFileChange}
-            />
-            <label htmlFor="new-version-file">
-              <Button component="span" variant="outlined" startIcon={<UploadIcon />} fullWidth>
-                Select File
-              </Button>
-            </label>
-            {newFile && (
-              <Typography variant="body2" sx={{ mt: 1 }}>
-                Selected file: {newFile.name}
-              </Typography>
+                    </Paper>
+                  )}
+                </Box>
+              </>
             )}
           </Box>
+        </Container>
 
-          <TextField
-            fullWidth
-            multiline
-            rows={3}
-            label="Version Notes"
-            placeholder="Describe the changes in this version..."
-            value={newVersionComment}
-            onChange={e => setNewVersionComment(e.target.value)}
-            sx={{ mt: 3 }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenUploadDialog(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleUploadNewVersion}
-            disabled={uploadingFile || !newFile}
-          >
-            {uploadingFile ? <CircularProgress size={24} /> : 'Upload'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Confirmation Dialog for Contact Removal */}
-      <Dialog open={confirmRemoveOpen} onClose={handleCloseRemoveDialog}>
-        <DialogTitle>Remove Contact?</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Are you sure you want to remove contact &quot;{contactToRemove?.name}&quot;? They will
-            no longer have access to this approval request.
-            {request && request.contacts.length === 1 && contactToRemove && (
-              <Typography color="error" sx={{ mt: 1, fontWeight: 'bold' }}>
-                Warning: This is the last contact associated with this request.
-              </Typography>
-            )}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseRemoveDialog}>Cancel</Button>
-          <Button onClick={handleConfirmRemoveContact} color="error" variant="contained">
-            Remove
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </LayoutContainer>
+        <Dialog open={confirmRemoveOpen} onClose={handleCloseRemoveDialog}>
+          <DialogTitle>Remove Contact?</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              Are you sure you want to remove contact &quot;{contactToRemove?.name}&quot;? They will
+              no longer have access to this approval request.
+              {request && request.contacts.length === 1 && contactToRemove && (
+                <Typography color="error" sx={{ mt: 1, fontWeight: 'bold' }}>
+                  Warning: This is the last contact associated with this request.
+                </Typography>
+              )}
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseRemoveDialog}>Cancel</Button>
+            <Button onClick={handleConfirmRemoveContact} color="error" variant="contained">
+              Remove
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </LayoutContainer>
+    </>
   );
 }

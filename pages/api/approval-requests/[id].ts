@@ -1,5 +1,11 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import mysql from 'mysql2/promise';
+import AWS from 'aws-sdk';
+import { URL } from 'url';
+
+// Configure AWS (ensure region is set, credentials should be auto-loaded from env)
+AWS.config.update({ region: 'us-east-2' }); // Force us-east-2 based on bucket URL
+const s3 = new AWS.S3();
 
 // Create a connection pool
 const pool = mysql.createPool({
@@ -8,7 +14,7 @@ const pool = mysql.createPool({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_DATABASE,
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit: 20,
 });
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -80,6 +86,7 @@ async function getApprovalRequest(requestId: number, res: NextApiResponse) {
         ar.description, 
         ar.file_url, 
         ar.file_type, 
+        ar.inline_content,
         ar.status, 
         ar.created_by_id, 
         ar.published_url,
@@ -166,17 +173,41 @@ async function getApprovalRequest(requestId: number, res: NextApiResponse) {
     const [commentRows] = await pool.query(commentsQuery, [requestId]);
 
     // Map comments to include commenter_name
-    const comments = (commentRows as any[]).map(comment => ({
+    const standardComments = (commentRows as any[]).map(comment => ({
       ...comment,
       commenter_name: comment.contact_name || comment.staff_name || 'Unknown',
     }));
+
+    // Get section-specific comments for this request
+    const sectionCommentsQuery = `
+      SELECT 
+        sc.section_comment_id,
+        sc.request_id,
+        sc.contact_id,
+        sc.start_offset,
+        sc.end_offset,
+        sc.selected_text,
+        sc.comment_text,
+        sc.created_at,
+        cc.name as contact_name -- Get commenter name
+      FROM 
+        approval_request_section_comments sc
+      JOIN 
+        client_contacts cc ON sc.contact_id = cc.contact_id
+      WHERE 
+        sc.request_id = ?
+      ORDER BY 
+        sc.created_at ASC -- Or order by offset?
+    `;
+    const [sectionCommentRows] = await pool.query(sectionCommentsQuery, [requestId]);
 
     // Combine all data
     const responseData = {
       ...request,
       contacts: contactRows,
       versions: versionRows,
-      comments: comments,
+      comments: standardComments,
+      section_comments: sectionCommentRows,
     };
 
     return res.status(200).json(responseData);
