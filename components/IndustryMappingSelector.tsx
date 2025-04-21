@@ -19,7 +19,7 @@ interface IndustryMappingSelectorProps {
 const IndustryMappingSelector: React.FC<IndustryMappingSelectorProps> = ({
   selectedIndustries,
   onChange,
-  title = 'Industry Mappings',
+  title = 'Client Industries',
   description = 'Select industries that this specializes in.',
   paperWrapper = false,
 }) => {

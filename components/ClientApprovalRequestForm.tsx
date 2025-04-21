@@ -19,6 +19,16 @@ import {
 } from '@mui/material';
 import axios from 'axios';
 import { CloudUpload as UploadIcon } from '@mui/icons-material';
+import dynamic from 'next/dynamic';
+
+// Import Quill CSS
+import 'react-quill/dist/quill.snow.css';
+
+// Dynamically import ReactQuill
+const ReactQuill = dynamic(() => import('react-quill'), {
+  ssr: false,
+  loading: () => <p>Loading editor...</p>,
+});
 
 interface Client {
   client_id: number;
@@ -37,13 +47,26 @@ interface ApprovalRequestFormProps {
   onSubmitSuccess?: () => void;
 }
 
+// Quill editor configuration (optional, customize as needed)
+const quillModules = {
+  toolbar: [
+    [{ header: [1, 2, 3, false] }],
+    ['bold', 'italic', 'underline'],
+    [{ list: 'ordered' }, { list: 'bullet' }],
+    ['link'],
+    ['clean'],
+  ],
+};
+
+const quillFormats = ['header', 'bold', 'italic', 'underline', 'list', 'bullet', 'link'];
+
 export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalRequestFormProps) {
   // Form state
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [selectedContacts, setSelectedContacts] = useState<ClientContact[]>([]);
-  const [file, setFile] = useState<File | null>(null);
+  const [contentHtml, setContentHtml] = useState('');
 
   // Data loading state
   const [clients, setClients] = useState<Client[]>([]);
@@ -103,13 +126,6 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
     }
   };
 
-  // Handle file selection
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files.length > 0) {
-      setFile(event.target.files[0]);
-    }
-  };
-
   // Handle contact selection
   const handleContactToggle = (contact: ClientContact) => {
     const currentIndex = selectedContacts.findIndex(c => c.contact_id === contact.contact_id);
@@ -139,8 +155,8 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
       return;
     }
 
-    if (!file) {
-      setError('Please upload a file');
+    if (!contentHtml || contentHtml === '<p><br></p>') {
+      setError('Please enter content for review');
       return;
     }
 
@@ -153,26 +169,12 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
     setError(null);
 
     try {
-      // For testing purposes, just use a fake file URL
-      // In production, uncomment this code to actually upload the file
-
-      // const formData = new FormData();
-      // formData.append('file', file);
-      // formData.append('clientId', selectedClient.client_id.toString());
-      // const fileUploadResponse = await axios.post('/api/upload-file-simple', formData);
-      // const fileUrl = fileUploadResponse.data.url;
-
-      // Use a dummy URL for testing
-      const fileUrl = `/dummy-path/${file.name}`;
-      const fileType = file.type;
-
       // 2. Create the approval request
       const approvalRequestData = {
         clientId: selectedClient.client_id,
         title,
         description,
-        fileUrl,
-        fileType,
+        inlineContent: contentHtml,
         contactIds: selectedContacts.map(c => c.contact_id),
       };
 
@@ -187,7 +189,7 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
       setDescription('');
       setSelectedClient(null);
       setSelectedContacts([]);
-      setFile(null);
+      setContentHtml('');
 
       // Call success callback if provided
       if (onSubmitSuccess) {
@@ -256,7 +258,7 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
             {/* Title */}
             <Grid item xs={12}>
               <TextField
-                label="Title"
+                label="Article Title"
                 value={title}
                 onChange={e => setTitle(e.target.value)}
                 fullWidth
@@ -267,7 +269,7 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
             {/* Description */}
             <Grid item xs={12}>
               <TextField
-                label="Description"
+                label="Notes for Client"
                 value={description}
                 onChange={e => setDescription(e.target.value)}
                 multiline
@@ -277,29 +279,32 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
               />
             </Grid>
 
-            {/* File Upload */}
+            {/* Add ReactQuill Editor */}
             <Grid item xs={12}>
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="subtitle1" gutterBottom>
-                  Upload Content
-                </Typography>
-                <input
-                  accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.google-apps.document"
-                  style={{ display: 'none' }}
-                  id="file-upload"
-                  type="file"
-                  onChange={handleFileChange}
+              <Typography
+                variant="subtitle1"
+                gutterBottom
+                component="label"
+                sx={{ display: 'block', mb: 1 }}
+              >
+                Content for Review <span style={{ color: 'red' }}>*</span>
+              </Typography>
+              <Box
+                sx={{
+                  '.ql-editor': { minHeight: '200px' },
+                  border: '1px solid',
+                  borderColor: 'rgba(0, 0, 0, 0.23)', // Match TextField border
+                  borderRadius: 1,
+                }}
+              >
+                <ReactQuill
+                  theme="snow"
+                  value={contentHtml}
+                  onChange={setContentHtml}
+                  modules={quillModules}
+                  formats={quillFormats}
+                  placeholder="Paste or write the content here..."
                 />
-                <label htmlFor="file-upload">
-                  <Button component="span" variant="outlined" startIcon={<UploadIcon />}>
-                    Select File
-                  </Button>
-                </label>
-                {file && (
-                  <Typography variant="body2" sx={{ mt: 1 }}>
-                    Selected file: {file.name}
-                  </Typography>
-                )}
               </Box>
             </Grid>
 
@@ -356,7 +361,8 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
                     submitting ||
                     !selectedClient ||
                     selectedContacts.length === 0 ||
-                    !file ||
+                    !contentHtml ||
+                    contentHtml === '<p><br></p>' ||
                     !title.trim()
                   }
                 >

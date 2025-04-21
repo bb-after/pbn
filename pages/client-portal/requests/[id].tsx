@@ -680,7 +680,7 @@ export default function ClientRequestDetailPage() {
                   {/* Document card - Updated Rendering Logic */}
                   <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
                     <Typography variant="h6" gutterBottom>
-                      {request.status === 'pending' ? 'Content for Review' : 'Reviewed Content'}
+                      Content for Review
                     </Typography>
 
                     {(() => {

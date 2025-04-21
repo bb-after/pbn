@@ -1,7 +1,11 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import mysql from 'mysql2/promise';
-import AWS from 'aws-sdk'; // Keep if needed for other parts, like version deletion
+import AWS from 'aws-sdk';
 import { URL } from 'url';
+
+// Configure AWS (ensure region is set, credentials should be auto-loaded from env)
+AWS.config.update({ region: 'us-east-2' }); // Force us-east-2 based on bucket URL
+const s3 = new AWS.S3();
 
 // Create a connection pool
 const pool = mysql.createPool({
@@ -10,7 +14,7 @@ const pool = mysql.createPool({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_DATABASE,
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit: 20,
 });
 
 // --- Updated Interface ---
@@ -225,6 +229,8 @@ async function getApprovalRequest(requestId: number, res: NextApiResponse) {
     `;
 
     const [commentRows] = await pool.query(commentsQuery, [requestId]);
+
+    // Map comments to include commenter_name
     const standardComments = (commentRows as any[]).map(comment => ({
       ...comment,
       commenter_name: comment.contact_name || comment.staff_name || 'Unknown',
