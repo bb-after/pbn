@@ -30,6 +30,12 @@ import {
   DialogActions,
   IconButton,
   Tooltip,
+  TableContainer,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
@@ -46,6 +52,7 @@ import {
   ArrowBack as BackIcon,
   Email as EmailIcon,
   Delete as DeleteIcon,
+  Article as ArticleIcon,
 } from '@mui/icons-material';
 import LayoutContainer from '../../../components/LayoutContainer';
 import StyledHeader from '../../../components/StyledHeader';
@@ -85,15 +92,7 @@ interface ApprovalRequest {
   is_archived: boolean;
   created_at: string;
   updated_at: string;
-  contacts: Array<{
-    contact_id: number;
-    name: string;
-    email: string;
-    has_viewed: boolean;
-    has_approved: boolean;
-    viewed_at: string | null;
-    approved_at: string | null;
-  }>;
+  contacts: ContactWithViews[]; // Use the updated ContactWithViews interface
   versions: Array<{
     version_id: number;
     version_number: number;
@@ -112,6 +111,23 @@ interface ApprovalRequest {
     commenter_name?: string;
   }> | null;
   section_comments?: SectionComment[];
+}
+
+// Define the structure for a single view record
+interface ContactView {
+  view_id: number;
+  viewed_at: string;
+}
+
+// Define the structure for contact details including views
+interface ContactWithViews {
+  contact_id: number;
+  name: string;
+  email: string;
+  has_approved: boolean;
+  approved_at: string | null;
+  has_viewed: boolean; // Indicates if there's at least one view
+  views: ContactView[]; // Array of view records
 }
 
 export default function ApprovalRequestDetailPage() {
@@ -933,7 +949,7 @@ export default function ApprovalRequestDetailPage() {
                                         }
                                         label={
                                           contact.has_viewed
-                                            ? `Viewed on ${new Date(contact.viewed_at!).toLocaleDateString()}`
+                                            ? `Viewed on ${new Date(contact.views[0].viewed_at).toLocaleDateString()}`
                                             : 'Not viewed'
                                         }
                                         color={contact.has_viewed ? 'info' : 'default'}

@@ -1,8 +1,4 @@
-/// <reference path="../recogito.d.ts" />
-// Point to the declaration file in the parent directory
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import Head from 'next/head';
 import {
   Container,
   Typography,
@@ -49,6 +45,31 @@ import {
 import { useRouter } from 'next/router';
 import useClientAuth from '../../../hooks/useClientAuth';
 import axios from 'axios';
+import DOMPurify from 'dompurify';
+import Head from 'next/head';
+
+/// <reference path="./recogito.d.ts" />
+
+declare global {
+  interface Window {
+    Recogito: any;
+  }
+}
+
+const loadScript = (src: string): Promise<void> => {
+  const existingScript = document.querySelector(`script[src="${src}"]`);
+  if (existingScript) {
+    existingScript.remove();
+  }
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = error => reject(new Error(`Failed to load script: ${src}\n${error}`));
+    document.body.appendChild(script);
+  });
+};
 
 interface SectionComment {
   section_comment_id: number;
@@ -68,7 +89,7 @@ interface ApprovalRequest {
   client_name: string;
   title: string;
   description: string | null;
-  file_url: string;
+  file_url: string | null;
   file_type: string | null;
   status: 'pending' | 'approved' | 'rejected';
   created_by_id: string | null;
@@ -100,11 +121,9 @@ interface ApprovalRequest {
     contact_name: string | null;
     created_at: string;
   }> | null;
-  inline_content: string | null;
+  inline_content?: string | null;
   section_comments?: SectionComment[];
 }
-
-declare module '@recogito/recogito-js';
 
 export default function ClientRequestDetailPage() {
   const router = useRouter();
@@ -135,10 +154,12 @@ export default function ClientRequestDetailPage() {
   // State for annotations
   const [annotations, setAnnotations] = useState<any[]>([]);
 
-  // --- Re-add Recogito Refs & State ---
+  // --- Add Ref to track view marking ---
+  const hasMarkedViewRef = useRef(false);
+
+  // --- Recogito Refs & State ---
   const contentRef = useRef<HTMLDivElement>(null);
   const recogitoInstance = useRef<any>(null);
-  // --- End Recogito Refs & State ---
 
   // Fetch request details
   const fetchRequestDetails = useCallback(async () => {
@@ -163,20 +184,22 @@ export default function ClientRequestDetailPage() {
 
   // Mark the request as viewed
   const markRequestAsViewed = useCallback(async () => {
+    if (!clientInfo?.contact_id || !id) return;
     try {
       const headers = {
         'x-client-portal': 'true',
-        'x-client-contact-id': clientInfo?.contact_id.toString(),
+        'x-client-contact-id': clientInfo.contact_id.toString(),
       };
-
       await axios.put(
         `/api/approval-requests/${id}`,
         {
           markViewed: true,
-          contactId: clientInfo?.contact_id,
+          contactId: clientInfo.contact_id,
         },
         { headers }
       );
+      console.log('View marked successfully');
+      hasMarkedViewRef.current = true; // Set flag after successful marking
     } catch (error) {
       console.error('Error marking request as viewed:', error);
     }
@@ -186,183 +209,131 @@ export default function ClientRequestDetailPage() {
   useEffect(() => {
     if (id && clientInfo) {
       fetchRequestDetails();
-      markRequestAsViewed();
     }
-  }, [id, clientInfo, fetchRequestDetails, markRequestAsViewed]);
+  }, [id, clientInfo, fetchRequestDetails]);
 
-  // Recogito Event Handlers
-  const handleCreateAnnotation = async (annotation: any) => {
-    console.log('Recogito createAnnotation event:', annotation);
-    if (!recogitoInstance.current) return;
+  // --- Add Effect to mark view AFTER data is loaded ---
+  useEffect(() => {
+    // Only run if we have request data, client info, and haven't marked view yet
+    if (request && clientInfo && !hasMarkedViewRef.current) {
+      // Check if this contact already has views in the fetched data
+      const contactData = request.contacts.find(c => c.contact_id === clientInfo.contact_id);
 
-    // Extract necessary data
-    const target = annotation.target;
-    const selectors = target.selector;
-    const textQuoteSelector = selectors.find((s: any) => s.type === 'TextQuoteSelector');
-    const textPositionSelector = selectors.find((s: any) => s.type === 'TextPositionSelector');
-    const commentBody = annotation.body.find((b: any) => b.purpose === 'commenting');
-
-    if (!textPositionSelector || !commentBody?.value) {
-      // Check commentBody.value
-      console.error('Could not find necessary selector or comment body value');
-      recogitoInstance.current.removeAnnotation(annotation); // Remove temp annotation
-      setError('Failed to process annotation: comment missing.');
-      return;
+      // If contact exists in the list BUT has no views logged yet, mark it.
+      // This handles the initial view. Subsequent views trigger the API directly.
+      // We rely on hasMarkedViewRef for strict mode double-runs.
+      if (contactData) {
+        // Ensure contact is part of this request
+        // For simplicity now, just mark if the flag is false.
+        // A more robust check could involve comparing timestamps if needed.
+        console.log('Checking if view needs marking...');
+        markRequestAsViewed();
+      }
     }
+    // Depend on request, clientInfo, and the stable markRequestAsViewed function
+  }, [request, clientInfo, markRequestAsViewed]);
 
-    const sectionCommentData = {
-      startOffset: textPositionSelector.start,
-      endOffset: textPositionSelector.end,
-      selectedText: textQuoteSelector?.exact,
-      commentText: commentBody.value,
+  // --- Recogito Helper Function ---
+  const convertDbCommentToAnnotation = (dbComment: SectionComment) => {
+    return {
+      '@context': 'http://www.w3.org/ns/anno.jsonld',
+      type: 'Annotation',
+      id: `#section-comment-${dbComment.section_comment_id}`,
+      body: [
+        {
+          type: 'TextualBody',
+          value: dbComment.comment_text,
+          purpose: 'commenting',
+          creator: {
+            id: `mailto:${dbComment.contact_name}`,
+            name: dbComment.contact_name,
+          },
+        },
+      ],
+      target: {
+        selector: [
+          {
+            type: 'TextQuoteSelector',
+            exact: dbComment.selected_text || '',
+          },
+          {
+            type: 'TextPositionSelector',
+            start: dbComment.start_offset,
+            end: dbComment.end_offset,
+          },
+        ],
+      },
     };
+  };
+  // --- End Recogito Helper Function ---
 
-    console.log('Saving section comment:', sectionCommentData);
+  // --- Recogito Initialization Effect ---
+  useEffect(() => {
+    if (request?.inline_content && contentRef.current && !recogitoInstance.current) {
+      let isMounted = true;
 
-    try {
-      const headers: Record<string, string> = {
-        'x-client-portal': 'true',
-        'x-client-contact-id': clientInfo?.contact_id.toString() || '',
+      const initRecogito = async () => {
+        try {
+          await loadScript('/vendor/recogito.min.js');
+
+          // Debug: Check what's on the window object
+          console.log('Script loaded, checking window.Recogito:', (window as any).Recogito);
+          console.log(
+            'Script loaded, checking window.recogito (lowercase):',
+            (window as any).recogito
+          );
+
+          // Try accessing the constructor from the module object on window
+          const Recogito = (window as any).Recogito?.Recogito || (window as any).Recogito?.default;
+
+          if (!isMounted || !Recogito) {
+            console.error(
+              'Client View: Recogito constructor not found within window.Recogito module object.',
+              (window as any).Recogito
+            );
+            return;
+          }
+
+          // Now Recogito should be the constructor
+          const r = new Recogito({
+            content: contentRef.current!,
+            readOnly: true,
+          });
+
+          r.on('selectAnnotation', (annotation: any) => {
+            console.log('Client Selected annotation:', annotation);
+          });
+
+          if (request.section_comments && request.section_comments.length > 0) {
+            console.log('Client View: Loading annotations:', request.section_comments);
+            try {
+              const loadedAnnotations = request.section_comments.map(convertDbCommentToAnnotation);
+              r.setAnnotations(loadedAnnotations);
+            } catch (error) {
+              console.error('Client View: Error converting/loading annotations:', error);
+            }
+          }
+
+          recogitoInstance.current = r;
+          console.log('Client View: Recogito Initialized (Read-Only) via loadScript');
+        } catch (error) {
+          console.error('Client View: Failed to load or initialize Recogito:', error);
+        }
       };
 
-      const response = await axios.post(
-        `/api/approval-requests/${id}/section-comments`,
-        sectionCommentData,
-        { headers }
-      );
-
-      if (response.data.comment) {
-        const savedComment = response.data.comment;
-        // Update annotation ID with DB ID and re-add/update
-        annotation.id = `#section-comment-${savedComment.section_comment_id}`;
-        // Add creator info from saved comment if needed
-        annotation.body[0].creator = {
-          id: `contact:${savedComment.contact_id}`,
-          name: savedComment.contact_name,
-        };
-        recogitoInstance.current.addAnnotation(annotation, true); // true = silent update
-        setAnnotations(prev => [...prev.filter(a => a !== annotation), annotation]); // Update state
-        console.log('Annotation saved and updated with ID:', annotation.id);
-      } else {
-        console.warn('Save successful but no comment data returned from API');
-        setError('Failed to save comment data properly.');
-        recogitoInstance.current.removeAnnotation(annotation); // Remove temp annotation
-      }
-    } catch (err: any) {
-      console.error('Error saving section comment via API:', err);
-      setError(err.response?.data?.error || 'Failed to save comment');
-      recogitoInstance.current.removeAnnotation(annotation); // Remove temp annotation
-    }
-  };
-
-  // Helper to convert DB comments to Annotations
-  const convertDbCommentToAnnotation = (comment: SectionComment): any => ({
-    '@context': 'http://www.w3.org/ns/anno.jsonld',
-    type: 'Annotation',
-    id: `#section-comment-${comment.section_comment_id}`,
-    body: [
-      {
-        type: 'TextualBody',
-        purpose: 'commenting',
-        value: comment.comment_text,
-        creator: {
-          id: `contact:${comment.contact_id}`,
-          name: comment.contact_name,
-        },
-      },
-    ],
-    target: {
-      selector: [
-        { type: 'TextQuoteSelector', exact: comment.selected_text || '' },
-        { type: 'TextPositionSelector', start: comment.start_offset, end: comment.end_offset },
-      ],
-    },
-  });
-
-  // --- Recogito Initialization/Loading Effect ---
-  useEffect(() => {
-    let recogito: any = null; // Variable to hold instance inside effect scope
-
-    const initRecogito = async () => {
-      // Initial check remains
-      if (
-        contentRef.current &&
-        request?.inline_content &&
-        clientInfo &&
-        !recogitoInstance.current
-      ) {
-        console.log('Attempting to dynamically import and initialize Recogito...');
-        try {
-          const { Recogito } = await import('@recogito/recogito-js');
-
-          // Add another check *after* the await
-          if (contentRef.current && !recogitoInstance.current) {
-            // Find the inner div holding the actual content
-            const innerDiv = contentRef.current.querySelector('div');
-
-            if (innerDiv) {
-              console.log('Recogito imported, initializing on inner div...'); // Update log
-              recogito = new Recogito({
-                content: innerDiv, // Initialize on the inner div
-                readOnly: false,
-                widgets: [{ widget: 'COMMENT', options: { placeholder: 'Add your feedback...' } }],
-              });
-
-              // Attach Event Listeners
-              recogito.on('createAnnotation', handleCreateAnnotation);
-              recogito.on('selectAnnotation', (annotation: any, element: any) => {
-                console.log('Recogito selectAnnotation event triggered:', annotation, element);
-              });
-
-              // Load Existing Annotations
-              if (request.section_comments && request.section_comments.length > 0) {
-                console.log('Loading existing annotations from DB:', request.section_comments);
-                try {
-                  const loadedAnnotations = request.section_comments.map(
-                    convertDbCommentToAnnotation
-                  );
-                  console.log('Converted annotations for Recogito:', loadedAnnotations);
-                  recogito.setAnnotations(loadedAnnotations);
-                  setAnnotations(loadedAnnotations);
-                } catch (error) {
-                  console.error('Error converting/loading annotations:', error);
-                }
-              }
-
-              recogitoInstance.current = recogito; // Store instance
-              console.log('Recogito instance after setup:', recogitoInstance.current);
-              console.log('Recogito Initialized.');
-            } else {
-              console.error('Could not find inner div to attach Recogito to.');
-            }
-          } else {
-            console.log(
-              'Initialization aborted: contentRef missing or instance already created after dynamic import.'
-            );
-          }
-        } catch (error) {
-          console.error('Failed to import or initialize Recogito:', error);
-        }
-      }
-    };
-
-    // Run the async initialization function inside a setTimeout
-    const timeoutId = setTimeout(() => {
       initRecogito();
-    }, 100); // Delay of 100ms
 
-    // Cleanup function
-    return () => {
-      clearTimeout(timeoutId); // Clear the timeout
-      // Use the instance from the ref for cleanup
-      if (recogitoInstance.current) {
-        console.log('Destroying Recogito instance on unmount/cleanup...');
-        recogitoInstance.current.destroy();
-        recogitoInstance.current = null;
-      }
-    };
-  }, [request, clientInfo]); // Keep dependencies
-  // --- End Recogito Initialization/Loading Effect ---
+      return () => {
+        isMounted = false;
+        if (recogitoInstance.current) {
+          console.log('Client View: Destroying Recogito instance...');
+          recogitoInstance.current.destroy();
+          recogitoInstance.current = null;
+        }
+      };
+    }
+  }, [request, clientInfo, id, fetchRequestDetails]);
+  // --- End Recogito Initialization Effect ---
 
   // Handle user menu open
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
@@ -488,6 +459,27 @@ export default function ClientRequestDetailPage() {
     }
   };
 
+  // Get human-readable file type
+  const getFileTypeName = (fileUrl: string) => {
+    if (!fileUrl) return 'File';
+
+    const extension = fileUrl.split('.').pop()?.toLowerCase();
+
+    switch (extension) {
+      case 'pdf':
+        return 'PDF Document';
+      case 'doc':
+      case 'docx':
+        return 'Word Document';
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+        return 'Image';
+      default:
+        return 'Document';
+    }
+  };
+
   // Check if the current contact has already approved
   const hasApproved = () => {
     if (!request || !clientInfo) return false;
@@ -531,483 +523,484 @@ export default function ClientRequestDetailPage() {
   }
 
   return (
-    <>
+    <Box sx={{ flexGrow: 1 }}>
       <Head>
-        <link rel="stylesheet" href="/styles/recogito.min.css" />
+        <title>Content Review - {request?.title || 'Request'}</title>
+        <link rel="stylesheet" href="/vendor/recogito.min.css" />
       </Head>
+      {/* Header */}
+      <AppBar position="static">
+        <Toolbar>
+          <IconButton
+            size="large"
+            edge="start"
+            color="inherit"
+            aria-label="back"
+            sx={{ mr: 2 }}
+            onClick={() => router.push('/client-portal')}
+          >
+            <BackIcon />
+          </IconButton>
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+            Content Review
+          </Typography>
 
-      <Box sx={{ flexGrow: 1 }}>
-        {/* Header */}
-        <AppBar position="static">
-          <Toolbar>
+          <Box>
             <IconButton
               size="large"
-              edge="start"
+              edge="end"
+              aria-label="account menu"
+              aria-controls="menu-appbar"
+              aria-haspopup="true"
+              onClick={handleMenuOpen}
               color="inherit"
-              aria-label="back"
-              sx={{ mr: 2 }}
-              onClick={() => router.push('/client-portal')}
             >
-              <BackIcon />
+              <AccountCircle />
             </IconButton>
-            <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-              Content Review
-            </Typography>
-
-            <Box>
-              <IconButton
-                size="large"
-                edge="end"
-                aria-label="account menu"
-                aria-controls="menu-appbar"
-                aria-haspopup="true"
-                onClick={handleMenuOpen}
-                color="inherit"
-              >
-                <AccountCircle />
-              </IconButton>
-              <Menu
-                id="menu-appbar"
-                anchorEl={anchorEl}
-                anchorOrigin={{
-                  vertical: 'bottom',
-                  horizontal: 'right',
-                }}
-                keepMounted
-                transformOrigin={{
-                  vertical: 'top',
-                  horizontal: 'right',
-                }}
-                open={Boolean(anchorEl)}
-                onClose={handleMenuClose}
-              >
-                <MenuItem disabled>
-                  {clientInfo?.name} ({clientInfo?.email})
-                </MenuItem>
-                <Divider />
-                <MenuItem onClick={handleLogout}>
-                  <LogoutIcon fontSize="small" sx={{ mr: 1 }} />
-                  Logout
-                </MenuItem>
-              </Menu>
-            </Box>
-          </Toolbar>
-        </AppBar>
-
-        {/* Content */}
-        <Container maxWidth="lg">
-          <Box my={4}>
-            {/* Error alert */}
-            {error && (
-              <Alert severity="error" sx={{ mb: 3 }}>
-                {error}
-              </Alert>
-            )}
-
-            {request && (
-              <>
-                {/* Request header */}
-                <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
-                  <Grid container spacing={3}>
-                    <Grid item xs={12} md={8}>
-                      <Box display="flex" alignItems="center" mb={2}>
-                        <Typography variant="h5">{request.title}</Typography>
-                        <Box ml={2}>{getStatusBadge(request.status)}</Box>
-                      </Box>
-
-                      {request.description && (
-                        <Typography variant="body1" sx={{ mt: 2 }}>
-                          {request.description}
-                        </Typography>
-                      )}
-                    </Grid>
-
-                    <Grid item xs={12} md={4}>
-                      <Card variant="outlined">
-                        <CardContent>
-                          <Typography variant="subtitle2" gutterBottom>
-                            Request Info
-                          </Typography>
-                          <Box display="flex" justifyContent="space-between" mb={1}>
-                            <Typography variant="body2" color="textSecondary">
-                              Submitted:
-                            </Typography>
-                            <Typography variant="body2">
-                              {new Date(request.created_at).toLocaleDateString()}
-                            </Typography>
-                          </Box>
-                          <Box display="flex" justifyContent="space-between" mb={1}>
-                            <Typography variant="body2" color="textSecondary">
-                              Version:
-                            </Typography>
-                            <Typography variant="body2">
-                              {request.versions && request.versions.length > 0
-                                ? request.versions[0].version_number
-                                : 1}
-                            </Typography>
-                          </Box>
-                          {request.versions && request.versions.length > 1 && (
-                            <Box mt={2}>
-                              <Button
-                                variant="outlined"
-                                fullWidth
-                                startIcon={<HistoryIcon />}
-                                onClick={() => setVersionHistoryOpen(true)}
-                                size="small"
-                              >
-                                View Version History
-                              </Button>
-                            </Box>
-                          )}
-                        </CardContent>
-                      </Card>
-
-                      {/* Published URL (if available) */}
-                      {request.published_url && (
-                        <Box mt={2}>
-                          <Button
-                            variant="contained"
-                            color="primary"
-                            fullWidth
-                            startIcon={<LinkIcon />}
-                            href={request.published_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            View Published Content
-                          </Button>
-                        </Box>
-                      )}
-                    </Grid>
-                  </Grid>
-                </Paper>
-
-                {/* Main content grid */}
-                <Grid container spacing={3}>
-                  {/* Left column: document and comments */}
-                  <Grid item xs={12} md={8}>
-                    {/* NEW Inline Content Display - Simplified */}
-                    <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-                      <Typography variant="h6" gutterBottom>
-                        Content for Review
-                      </Typography>
-                      {(() => {
-                        // Always try to render inline_content if it exists
-                        if (request.inline_content) {
-                          return (
-                            <Box
-                              mt={2}
-                              sx={{
-                                // Add necessary styles for rendered HTML
-                                '& p': { my: 1.5 }, // Example: margin for paragraphs
-                                '& ul, & ol': { my: 1.5, pl: 3 },
-                                '& li': { mb: 0.5 },
-                                '& h1, & h2, & h3, & h4, & h5, & h6': { my: 2, fontWeight: 'bold' },
-                                '& a': {
-                                  color: 'primary.main',
-                                  textDecoration: 'underline',
-                                  '&:hover': { color: 'primary.dark' },
-                                },
-                                // Ensure Recogito highlights are visible
-                                '.r6o-annotation': {
-                                  borderBottom: '2px solid yellow', // Or your preferred style
-                                  backgroundColor: 'rgba(255, 255, 0, 0.2)', // Optional background
-                                },
-                              }}
-                              ref={contentRef}
-                            >
-                              <div dangerouslySetInnerHTML={{ __html: request.inline_content }} />
-                            </Box>
-                          );
-                        } else {
-                          // Fallback if inline_content is missing
-                          return (
-                            <Alert severity="warning" sx={{ mt: 2 }}>
-                              Content preview is not available.
-                              {/* Optionally keep download button if file_url might still exist for old requests */}
-                              {request.file_url && (
-                                <Button
-                                  size="small"
-                                  variant="outlined"
-                                  href={request.file_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  startIcon={<DownloadIcon />}
-                                  sx={{ ml: 2 }}
-                                >
-                                  Download Original File
-                                </Button>
-                              )}
-                            </Alert>
-                          );
-                        }
-                      })()}
-                    </Paper>
-
-                    {/* Comments section */}
-                    <Paper elevation={2} sx={{ p: 3 }}>
-                      <Typography variant="h6" gutterBottom>
-                        Comments
-                      </Typography>
-
-                      <Box mt={2} mb={3}>
-                        <TextField
-                          fullWidth
-                          multiline
-                          rows={3}
-                          label="Add a comment"
-                          placeholder="Enter your feedback here..."
-                          value={newComment}
-                          onChange={e => setNewComment(e.target.value)}
-                        />
-                        <Box display="flex" justifyContent="flex-end" mt={2}>
-                          <Button
-                            variant="contained"
-                            startIcon={<SendIcon />}
-                            onClick={handleSubmitComment}
-                            disabled={submittingComment || !newComment.trim()}
-                          >
-                            {submittingComment ? <CircularProgress size={24} /> : 'Send Feedback'}
-                          </Button>
-                        </Box>
-                      </Box>
-
-                      <Divider sx={{ my: 2 }} />
-
-                      {request.comments && request.comments.length > 0 ? (
-                        <List>
-                          {request.comments.map(comment => (
-                            <React.Fragment key={comment.comment_id}>
-                              <ListItem alignItems="flex-start">
-                                <ListItemAvatar>
-                                  <Avatar>
-                                    {comment.contact_name
-                                      ? comment.contact_name.charAt(0).toUpperCase()
-                                      : 'S'}
-                                  </Avatar>
-                                </ListItemAvatar>
-                                <ListItemText
-                                  primary={
-                                    <Box display="flex" justifyContent="space-between">
-                                      <Typography variant="subtitle2">
-                                        {comment.contact_name || 'Staff'}
-                                      </Typography>
-                                      <Typography variant="caption" color="textSecondary">
-                                        {new Date(comment.created_at).toLocaleString()}
-                                      </Typography>
-                                    </Box>
-                                  }
-                                  secondary={
-                                    <Typography
-                                      component="span"
-                                      variant="body2"
-                                      color="textPrimary"
-                                      sx={{ mt: 1, display: 'block' }}
-                                    >
-                                      {comment.comment}
-                                    </Typography>
-                                  }
-                                />
-                              </ListItem>
-                              <Divider variant="inset" component="li" />
-                            </React.Fragment>
-                          ))}
-                        </List>
-                      ) : (
-                        <Typography variant="body2" color="textSecondary" align="center">
-                          No comments yet
-                        </Typography>
-                      )}
-                    </Paper>
-                  </Grid>
-
-                  {/* Right column: approval actions */}
-                  <Grid item xs={12} md={4}>
-                    <Paper elevation={2} sx={{ p: 3 }}>
-                      <Typography variant="h6" gutterBottom>
-                        Your Decision
-                      </Typography>
-
-                      {request.status === 'approved' ? (
-                        <Alert severity="success" sx={{ mt: 2 }}>
-                          You have approved this content.
-                        </Alert>
-                      ) : request.status === 'rejected' ? (
-                        <Alert severity="error" sx={{ mt: 2 }}>
-                          You have rejected this content.
-                        </Alert>
-                      ) : hasApproved() ? (
-                        <Alert severity="success" sx={{ mt: 2 }}>
-                          You have approved this content. Waiting for other stakeholders to review.
-                        </Alert>
-                      ) : (
-                        <>
-                          <Typography variant="body2" paragraph sx={{ mt: 2 }}>
-                            Please review the content and provide your decision. Once approved, the
-                            content will be prepared for publishing.
-                          </Typography>
-
-                          <Grid container spacing={2} sx={{ mt: 1 }}>
-                            <Grid item xs={6}>
-                              <Button
-                                fullWidth
-                                variant="contained"
-                                color="error"
-                                startIcon={<CancelIcon />}
-                                onClick={() => setRejectionDialogOpen(true)}
-                                size="large"
-                              >
-                                Reject
-                              </Button>
-                            </Grid>
-                            <Grid item xs={6}>
-                              <Button
-                                fullWidth
-                                variant="contained"
-                                color="success"
-                                startIcon={<CheckCircleIcon />}
-                                onClick={() => setApprovalDialogOpen(true)}
-                                size="large"
-                              >
-                                Approve
-                              </Button>
-                            </Grid>
-                          </Grid>
-                        </>
-                      )}
-                    </Paper>
-                  </Grid>
-                </Grid>
-              </>
-            )}
+            <Menu
+              id="menu-appbar"
+              anchorEl={anchorEl}
+              anchorOrigin={{
+                vertical: 'bottom',
+                horizontal: 'right',
+              }}
+              keepMounted
+              transformOrigin={{
+                vertical: 'top',
+                horizontal: 'right',
+              }}
+              open={Boolean(anchorEl)}
+              onClose={handleMenuClose}
+            >
+              <MenuItem disabled>
+                {clientInfo?.name} ({clientInfo?.email})
+              </MenuItem>
+              <Divider />
+              <MenuItem onClick={handleLogout}>
+                <LogoutIcon fontSize="small" sx={{ mr: 1 }} />
+                Logout
+              </MenuItem>
+            </Menu>
           </Box>
-        </Container>
+        </Toolbar>
+      </AppBar>
 
-        {/* Approval confirmation dialog */}
-        <Dialog open={approvalDialogOpen} onClose={() => setApprovalDialogOpen(false)}>
-          <DialogTitle>Confirm Approval</DialogTitle>
-          <DialogContent>
-            <DialogContentText>
-              Are you sure you want to approve this content? This will indicate that you have
-              reviewed the content and are satisfied with it.
-            </DialogContentText>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setApprovalDialogOpen(false)}>Cancel</Button>
-            <Button
-              onClick={handleApprove}
-              variant="contained"
-              color="success"
-              disabled={actionLoading}
-            >
-              {actionLoading ? <CircularProgress size={24} /> : 'Approve'}
-            </Button>
-          </DialogActions>
-        </Dialog>
+      {/* Content */}
+      <Container maxWidth="lg">
+        <Box my={4}>
+          {/* Error alert */}
+          {error && (
+            <Alert severity="error" sx={{ mb: 3 }}>
+              {error}
+            </Alert>
+          )}
 
-        {/* Rejection dialog */}
-        <Dialog open={rejectionDialogOpen} onClose={() => setRejectionDialogOpen(false)}>
-          <DialogTitle>Reject Content</DialogTitle>
-          <DialogContent>
-            <DialogContentText>
-              Please provide a reason for rejecting this content. This feedback will help in making
-              appropriate revisions.
-            </DialogContentText>
-            <TextField
-              autoFocus
-              margin="dense"
-              label="Reason for Rejection"
-              fullWidth
-              multiline
-              rows={4}
-              value={rejectionReason}
-              onChange={e => setRejectionReason(e.target.value)}
-              variant="outlined"
-              sx={{ mt: 2 }}
-            />
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setRejectionDialogOpen(false)}>Cancel</Button>
-            <Button
-              onClick={handleReject}
-              variant="contained"
-              color="error"
-              disabled={actionLoading || !rejectionReason.trim()}
-            >
-              {actionLoading ? <CircularProgress size={24} /> : 'Reject'}
-            </Button>
-          </DialogActions>
-        </Dialog>
+          {request && (
+            <>
+              {/* Request header */}
+              <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={8}>
+                    <Box display="flex" alignItems="center" mb={2}>
+                      <Typography variant="h5">{request.title}</Typography>
+                      <Box ml={2}>{getStatusBadge(request.status)}</Box>
+                    </Box>
 
-        {/* Version history dialog */}
-        <Dialog
-          open={versionHistoryOpen}
-          onClose={() => setVersionHistoryOpen(false)}
-          maxWidth="md"
-          fullWidth
-        >
-          <DialogTitle>Version History</DialogTitle>
-          <DialogContent>
-            {request?.versions && (
-              <List>
-                {request.versions.map(version => (
-                  <React.Fragment key={version.version_id}>
-                    <ListItem
-                      alignItems="flex-start"
-                      sx={{
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        borderRadius: 1,
-                        my: 2,
-                      }}
-                    >
-                      <DocumentIcon fontSize="large" sx={{ mr: 2, mt: 1 }} />
-                      <ListItemText
-                        primary={
-                          <Box display="flex" justifyContent="space-between">
-                            <Typography variant="h6">Version {version.version_number}</Typography>
-                            <Typography variant="body2" color="textSecondary">
-                              {new Date(version.created_at).toLocaleString()}
-                            </Typography>
-                          </Box>
-                        }
-                        secondary={
-                          <>
-                            {version.comments && (
-                              <Typography
-                                component="span"
-                                variant="body2"
-                                color="textPrimary"
-                                sx={{ mt: 1, display: 'block' }}
-                              >
-                                {version.comments}
-                              </Typography>
-                            )}
+                    {request.description && (
+                      <Typography variant="body1" sx={{ mt: 2 }}>
+                        {request.description}
+                      </Typography>
+                    )}
+                  </Grid>
+
+                  <Grid item xs={12} md={4}>
+                    <Card variant="outlined">
+                      <CardContent>
+                        <Typography variant="subtitle2" gutterBottom>
+                          Request Info
+                        </Typography>
+                        <Box display="flex" justifyContent="space-between" mb={1}>
+                          <Typography variant="body2" color="textSecondary">
+                            Submitted:
+                          </Typography>
+                          <Typography variant="body2">
+                            {new Date(request.created_at).toLocaleDateString()}
+                          </Typography>
+                        </Box>
+                        <Box display="flex" justifyContent="space-between" mb={1}>
+                          <Typography variant="body2" color="textSecondary">
+                            Version:
+                          </Typography>
+                          <Typography variant="body2">
+                            {request.versions && request.versions.length > 0
+                              ? request.versions[0].version_number
+                              : 1}
+                          </Typography>
+                        </Box>
+                        {request.versions && request.versions.length > 1 && (
+                          <Box mt={2}>
                             <Button
                               variant="outlined"
+                              fullWidth
+                              startIcon={<HistoryIcon />}
+                              onClick={() => setVersionHistoryOpen(true)}
                               size="small"
+                            >
+                              View Version History
+                            </Button>
+                          </Box>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    {/* Published URL (if available) */}
+                    {request.published_url && (
+                      <Box mt={2}>
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          fullWidth
+                          startIcon={<LinkIcon />}
+                          href={request.published_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          View Published Content
+                        </Button>
+                      </Box>
+                    )}
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              {/* Main content grid */}
+              <Grid container spacing={3}>
+                {/* Left column: document and comments */}
+                <Grid item xs={12} md={8}>
+                  {/* Document card - Updated Rendering Logic */}
+                  <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+                    <Typography variant="h6" gutterBottom>
+                      Content for Review
+                    </Typography>
+
+                    {(() => {
+                      if (request.inline_content) {
+                        // Render Recogito container for inline content
+                        return (
+                          <div
+                            ref={contentRef}
+                            className="annotatable"
+                            style={{ marginTop: '16px' }}
+                          >
+                            <div
+                              dangerouslySetInnerHTML={{
+                                __html: DOMPurify.sanitize(request.inline_content || ''),
+                              }}
+                            />
+                          </div>
+                        );
+                      } else if (request.file_url) {
+                        // Render download button for file-based requests
+                        return (
+                          <Box display="flex" alignItems="center" my={2}>
+                            <DocumentIcon color="primary" sx={{ mr: 2 }} />
+                            <Typography variant="body1">
+                              {getFileTypeName(request.file_url)}
+                            </Typography>
+                            <Box flexGrow={1} />
+                            <Button
+                              variant="contained"
                               startIcon={<DownloadIcon />}
-                              href={version.file_url}
+                              href={request.file_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              sx={{ mt: 2 }}
                             >
                               View / Download
                             </Button>
-                          </>
-                        }
+                          </Box>
+                        );
+                      } else {
+                        // Fallback if neither exists
+                        return (
+                          <Typography variant="body2" color="textSecondary" sx={{ mt: 2 }}>
+                            No content available for review.
+                          </Typography>
+                        );
+                      }
+                    })()}
+
+                    {/* Conditional text */}
+                    {request.status === 'pending' && !request.inline_content && (
+                      <Typography variant="body2" color="textSecondary" sx={{ mt: 2 }}>
+                        Please review the document carefully before providing your approval or
+                        feedback.
+                      </Typography>
+                    )}
+                  </Paper>
+
+                  {/* Comments section */}
+                  <Paper elevation={2} sx={{ p: 3 }}>
+                    <Typography variant="h6" gutterBottom>
+                      Comments
+                    </Typography>
+
+                    <Box mt={2} mb={3}>
+                      <TextField
+                        fullWidth
+                        multiline
+                        rows={3}
+                        label="Add a comment"
+                        placeholder="Enter your feedback here..."
+                        value={newComment}
+                        onChange={e => setNewComment(e.target.value)}
                       />
-                    </ListItem>
-                  </React.Fragment>
-                ))}
-              </List>
-            )}
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setVersionHistoryOpen(false)}>Close</Button>
-          </DialogActions>
-        </Dialog>
-      </Box>
-    </>
+                      <Box display="flex" justifyContent="flex-end" mt={2}>
+                        <Button
+                          variant="contained"
+                          startIcon={<SendIcon />}
+                          onClick={handleSubmitComment}
+                          disabled={submittingComment || !newComment.trim()}
+                        >
+                          {submittingComment ? <CircularProgress size={24} /> : 'Send Feedback'}
+                        </Button>
+                      </Box>
+                    </Box>
+
+                    <Divider sx={{ my: 2 }} />
+
+                    {request.comments && request.comments.length > 0 ? (
+                      <List>
+                        {request.comments.map(comment => (
+                          <React.Fragment key={comment.comment_id}>
+                            <ListItem alignItems="flex-start">
+                              <ListItemAvatar>
+                                <Avatar>
+                                  {comment.contact_name
+                                    ? comment.contact_name.charAt(0).toUpperCase()
+                                    : 'S'}
+                                </Avatar>
+                              </ListItemAvatar>
+                              <ListItemText
+                                primary={
+                                  <Box display="flex" justifyContent="space-between">
+                                    <Typography variant="subtitle2">
+                                      {comment.contact_name || 'Staff'}
+                                    </Typography>
+                                    <Typography variant="caption" color="textSecondary">
+                                      {new Date(comment.created_at).toLocaleString()}
+                                    </Typography>
+                                  </Box>
+                                }
+                                secondary={
+                                  <Typography
+                                    component="span"
+                                    variant="body2"
+                                    color="textPrimary"
+                                    sx={{ mt: 1, display: 'block' }}
+                                  >
+                                    {comment.comment}
+                                  </Typography>
+                                }
+                              />
+                            </ListItem>
+                            <Divider variant="inset" component="li" />
+                          </React.Fragment>
+                        ))}
+                      </List>
+                    ) : (
+                      <Typography variant="body2" color="textSecondary" align="center">
+                        No comments yet
+                      </Typography>
+                    )}
+                  </Paper>
+                </Grid>
+
+                {/* Right column: approval actions */}
+                <Grid item xs={12} md={4}>
+                  <Paper elevation={2} sx={{ p: 3 }}>
+                    <Typography variant="h6" gutterBottom>
+                      Your Decision
+                    </Typography>
+
+                    {request.status === 'approved' ? (
+                      <Alert severity="success" sx={{ mt: 2 }}>
+                        You have approved this content.
+                      </Alert>
+                    ) : request.status === 'rejected' ? (
+                      <Alert severity="error" sx={{ mt: 2 }}>
+                        You have rejected this content.
+                      </Alert>
+                    ) : hasApproved() ? (
+                      <Alert severity="success" sx={{ mt: 2 }}>
+                        You have approved this content. Waiting for other stakeholders to review.
+                      </Alert>
+                    ) : (
+                      <>
+                        <Typography variant="body2" paragraph sx={{ mt: 2 }}>
+                          Please review the content and provide your decision. Once approved, the
+                          content will be prepared for publishing.
+                        </Typography>
+
+                        <Grid container spacing={2} sx={{ mt: 1 }}>
+                          <Grid item xs={6}>
+                            <Button
+                              fullWidth
+                              variant="contained"
+                              color="error"
+                              startIcon={<CancelIcon />}
+                              onClick={() => setRejectionDialogOpen(true)}
+                              size="large"
+                            >
+                              Reject
+                            </Button>
+                          </Grid>
+                          <Grid item xs={6}>
+                            <Button
+                              fullWidth
+                              variant="contained"
+                              color="success"
+                              startIcon={<CheckCircleIcon />}
+                              onClick={() => setApprovalDialogOpen(true)}
+                              size="large"
+                            >
+                              Approve
+                            </Button>
+                          </Grid>
+                        </Grid>
+                      </>
+                    )}
+                  </Paper>
+                </Grid>
+              </Grid>
+            </>
+          )}
+        </Box>
+      </Container>
+
+      {/* Approval confirmation dialog */}
+      <Dialog open={approvalDialogOpen} onClose={() => setApprovalDialogOpen(false)}>
+        <DialogTitle>Confirm Approval</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to approve this content? This will indicate that you have reviewed
+            the content and are satisfied with it.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setApprovalDialogOpen(false)}>Cancel</Button>
+          <Button
+            onClick={handleApprove}
+            variant="contained"
+            color="success"
+            disabled={actionLoading}
+          >
+            {actionLoading ? <CircularProgress size={24} /> : 'Approve'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Rejection dialog */}
+      <Dialog open={rejectionDialogOpen} onClose={() => setRejectionDialogOpen(false)}>
+        <DialogTitle>Reject Content</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Please provide a reason for rejecting this content. This feedback will help in making
+            appropriate revisions.
+          </DialogContentText>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Reason for Rejection"
+            fullWidth
+            multiline
+            rows={4}
+            value={rejectionReason}
+            onChange={e => setRejectionReason(e.target.value)}
+            variant="outlined"
+            sx={{ mt: 2 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRejectionDialogOpen(false)}>Cancel</Button>
+          <Button
+            onClick={handleReject}
+            variant="contained"
+            color="error"
+            disabled={actionLoading || !rejectionReason.trim()}
+          >
+            {actionLoading ? <CircularProgress size={24} /> : 'Reject'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Version history dialog */}
+      <Dialog
+        open={versionHistoryOpen}
+        onClose={() => setVersionHistoryOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Version History</DialogTitle>
+        <DialogContent>
+          {request?.versions && (
+            <List>
+              {request.versions.map(version => (
+                <React.Fragment key={version.version_id}>
+                  <ListItem
+                    alignItems="flex-start"
+                    sx={{
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: 1,
+                      my: 2,
+                    }}
+                  >
+                    <DocumentIcon fontSize="large" sx={{ mr: 2, mt: 1 }} />
+                    <ListItemText
+                      primary={
+                        <Box display="flex" justifyContent="space-between">
+                          <Typography variant="h6">Version {version.version_number}</Typography>
+                          <Typography variant="body2" color="textSecondary">
+                            {new Date(version.created_at).toLocaleString()}
+                          </Typography>
+                        </Box>
+                      }
+                      secondary={
+                        <>
+                          {version.comments && (
+                            <Typography
+                              component="span"
+                              variant="body2"
+                              color="textPrimary"
+                              sx={{ mt: 1, display: 'block' }}
+                            >
+                              {version.comments}
+                            </Typography>
+                          )}
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<DownloadIcon />}
+                            href={version.file_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            sx={{ mt: 2 }}
+                          >
+                            View / Download
+                          </Button>
+                        </>
+                      }
+                    />
+                  </ListItem>
+                </React.Fragment>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setVersionHistoryOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 }
