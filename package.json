@@ -23,6 +23,7 @@
     "@mui/icons-material": "^5.15.18",
     "@mui/lab": "^5.0.0-alpha.170",
     "@mui/material": "^5.15.18",
+    "@recogito/recogito-js": "^1.8.4",
     "@types/jest": "^29.5.8",
     "@types/nodemailer": "^6.4.17",
     "@zoomus/websdk": "^2.18.3",
