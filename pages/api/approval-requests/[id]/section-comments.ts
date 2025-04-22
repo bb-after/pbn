@@ -1,5 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import mysql from 'mysql2/promise';
+import { verify } from 'jsonwebtoken';
 
 // Database connection pool (reuse configuration)
 const pool = mysql.createPool({
@@ -27,13 +28,24 @@ async function checkContactAccess(requestId: number, contactId: number): Promise
   }
 }
 
+// Function to validate staff token
+async function validateToken(token: string): Promise<any> {
+  try {
+    const decoded = verify(token, process.env.JWT_SECRET || 'default-secret-change-in-production');
+    return decoded;
+  } catch (error) {
+    console.error('Error validating token:', error);
+    return null;
+  }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
   const { id } = req.query;
-  const { startOffset, endOffset, selectedText, commentText } = req.body;
+  const { startOffset, endOffset, selectedText, commentText, staffId, staffName } = req.body;
 
   // --- Input Validation ---
   if (!id || isNaN(Number(id))) {
@@ -63,50 +75,98 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const requestId = Number(id);
 
-  // --- Client Portal Authentication/Authorization ---
+  // Determine if this is a client or staff comment
   const isClientPortal = req.headers['x-client-portal'] === 'true';
   const contactIdHeader = req.headers['x-client-contact-id'];
+  const authToken = req.headers['x-auth-token'] as string;
 
-  if (!isClientPortal || !contactIdHeader || isNaN(Number(contactIdHeader))) {
-    // Only allow comments from authenticated client portal users
-    return res.status(401).json({ error: 'Unauthorized - Client access required' });
+  let contactId: number | null = null;
+  let isStaffComment = false;
+  let staffUserInfo = null;
+
+  // Check for client portal authentication
+  if (isClientPortal && contactIdHeader && !isNaN(Number(contactIdHeader))) {
+    contactId = Number(contactIdHeader);
+
+    // Verify contact has access to this specific request
+    const hasAccess = await checkContactAccess(requestId, contactId);
+    if (!hasAccess) {
+      return res
+        .status(403)
+        .json({ error: 'Forbidden - Contact does not have access to this request' });
+    }
   }
-  const contactId = Number(contactIdHeader);
-
-  // Verify contact has access to this specific request
-  const hasAccess = await checkContactAccess(requestId, contactId);
-  if (!hasAccess) {
-    return res
-      .status(403)
-      .json({ error: 'Forbidden - Contact does not have access to this request' });
+  // Check for staff authentication
+  else if (authToken) {
+    staffUserInfo = await validateToken(authToken);
+    if (!staffUserInfo) {
+      return res.status(401).json({ error: 'Unauthorized - Invalid staff token' });
+    }
+    isStaffComment = true;
+  }
+  // No valid authentication
+  else {
+    return res.status(401).json({ error: 'Unauthorized - Valid authentication required' });
   }
 
   // --- Save Comment to Database ---
   try {
-    const insertQuery = `
-      INSERT INTO approval_request_section_comments
-        (request_id, contact_id, start_offset, end_offset, selected_text, comment_text)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `;
-    const insertValues = [
-      requestId,
-      contactId,
-      Number(startOffset),
-      Number(endOffset),
-      selectedText || null, // Store selected text for context, allow null
-      commentText.trim(),
-    ];
+    let insertQuery = '';
+    let insertValues = [];
+    let getCommentQuery = '';
+    let queryParams = [];
 
+    if (isStaffComment) {
+      // Staff comment
+      insertQuery = `
+        INSERT INTO approval_request_section_comments
+          (request_id, contact_id, staff_id, staff_name, start_offset, end_offset, selected_text, comment_text)
+        VALUES (?, NULL, ?, ?, ?, ?, ?, ?)
+      `;
+      insertValues = [
+        requestId,
+        staffId || staffUserInfo.id,
+        staffName || staffUserInfo.name || 'Staff',
+        Number(startOffset),
+        Number(endOffset),
+        selectedText || null,
+        commentText.trim(),
+      ];
+
+      getCommentQuery = `
+        SELECT sc.*, NULL as contact_name, sc.staff_name as contact_name 
+        FROM approval_request_section_comments sc
+        WHERE sc.section_comment_id = ?
+      `;
+    } else {
+      // Client comment
+      insertQuery = `
+        INSERT INTO approval_request_section_comments
+          (request_id, contact_id, staff_id, staff_name, start_offset, end_offset, selected_text, comment_text)
+        VALUES (?, ?, NULL, NULL, ?, ?, ?, ?)
+      `;
+      insertValues = [
+        requestId,
+        contactId,
+        Number(startOffset),
+        Number(endOffset),
+        selectedText || null,
+        commentText.trim(),
+      ];
+
+      getCommentQuery = `
+        SELECT sc.*, cc.name as contact_name 
+        FROM approval_request_section_comments sc
+        JOIN client_contacts cc ON sc.contact_id = cc.contact_id
+        WHERE sc.section_comment_id = ?
+      `;
+    }
+
+    // Insert the comment
     const [result] = await pool.query(insertQuery, insertValues);
     const insertedId = (result as any).insertId;
 
-    // Fetch the newly created comment to return it (optional but good practice)
-    const getCommentQuery = `
-            SELECT sc.*, cc.name as contact_name 
-            FROM approval_request_section_comments sc
-            JOIN client_contacts cc ON sc.contact_id = cc.contact_id
-            WHERE sc.section_comment_id = ?
-        `;
+    // Fetch the newly created comment
     const [commentRows] = await pool.query(getCommentQuery, [insertedId]);
 
     return res.status(201).json({

@@ -53,28 +53,64 @@ import {
   Email as EmailIcon,
   Delete as DeleteIcon,
   Article as ArticleIcon,
+  Add as AddIcon,
 } from '@mui/icons-material';
 import LayoutContainer from '../../../components/LayoutContainer';
 import StyledHeader from '../../../components/StyledHeader';
 import { useRouter } from 'next/router';
 import useValidateUserToken from 'hooks/useValidateUserToken';
 import axios from 'axios';
+import DOMPurify from 'dompurify';
+import dynamic from 'next/dynamic';
+
+// Import Quill CSS
+import 'react-quill/dist/quill.snow.css';
+
+// Dynamically import ReactQuill
+const ReactQuill = dynamic(() => import('react-quill'), {
+  ssr: false,
+  loading: () => (
+    <Box p={3}>
+      <CircularProgress size={24} />
+    </Box>
+  ),
+});
 
 // Add Recogito types declaration reference (assuming it exists)
 /// <reference path="../../../client-portal/recogito.d.ts" />
 declare module '@recogito/recogito-js';
 
+/// <reference path="./recogito.d.ts" />
+
+declare global {
+  interface Window {
+    Recogito: any;
+    _versionRecogitoInstance?: any; // Store version modal Recogito instance
+  }
+}
+
 // Interfaces
 interface SectionComment {
   section_comment_id: number;
   request_id: number;
-  contact_id: number;
+  contact_id: number | null;
+  staff_id?: string | null;
+  staff_name?: string | null;
   start_offset: number;
   end_offset: number;
   selected_text: string | null;
   comment_text: string;
   created_at: string;
-  contact_name: string;
+  contact_name: string | null;
+  replies?: Array<{
+    reply_id: number;
+    reply_text: string;
+    staff_id?: string | null;
+    staff_name?: string | null;
+    contact_id: number | null;
+    contact_name?: string | null;
+    created_at: string;
+  }>;
 }
 
 interface ApprovalRequest {
@@ -97,6 +133,7 @@ interface ApprovalRequest {
     version_id: number;
     version_number: number;
     file_url: string | null;
+    inline_content?: string | null;
     comments: string | null;
     created_by_id: string | null;
     created_at: string;
@@ -130,15 +167,32 @@ interface ContactWithViews {
   views: ContactView[]; // Array of view records
 }
 
+// Add loadScript helper function
+const loadScript = (src: string): Promise<void> => {
+  const existingScript = document.querySelector(`script[src="${src}"]`);
+  if (existingScript) {
+    existingScript.remove();
+  }
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = error => reject(new Error(`Failed to load script: ${src}\n${error}`));
+    document.body.appendChild(script);
+  });
+};
+
 export default function ApprovalRequestDetailPage() {
   const router = useRouter();
   const { id } = router.query;
-  const { isValidUser, isLoading, token } = useValidateUserToken();
+  const { isValidUser, isLoading, token, user } = useValidateUserToken();
 
   // State for request data
   const [request, setRequest] = useState<ApprovalRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [redirecting, setRedirecting] = useState(false);
 
   // State for tabs
   const [tabValue, setTabValue] = useState(0);
@@ -157,10 +211,62 @@ export default function ApprovalRequestDetailPage() {
   const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
   const [contactToRemove, setContactToRemove] = useState<{ id: number; name: string } | null>(null);
 
+  // --- Add State for View Log Modal ---
+  const [viewLogModalOpen, setViewLogModalOpen] = useState(false);
+  const [selectedContactViews, setSelectedContactViews] = useState<ContactWithViews | null>(null);
+  // --- End State for View Log Modal ---
+
+  // --- Add State for Version Content Modal ---
+  const [versionContentModalOpen, setVersionContentModalOpen] = useState(false);
+  const [selectedVersion, setSelectedVersion] = useState<{
+    version_id: number;
+    version_number: number;
+    file_url: string | null;
+    inline_content?: string | null;
+    comments: string | null;
+    created_by_id: string | null;
+    created_at: string;
+  } | null>(null);
+  // --- End State for Version Content Modal ---
+
+  // --- Add State for New Version Dialog ---
+  const [newVersionDialogOpen, setNewVersionDialogOpen] = useState(false);
+  const [newVersionContent, setNewVersionContent] = useState('');
+  const [newVersionComment, setNewVersionComment] = useState('');
+  const [isSubmittingVersion, setIsSubmittingVersion] = useState(false);
+  // --- End State for New Version Dialog ---
+
   // Add Recogito Refs & State
   const contentRef = useRef<HTMLDivElement>(null);
   const recogitoInstance = useRef<any>(null);
   const [annotations, setAnnotations] = useState<any[]>([]);
+
+  // Set up axios interceptor for handling 404 errors
+  useEffect(() => {
+    // Create response interceptor
+    const interceptor = axios.interceptors.response.use(
+      response => response, // Pass successful responses through
+      error => {
+        if (error.response && router.pathname.includes('/client-approval/requests/')) {
+          // Handle 404 not found errors
+          if (error.response.status === 404) {
+            console.log('Request not found - redirecting to dashboard');
+            setRedirecting(true);
+            router.push('/client-approval?error=request_not_found');
+            // Return a resolved promise to prevent the error from propagating
+            return Promise.resolve({ data: null, status: 404 });
+          }
+        }
+        // Let other errors propagate
+        return Promise.reject(error);
+      }
+    );
+
+    // Clean up interceptor on component unmount
+    return () => {
+      axios.interceptors.response.eject(interceptor);
+    };
+  }, [router]);
 
   // Fetch request details
   const fetchRequestDetails = useCallback(async () => {
@@ -358,10 +464,23 @@ export default function ApprovalRequestDetailPage() {
         purpose: 'commenting',
         value: comment.comment_text,
         creator: {
-          id: `contact:${comment.contact_id}`,
-          name: comment.contact_name,
+          id: comment.staff_id ? `staff:${comment.staff_id}` : `contact:${comment.contact_id}`,
+          name: comment.staff_name || comment.contact_name,
         },
+        created: comment.created_at,
       },
+      ...(comment.replies && comment.replies.length > 0
+        ? comment.replies.map((reply: any) => ({
+            type: 'TextualBody',
+            purpose: 'replying',
+            value: reply.reply_text,
+            creator: {
+              id: reply.staff_id ? `staff:${reply.staff_id}` : `contact:${reply.contact_id}`,
+              name: reply.staff_name || reply.contact_name || 'Unknown',
+            },
+            created: reply.created_at,
+          }))
+        : []),
     ],
     target: {
       selector: [
@@ -371,25 +490,178 @@ export default function ApprovalRequestDetailPage() {
     },
   });
 
-  // Recogito Initialization/Loading Effect (Staff ReadOnly View)
+  // --- Recogito Initialization Effect ---
   useEffect(() => {
-    let recogito: any = null;
+    let isMounted = true;
 
-    const initRecogitoReadOnly = async () => {
-      if (contentRef.current && request?.inline_content && !recogitoInstance.current) {
-        console.log('Staff View: Attempting Recogito init (ReadOnly)...');
+    if (request?.inline_content && contentRef.current && !recogitoInstance.current) {
+      const initRecogito = async () => {
         try {
-          const { Recogito } = await import('@recogito/recogito-js');
+          // Load the Recogito script via script tag
+          await loadScript('/vendor/recogito.min.js');
+
+          console.log('Staff View: Recogito script loaded');
+
+          // Try accessing the constructor from the module object on window
+          const Recogito = (window as any).Recogito?.Recogito || (window as any).Recogito?.default;
+
+          if (!isMounted || !Recogito) {
+            console.error(
+              'Staff View: Recogito constructor not found within window.Recogito module object.'
+            );
+            return;
+          }
+
+          // Add event listener for keydown to handle escape key issues
+          const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && recogitoInstance.current) {
+              // Prevent default behavior to avoid the underlying TypeError
+              e.preventDefault();
+              e.stopPropagation();
+
+              // If there's an active annotation, try to cancel it safely
+              try {
+                const activeSelection = document.querySelector('.r6o-editor-inner');
+                if (activeSelection) {
+                  const cancelButton = document.querySelector('.r6o-btn.r6o-btn-cancel');
+                  if (cancelButton && cancelButton instanceof HTMLElement) {
+                    cancelButton.click();
+                  }
+                }
+              } catch (err) {
+                console.error('Error handling escape key:', err);
+              }
+            }
+          };
+
+          // Register the event handler
+          document.addEventListener('keydown', handleKeyDown, true);
+
+          // Store the handler reference for cleanup
+          const keydownHandler = handleKeyDown;
 
           if (contentRef.current && !recogitoInstance.current) {
             const innerDiv = contentRef.current.querySelector('div');
             if (innerDiv) {
-              console.log('Staff View: Initializing on inner div (ReadOnly)...');
-              recogito = new Recogito({
+              console.log('Staff View: Initializing on inner div...');
+              recogitoInstance.current = new Recogito({
                 content: innerDiv,
-                readOnly: true,
-                widgets: [{ widget: 'COMMENT', options: { placeholder: 'Client feedback...' } }],
+                readOnly: false, // Allow staff to add comments
+                widgets: [{ widget: 'COMMENT', options: { placeholder: 'Add staff feedback...' } }],
               });
+
+              // Add handler for staff to create annotations
+              recogitoInstance.current.on('createAnnotation', async (annotation: any) => {
+                console.log('Staff created annotation:', annotation);
+                try {
+                  const headers: Record<string, string> = {};
+                  if (token) {
+                    headers['x-auth-token'] = token;
+                  }
+
+                  // Extract data from the annotation
+                  const body = annotation.body?.[0];
+                  const textQuote = annotation.target.selector.find(
+                    (s: any) => s.type === 'TextQuoteSelector'
+                  );
+                  const textPosition = annotation.target.selector.find(
+                    (s: any) => s.type === 'TextPositionSelector'
+                  );
+
+                  if (body && textPosition) {
+                    const response = await axios.post(
+                      `/api/approval-requests/${id}/section-comments`,
+                      {
+                        // Pass staff ID instead of contact ID
+                        staffId: user?.id,
+                        staffName: user?.name || 'Staff',
+                        startOffset: textPosition.start,
+                        endOffset: textPosition.end,
+                        selectedText: textQuote?.exact || '',
+                        commentText: body.value,
+                      },
+                      { headers }
+                    );
+
+                    console.log('Staff annotation saved successfully:', response.data);
+
+                    // Add the new comment to the current list
+                    if (request?.section_comments) {
+                      const newComment = response.data.comment;
+                      const updatedRequest = {
+                        ...request,
+                        section_comments: [...request.section_comments, newComment],
+                      };
+                      setRequest(updatedRequest);
+                    }
+
+                    // Refresh request data
+                    fetchRequestDetails();
+                  }
+                } catch (error) {
+                  console.error('Error saving staff annotation:', error);
+                  setError('Failed to save comment. Please try again.');
+                }
+              });
+
+              // Add handler for staff to update annotations (add replies)
+              recogitoInstance.current.on(
+                'updateAnnotation',
+                async (annotation: any, previous: any) => {
+                  console.log('Staff updated annotation:', annotation);
+                  try {
+                    // Log token for debugging
+                    console.log('Current token value:', token);
+
+                    // Prepare headers properly
+                    const headers: Record<string, string> = {};
+                    if (token) {
+                      headers['Authorization'] = `Bearer ${token}`;
+                      // Keep the x-auth-token as backup
+                      headers['x-auth-token'] = token;
+                    }
+
+                    // Extract annotation ID from the format '#section-comment-123'
+                    const idMatch = annotation.id.match(/#section-comment-(\d+)/);
+                    if (!idMatch || !idMatch[1]) {
+                      console.error('Could not extract comment ID from annotation:', annotation.id);
+                      return;
+                    }
+
+                    const commentId = parseInt(idMatch[1]);
+
+                    // Get all the bodies, which include the original comment and any replies
+                    const bodies = annotation.body || [];
+
+                    // The last body should be the newly added reply
+                    const newReply = bodies[bodies.length - 1];
+
+                    if (!newReply || !newReply.value) {
+                      console.error('No valid reply found in updated annotation');
+                      return;
+                    }
+
+                    // Send the reply to the server
+                    const response = await axios.post(
+                      `/api/approval-requests/${id}/section-comments/${commentId}/replies`,
+                      {
+                        staffId: user?.id,
+                        staffName: user?.name || 'Staff',
+                        replyText: newReply.value,
+                      },
+                      { headers }
+                    );
+
+                    console.log('Staff reply saved successfully:', response.data);
+
+                    // Refresh the request data to get all comments and replies
+                    fetchRequestDetails();
+                  } catch (error) {
+                    console.error('Error saving reply:', error);
+                    setError('Failed to save reply. Please try again.');
+                  }
+                }
+              );
 
               if (request.section_comments && request.section_comments.length > 0) {
                 console.log('Staff View: Loading annotations:', request.section_comments);
@@ -397,15 +669,14 @@ export default function ApprovalRequestDetailPage() {
                   const loadedAnnotations = request.section_comments.map(
                     convertDbCommentToAnnotation
                   );
-                  recogito.setAnnotations(loadedAnnotations);
+                  recogitoInstance.current.setAnnotations(loadedAnnotations);
                   setAnnotations(loadedAnnotations);
                 } catch (error) {
                   console.error('Staff View: Error converting/loading annotations:', error);
                 }
               }
 
-              recogitoInstance.current = recogito;
-              console.log('Staff View: Recogito Initialized (ReadOnly).');
+              console.log('Staff View: Recogito Initialized.');
             } else {
               console.error('Staff View: Could not find inner div.');
             }
@@ -415,27 +686,151 @@ export default function ApprovalRequestDetailPage() {
         } catch (error) {
           console.error('Staff View: Failed to import/init Recogito:', error);
         }
-      }
-    };
+      };
 
-    const timeoutId = setTimeout(() => {
-      initRecogitoReadOnly();
-    }, 100);
+      initRecogito();
+    }
 
     return () => {
-      clearTimeout(timeoutId);
+      isMounted = false;
+      // Remove the keydown event handler if it was registered
+      const keydownHandler = document
+        .querySelector('[data-keydown-handler]')
+        ?.getAttribute('data-handler-ref') as unknown as EventListener;
+      if (keydownHandler) {
+        document.removeEventListener('keydown', keydownHandler, true);
+      }
+      if (recogitoInstance.current) {
+        console.log('Staff View: Destroying Recogito instance...');
+        recogitoInstance.current.destroy();
+        recogitoInstance.current = null;
+      }
+    };
+  }, [request?.inline_content, request?.section_comments, user, token]);
+
+  // Clean up Recogito when component unmounts
+  useEffect(() => {
+    return () => {
       if (recogitoInstance.current) {
         console.log('Staff View: Destroying Recogito...');
         recogitoInstance.current.destroy();
         recogitoInstance.current = null;
       }
     };
-  }, [request?.inline_content, request?.section_comments]);
+  }, []);
 
-  if (!isValidUser || (isLoading && !request)) {
+  // --- Add Modal Handlers ---
+  const handleOpenViewLog = (contact: ContactWithViews) => {
+    setSelectedContactViews(contact);
+    setViewLogModalOpen(true);
+  };
+
+  const handleCloseViewLog = () => {
+    setViewLogModalOpen(false);
+    setSelectedContactViews(null);
+  };
+  // --- End Modal Handlers ---
+
+  // --- Add Version Modal Handlers ---
+  const handleOpenVersionContent = (version: {
+    version_id: number;
+    version_number: number;
+    file_url: string | null;
+    inline_content?: string | null;
+    comments: string | null;
+    created_by_id: string | null;
+    created_at: string;
+  }) => {
+    setSelectedVersion(version);
+    setVersionContentModalOpen(true);
+  };
+
+  const handleCloseVersionContent = () => {
+    // Clean up Recogito instance if it exists
+    if (window._versionRecogitoInstance) {
+      window._versionRecogitoInstance.destroy();
+      window._versionRecogitoInstance = null;
+    }
+    setVersionContentModalOpen(false);
+    setSelectedVersion(null);
+  };
+  // --- End Version Modal Handlers ---
+
+  // --- Add New Version Dialog Handlers ---
+  const handleOpenNewVersionDialog = () => {
+    // Pre-populate with current inline content if available
+    if (request?.inline_content) {
+      setNewVersionContent(request.inline_content);
+    }
+    setNewVersionComment('');
+    setNewVersionDialogOpen(true);
+  };
+
+  const handleCloseNewVersionDialog = () => {
+    setNewVersionDialogOpen(false);
+  };
+
+  const handleNewVersionContentChange = (content: string) => {
+    setNewVersionContent(content);
+  };
+
+  const handleSubmitNewVersion = async () => {
+    if (!newVersionContent.trim()) {
+      setError('Content is required');
+      return;
+    }
+
+    setIsSubmittingVersion(true);
+    setError(null);
+
+    try {
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['x-auth-token'] = token;
+      }
+
+      // Instead of fileUrl, send inlineContent
+      const response = await axios.post(
+        `/api/approval-requests/${id}/versions`,
+        {
+          inlineContent: newVersionContent,
+          comments: newVersionComment.trim() || null,
+        },
+        { headers }
+      );
+
+      setNewVersionDialogOpen(false);
+      setNewVersionContent('');
+      setNewVersionComment('');
+      fetchRequestDetails();
+    } catch (error: any) {
+      console.error('Error submitting new version:', error);
+      setError(error.response?.data?.error || 'Failed to add new version');
+    } finally {
+      setIsSubmittingVersion(false);
+    }
+  };
+  // --- End New Version Dialog Handlers ---
+
+  if (isLoading || (loading && !request)) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
         <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (redirecting) {
+    return (
+      <Box
+        display="flex"
+        flexDirection="column"
+        justifyContent="center"
+        alignItems="center"
+        height="100vh"
+      >
+        <CircularProgress sx={{ mb: 2 }} />
+        <Typography variant="body1">Redirecting to dashboard...</Typography>
       </Box>
     );
   }
@@ -451,7 +846,8 @@ export default function ApprovalRequestDetailPage() {
   return (
     <>
       <Head>
-        <link rel="stylesheet" href="/styles/recogito.min.css" />
+        <title>Request Details - {request?.title || id}</title>
+        <link rel="stylesheet" href="/vendor/recogito.min.css" />
       </Head>
 
       <LayoutContainer>
@@ -562,6 +958,15 @@ export default function ApprovalRequestDetailPage() {
                           <Typography variant="h6" gutterBottom>
                             Content & Annotations
                           </Typography>
+
+                          {/* Add status banner for approved content */}
+                          {request.status === 'approved' && (
+                            <Alert severity="success" sx={{ mb: 2 }} icon={<CheckIcon />}>
+                              This content has been approved. Annotations shown are from the review
+                              process.
+                            </Alert>
+                          )}
+
                           {(() => {
                             if (request.inline_content) {
                               return (
@@ -754,11 +1159,21 @@ export default function ApprovalRequestDetailPage() {
                                 key={contact.contact_id}
                                 secondaryAction={
                                   <Box display="flex" alignItems="center">
-                                    <Tooltip title={contact.has_viewed ? 'Viewed' : 'Not viewed'}>
+                                    <Tooltip
+                                      title={
+                                        contact.views && contact.views.length > 0
+                                          ? `Viewed ${contact.views.length} times. Click to see history. (Last: ${new Date(contact.views[0].viewed_at).toLocaleString()})`
+                                          : 'Not viewed'
+                                      }
+                                    >
                                       <span>
-                                        <IconButton size="small" disabled>
-                                          {contact.has_viewed ? (
-                                            <VisibilityIcon color="success" />
+                                        <IconButton
+                                          size="small"
+                                          onClick={() => handleOpenViewLog(contact)}
+                                          disabled={!contact.views || contact.views.length === 0}
+                                        >
+                                          {contact.views && contact.views.length > 0 ? (
+                                            <VisibilityIcon color="info" />
                                           ) : (
                                             <VisibilityOffIcon color="disabled" />
                                           )}
@@ -846,9 +1261,17 @@ export default function ApprovalRequestDetailPage() {
 
                   {tabValue === 1 && (
                     <Paper elevation={2} sx={{ p: 3 }}>
-                      <Typography variant="h6" gutterBottom>
-                        Version History
-                      </Typography>
+                      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                        <Typography variant="h6">Version History</Typography>
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          startIcon={<AddIcon />}
+                          onClick={handleOpenNewVersionDialog}
+                        >
+                          Create New Version
+                        </Button>
+                      </Box>
 
                       {request.versions && request.versions.length > 0 ? (
                         <List>
@@ -897,11 +1320,22 @@ export default function ApprovalRequestDetailPage() {
                                           href={version.file_url}
                                           target="_blank"
                                           rel="noopener noreferrer"
-                                          sx={{ mt: 2 }}
+                                          sx={{ mt: 2, mr: 2 }}
                                         >
                                           View / Download
                                         </Button>
                                       )}
+
+                                      {/* Add View Content button */}
+                                      <Button
+                                        variant="outlined"
+                                        size="small"
+                                        startIcon={<ArticleIcon />}
+                                        onClick={() => handleOpenVersionContent(version)}
+                                        sx={{ mt: 2 }}
+                                      >
+                                        View Content
+                                      </Button>
                                     </>
                                   }
                                 />
@@ -1001,6 +1435,313 @@ export default function ApprovalRequestDetailPage() {
             </Button>
           </DialogActions>
         </Dialog>
+
+        {/* --- View Log Modal --- */}
+        <Dialog open={viewLogModalOpen} onClose={handleCloseViewLog} maxWidth="sm" fullWidth>
+          <DialogTitle>View History for {selectedContactViews?.name || 'Contact'}</DialogTitle>
+          <DialogContent dividers sx={{ p: 0 }}>
+            {selectedContactViews && selectedContactViews.views.length > 0 ? (
+              <TableContainer component={Paper} elevation={0} square>
+                <Table size="small" aria-label="view history table">
+                  <TableHead sx={{ bgcolor: 'grey.100' }}>
+                    <TableRow>
+                      <TableCell>Time Viewed (Local)</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {selectedContactViews.views.map(view => (
+                      <TableRow
+                        key={view.view_id}
+                        sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
+                      >
+                        <TableCell>{new Date(view.viewed_at).toLocaleString()}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : (
+              <DialogContentText sx={{ p: 2, textAlign: 'center' }}>
+                No views recorded for this contact.
+              </DialogContentText>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseViewLog}>Close</Button>
+          </DialogActions>
+        </Dialog>
+        {/* --- End View Log Modal --- */}
+
+        {/* --- Version Content Modal --- */}
+        <Dialog
+          open={versionContentModalOpen}
+          onClose={handleCloseVersionContent}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle>
+            Version {selectedVersion?.version_number || ''} Content
+            {selectedVersion && (
+              <Typography variant="caption" display="block" color="text.secondary">
+                Created on {new Date(selectedVersion.created_at).toLocaleString()}
+              </Typography>
+            )}
+          </DialogTitle>
+          <DialogContent dividers>
+            {selectedVersion ? (
+              <>
+                {selectedVersion.comments && (
+                  <Box mb={3}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Version Notes:
+                    </Typography>
+                    <Paper elevation={0} sx={{ p: 2, bgcolor: 'grey.50' }}>
+                      <Typography variant="body2">{selectedVersion.comments}</Typography>
+                    </Paper>
+                  </Box>
+                )}
+
+                {/* Show file download if available */}
+                {selectedVersion.file_url ? (
+                  <Box textAlign="center" py={3}>
+                    <Typography variant="body1" gutterBottom>
+                      This version contains a file attachment.
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      startIcon={<DownloadIcon />}
+                      href={selectedVersion.file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Download File
+                    </Button>
+                  </Box>
+                ) : (
+                  /* For inline content, show historical content if available */
+                  <Box py={3}>
+                    {selectedVersion.inline_content ? (
+                      // For versions with stored inline_content (future versions)
+                      <>
+                        {request?.section_comments && request.section_comments.length > 0 && (
+                          <Alert severity="info" sx={{ mb: 2 }}>
+                            Annotations shown are from the current version. In the future,
+                            annotations will be version-specific.
+                          </Alert>
+                        )}
+                        <Box
+                          ref={el => {
+                            if (el && selectedVersion.inline_content) {
+                              // Initialize Recogito on this element after a short delay
+                              setTimeout(() => {
+                                if (el && window.Recogito) {
+                                  // Destroy previous instance if it exists
+                                  if (window._versionRecogitoInstance) {
+                                    window._versionRecogitoInstance.destroy();
+                                  }
+
+                                  // Create new instance
+                                  const r = new window.Recogito.Recogito({
+                                    content: el,
+                                    readOnly: true,
+                                  });
+
+                                  // Load annotations if available
+                                  if (
+                                    request?.section_comments &&
+                                    request.section_comments.length > 0
+                                  ) {
+                                    const annotations = request.section_comments.map(
+                                      convertDbCommentToAnnotation
+                                    );
+                                    r.setAnnotations(annotations);
+                                  }
+
+                                  // Store instance for cleanup
+                                  window._versionRecogitoInstance = r;
+                                }
+                              }, 100);
+                            }
+                          }}
+                          sx={{
+                            border: '1px solid #e0e0e0',
+                            borderRadius: 1,
+                            p: 2,
+                            textAlign: 'left',
+                            '& p': { my: 1.5 },
+                            '& ul, & ol': { my: 1.5, pl: 3 },
+                            '& li': { mb: 0.5 },
+                            '& h1, & h2, & h3, & h4, & h5, & h6': {
+                              my: 2,
+                              fontWeight: 'bold',
+                            },
+                          }}
+                          dangerouslySetInnerHTML={{
+                            __html: DOMPurify.sanitize(selectedVersion.inline_content || ''),
+                          }}
+                        />
+                      </>
+                    ) : request &&
+                      selectedVersion &&
+                      request.versions.length > 0 &&
+                      selectedVersion.version_number === request.versions[0].version_number ? (
+                      // For the latest version, show the current request's inline content if version doesn't have it
+                      <>
+                        {request?.section_comments && request.section_comments.length > 0 && (
+                          <Alert severity="info" sx={{ mb: 2 }}>
+                            Annotations shown are from the current version.
+                          </Alert>
+                        )}
+                        <Box
+                          ref={el => {
+                            if (el && request.inline_content) {
+                              // Initialize Recogito on this element after a short delay
+                              setTimeout(() => {
+                                if (el && window.Recogito) {
+                                  // Destroy previous instance if it exists
+                                  if (window._versionRecogitoInstance) {
+                                    window._versionRecogitoInstance.destroy();
+                                  }
+
+                                  // Create new instance
+                                  const r = new window.Recogito.Recogito({
+                                    content: el,
+                                    readOnly: true,
+                                  });
+
+                                  // Load annotations if available
+                                  if (
+                                    request?.section_comments &&
+                                    request.section_comments.length > 0
+                                  ) {
+                                    const annotations = request.section_comments.map(
+                                      convertDbCommentToAnnotation
+                                    );
+                                    r.setAnnotations(annotations);
+                                  }
+
+                                  // Store instance for cleanup
+                                  window._versionRecogitoInstance = r;
+                                }
+                              }, 100);
+                            }
+                          }}
+                          sx={{
+                            border: '1px solid #e0e0e0',
+                            borderRadius: 1,
+                            p: 2,
+                            textAlign: 'left',
+                            '& p': { my: 1.5 },
+                            '& ul, & ol': { my: 1.5, pl: 3 },
+                            '& li': { mb: 0.5 },
+                            '& h1, & h2, & h3, & h4, & h5, & h6': {
+                              my: 2,
+                              fontWeight: 'bold',
+                            },
+                          }}
+                          dangerouslySetInnerHTML={{
+                            __html: DOMPurify.sanitize(request.inline_content || ''),
+                          }}
+                        />
+                      </>
+                    ) : (
+                      <Box textAlign="center">
+                        <Typography color="text.secondary" paragraph>
+                          Historical inline content is not preserved for older versions. Future
+                          updates will store snapshots of each content revision.
+                        </Typography>
+                        <Typography variant="body2" color="primary">
+                          The database has been updated to store inline content for future versions.
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
+                )}
+              </>
+            ) : (
+              <Box textAlign="center" py={3}>
+                <CircularProgress />
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseVersionContent}>Close</Button>
+          </DialogActions>
+        </Dialog>
+        {/* --- End Version Content Modal --- */}
+
+        {/* --- New Version Dialog with Rich Text Editor --- */}
+        <Dialog
+          open={newVersionDialogOpen}
+          onClose={handleCloseNewVersionDialog}
+          maxWidth="lg"
+          fullWidth
+        >
+          <DialogTitle>Create New Version</DialogTitle>
+          <DialogContent dividers>
+            <DialogContentText sx={{ mb: 2 }}>
+              Creating a new version will reset approval status for all contacts and send them a
+              notification.
+            </DialogContentText>
+
+            <Typography variant="subtitle1" gutterBottom>
+              Content
+            </Typography>
+            <Box
+              sx={{
+                mb: 3,
+                '& .quill': {
+                  height: '300px',
+                  mb: 1,
+                  '& .ql-editor': {
+                    minHeight: '250px',
+                  },
+                },
+              }}
+            >
+              <ReactQuill
+                value={newVersionContent}
+                onChange={handleNewVersionContentChange}
+                modules={{
+                  toolbar: [
+                    [{ header: [1, 2, 3, false] }],
+                    ['bold', 'italic', 'underline'],
+                    [{ list: 'ordered' }, { list: 'bullet' }],
+                    ['link'],
+                    ['clean'],
+                  ],
+                }}
+                formats={['header', 'bold', 'italic', 'underline', 'list', 'bullet', 'link']}
+                placeholder="Enter content for review..."
+              />
+            </Box>
+
+            <Typography variant="subtitle1" gutterBottom>
+              Version Notes
+            </Typography>
+            <TextField
+              fullWidth
+              multiline
+              rows={3}
+              label="Describe the changes in this version"
+              placeholder="E.g., Updated content based on client feedback, Fixed formatting issues, etc."
+              value={newVersionComment}
+              onChange={e => setNewVersionComment(e.target.value)}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseNewVersionDialog}>Cancel</Button>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleSubmitNewVersion}
+              disabled={isSubmittingVersion || !newVersionContent.trim()}
+            >
+              {isSubmittingVersion ? <CircularProgress size={24} /> : 'Submit New Version'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+        {/* --- End New Version Dialog --- */}
       </LayoutContainer>
     </>
   );

@@ -40,27 +40,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const requestId = Number(id);
 
-  // Check client portal access
+  // Check if request is from client portal
   const isClientPortal = req.headers['x-client-portal'] === 'true';
+  let contactId: number | undefined;
 
-  // For client portal access, need to verify the contact has access to this request
   if (isClientPortal) {
-    const contactId = req.headers['x-client-contact-id'];
-    if (!contactId) {
-      return res.status(401).json({ error: 'Unauthorized - Missing contact ID' });
+    // Get contact ID from header
+    const contactIdHeader = req.headers['x-client-contact-id'];
+
+    if (!contactIdHeader || isNaN(Number(contactIdHeader))) {
+      return res
+        .status(400)
+        .json({ error: 'Valid contact ID is required for client portal access' });
     }
 
-    const hasAccess = await checkContactAccess(requestId, Number(contactId));
-    if (!hasAccess) {
-      return res
-        .status(403)
-        .json({ error: 'Forbidden - Contact does not have access to this request' });
-    }
+    contactId = Number(contactIdHeader);
   }
 
+  // Process by method
   switch (req.method) {
     case 'GET':
-      return getApprovalRequest(requestId, res);
+      return getApprovalRequest(requestId, res, isClientPortal, contactId);
     case 'PUT':
       return updateApprovalRequest(requestId, req, res, isClientPortal);
     case 'DELETE':
@@ -90,31 +90,22 @@ async function checkContactAccess(requestId: number, contactId: number): Promise
 }
 
 // Get a single approval request by ID
-async function getApprovalRequest(requestId: number, res: NextApiResponse) {
+async function getApprovalRequest(
+  requestId: number,
+  res: NextApiResponse,
+  isClientPortal: boolean = false,
+  contactId?: number
+) {
   try {
-    // Get the main request data (including inline_content)
+    // Initialize response data object to store all information
+    const responseData: any = {};
+
+    // Query to get basic request details
     const requestQuery = `
-      SELECT 
-        ar.request_id, 
-        ar.client_id, 
-        c.client_name,
-        ar.title, 
-        ar.description, 
-        ar.file_url, 
-        ar.file_type, 
-        ar.inline_content, 
-        ar.status, 
-        ar.created_by_id, 
-        ar.published_url,
-        ar.is_archived,
-        ar.created_at, 
-        ar.updated_at
-      FROM 
-        client_approval_requests ar
-      JOIN
-        clients c ON ar.client_id = c.client_id
-      WHERE 
-        ar.request_id = ?
+      SELECT ar.*, c.client_name
+      FROM client_approval_requests ar
+      JOIN clients c ON ar.client_id = c.client_id
+      WHERE ar.request_id = ?
     `;
 
     const [requestRows] = await pool.query(requestQuery, [requestId]);
@@ -122,151 +113,148 @@ async function getApprovalRequest(requestId: number, res: NextApiResponse) {
     if ((requestRows as any[]).length === 0) {
       return res.status(404).json({ error: 'Approval request not found' });
     }
-    const request = (requestRows as any[])[0];
 
-    // Get contacts (basic info + approval status)
+    const requestData = (requestRows as any[])[0];
+
+    // If this is a client portal request, verify that the contact has access to this client's requests
+    if (isClientPortal && contactId) {
+      const checkAccessQuery = `
+        SELECT COUNT(*) as count
+        FROM client_contacts
+        WHERE contact_id = ? AND client_id = ?
+      `;
+
+      const [accessResult] = await pool.query(checkAccessQuery, [contactId, requestData.client_id]);
+
+      if ((accessResult as any[])[0].count === 0) {
+        console.log(
+          `Access denied: Contact ${contactId} attempted to access request ${requestId} for client ${requestData.client_id}`
+        );
+        return res.status(403).json({
+          error: 'Forbidden',
+          message: 'You do not have permission to view this request',
+        });
+      }
+    }
+
+    // Query to get contacts associated with this request
     const contactsQuery = `
-      SELECT 
-        cc.contact_id,
-        cc.name,
-        cc.email,
-        arc.has_approved,
-        arc.approved_at
-      FROM 
-        approval_request_contacts arc
-      JOIN
-        client_contacts cc ON arc.contact_id = cc.contact_id
-      WHERE 
-        arc.request_id = ? AND cc.is_active = 1
+      SELECT arc.contact_id, cc.name, cc.email, arc.has_approved, arc.approved_at
+      FROM approval_request_contacts arc
+      JOIN client_contacts cc ON arc.contact_id = cc.contact_id
+      WHERE arc.request_id = ?
     `;
     const [contactRows] = await pool.query(contactsQuery, [requestId]);
 
-    // --- Get ALL views for this request ---
-    const viewsQuery = `
-      SELECT 
-        av.view_id,
-        av.contact_id,
-        av.viewed_at,
-        cc.email -- Select the contact's email
-      FROM
-        approval_request_views av -- Alias view table
-      JOIN 
-        client_contacts cc ON av.contact_id = cc.contact_id -- Join to get email
-      WHERE
-        av.request_id = ?
-      ORDER BY
-        av.viewed_at DESC -- Show most recent first
-    `;
-    const [viewRows] = await pool.query(viewsQuery, [requestId]);
+    // Get contact IDs for subsequent view records query
+    const contactIds = (contactRows as any[]).map(c => c.contact_id);
 
-    // --- Process views and merge with contacts ---
-    const contactsMap: { [key: number]: ContactDetails } = {};
-    (contactRows as any[]).forEach(contact => {
-      contactsMap[contact.contact_id] = {
+    // Query to get view records for each contact
+    let contactsWithViews = [];
+    if (contactIds.length > 0) {
+      const viewsQuery = `
+        SELECT * FROM approval_request_views
+        WHERE request_id = ? AND contact_id IN (?)
+        ORDER BY viewed_at DESC
+      `;
+      const [viewRows] = await pool.query(viewsQuery, [requestId, contactIds]);
+
+      // Group views by contact_id
+      const viewsByContact: Record<number, any[]> = {};
+      (viewRows as any[]).forEach(view => {
+        if (!viewsByContact[view.contact_id]) {
+          viewsByContact[view.contact_id] = [];
+        }
+        viewsByContact[view.contact_id].push(view);
+      });
+
+      // Merge contact data with view data
+      contactsWithViews = (contactRows as any[]).map(contact => ({
         ...contact,
-        views: [], // Initialize empty views array
-      };
-    });
+        has_viewed: Boolean(viewsByContact[contact.contact_id]?.length),
+        views: viewsByContact[contact.contact_id] || [],
+      }));
+    } else {
+      contactsWithViews = contactRows as any[];
+    }
 
-    (viewRows as any[]).forEach(view => {
-      if (contactsMap[view.contact_id]) {
-        // Ensure viewed_at is sent in ISO format (UTC)
-        // Append Z to indicate UTC before parsing and converting
-        const viewedAtISO =
-          view.viewed_at instanceof Date
-            ? view.viewed_at.toISOString()
-            : new Date(String(view.viewed_at) + 'Z').toISOString(); // Treat DB string as UTC
-
-        contactsMap[view.contact_id].views.push({
-          view_id: view.view_id,
-          viewed_at: viewedAtISO, // Send ISO string
-          email: view.email,
-        });
-      }
-    });
-    const contactsWithViews = Object.values(contactsMap);
-    // --- End view processing ---
-
-    // Get versions for this request
+    // Query to get versions
     const versionsQuery = `
-      SELECT 
-        version_id,
-        version_number,
-        file_url,
-        comments,
-        created_by_id,
-        created_at
-      FROM 
-        approval_request_versions
-      WHERE 
-        request_id = ?
-      ORDER BY 
-        version_number DESC
+      SELECT *
+      FROM approval_request_versions
+      WHERE request_id = ?
+      ORDER BY version_number DESC
     `;
-
     const [versionRows] = await pool.query(versionsQuery, [requestId]);
 
-    // Get comments for this request
+    // Query to get comments
     const commentsQuery = `
-      SELECT 
-        arc.comment_id,
-        arc.comment,
-        arc.created_by_id,
-        arc.contact_id,
-        cc.name as contact_name,
-        u.name as staff_name,
-        arc.created_at
-      FROM 
-        approval_request_comments arc
-      LEFT JOIN
-        client_contacts cc ON arc.contact_id = cc.contact_id
-      LEFT JOIN
-        users u ON arc.created_by_id = u.id
-      WHERE 
-        arc.request_id = ?
-      ORDER BY 
-        arc.created_at DESC
+      SELECT c.*, cc.name as contact_name, u.name as staff_name,
+        COALESCE(cc.name, u.name, 'Unknown') as commenter_name
+      FROM approval_request_comments c
+      LEFT JOIN client_contacts cc ON c.contact_id = cc.contact_id
+      LEFT JOIN users u ON c.created_by_id = u.id
+      WHERE c.request_id = ?
+      ORDER BY c.created_at DESC
     `;
+    const [standardComments] = await pool.query(commentsQuery, [requestId]);
 
-    const [commentRows] = await pool.query(commentsQuery, [requestId]);
-
-    // Map comments to include commenter_name
-    const standardComments = (commentRows as any[]).map(comment => ({
-      ...comment,
-      commenter_name: comment.contact_name || comment.staff_name || 'Unknown',
-    }));
-
-    // Get section-specific comments for this request
+    // Query to get section comments
     const sectionCommentsQuery = `
-      SELECT 
-        sc.section_comment_id,
-        sc.request_id,
-        sc.contact_id,
-        sc.start_offset,
-        sc.end_offset,
-        sc.selected_text,
-        sc.comment_text,
-        sc.created_at,
-        cc.name as contact_name -- Get commenter name
-      FROM 
-        approval_request_section_comments sc
-      JOIN 
-        client_contacts cc ON sc.contact_id = cc.contact_id
-      WHERE 
-        sc.request_id = ?
-      ORDER BY 
-        sc.created_at ASC -- Or order by offset?
+      SELECT sc.*, cc.name as contact_name 
+      FROM approval_request_section_comments sc
+      LEFT JOIN client_contacts cc ON sc.contact_id = cc.contact_id
+      WHERE sc.request_id = ?
+      ORDER BY sc.created_at DESC
     `;
     const [sectionCommentRows] = await pool.query(sectionCommentsQuery, [requestId]);
 
+    // Fetch replies for section comments
+    let sectionCommentsWithReplies = [];
+    if ((sectionCommentRows as any[]).length > 0) {
+      const commentIds = (sectionCommentRows as any[]).map(comment => comment.section_comment_id);
+
+      const repliesQuery = `
+        SELECT * FROM approval_request_comment_replies
+        WHERE section_comment_id IN (?)
+        ORDER BY created_at ASC
+      `;
+
+      const [repliesRows] = await pool.query(repliesQuery, [commentIds]);
+
+      // Attach replies to their parent comments
+      sectionCommentsWithReplies = (sectionCommentRows as any[]).map(comment => {
+        const commentReplies = (repliesRows as any[]).filter(
+          reply => reply.section_comment_id === comment.section_comment_id
+        );
+        return {
+          ...comment,
+          replies: commentReplies.length > 0 ? commentReplies : [],
+        };
+      });
+    } else {
+      sectionCommentsWithReplies = sectionCommentRows as any[];
+    }
+
     // Combine all data
-    const responseData = {
-      ...request,
-      contacts: contactsWithViews, // Use the processed contacts with views
-      versions: versionRows,
-      comments: standardComments,
-      section_comments: sectionCommentRows,
-    };
+    responseData.request_id = requestData.request_id;
+    responseData.client_id = requestData.client_id;
+    responseData.client_name = requestData.client_name;
+    responseData.title = requestData.title;
+    responseData.description = requestData.description;
+    responseData.file_url = requestData.file_url;
+    responseData.file_type = requestData.file_type;
+    responseData.status = requestData.status;
+    responseData.created_by_id = requestData.created_by_id;
+    responseData.published_url = requestData.published_url;
+    responseData.created_at = requestData.created_at;
+    responseData.updated_at = requestData.updated_at;
+    responseData.is_archived = Boolean(requestData.is_archived);
+    responseData.inline_content = requestData.inline_content || null;
+    responseData.contacts = contactsWithViews;
+    responseData.versions = versionRows;
+    responseData.comments = standardComments;
+    responseData.section_comments = sectionCommentsWithReplies;
 
     return res.status(200).json(responseData);
   } catch (error) {

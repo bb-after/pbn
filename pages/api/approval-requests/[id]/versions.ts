@@ -55,6 +55,7 @@ async function getVersions(requestId: number, res: NextApiResponse) {
         request_id, 
         version_number, 
         file_url, 
+        inline_content,
         comments, 
         created_by_id, 
         created_at
@@ -82,10 +83,11 @@ async function addVersion(
   res: NextApiResponse,
   userInfo: any
 ) {
-  const { fileUrl, comments } = req.body;
+  const { fileUrl, inlineContent, comments } = req.body;
 
-  if (!fileUrl) {
-    return res.status(400).json({ error: 'File URL is required' });
+  // Either fileUrl or inlineContent must be provided (supporting both for backward compatibility)
+  if (!fileUrl && !inlineContent) {
+    return res.status(400).json({ error: 'Either file URL or inline content is required' });
   }
 
   // Create a connection for transaction
@@ -118,15 +120,16 @@ async function addVersion(
     // 3. Add the new version
     const insertQuery = `
       INSERT INTO approval_request_versions 
-        (request_id, version_number, file_url, comments, created_by_id) 
+        (request_id, version_number, file_url, inline_content, comments, created_by_id) 
       VALUES 
-        (?, ?, ?, ?, ?)
+        (?, ?, ?, ?, ?, ?)
     `;
 
     const insertValues = [
       requestId,
       newVersionNumber,
-      fileUrl,
+      fileUrl || null, // Use fileUrl if provided, otherwise null
+      inlineContent || null, // Store inline content in versions table
       comments || null,
       userInfo.id || null,
     ];
@@ -134,26 +137,25 @@ async function addVersion(
     const [insertResult] = await connection.query(insertQuery, insertValues);
     const versionId = (insertResult as any).insertId;
 
-    // 4. Update the main request with the new file URL and reset status to pending
+    // 4. Update the main request with the new file URL or inline content and reset status to pending
     const updateQuery = `
       UPDATE client_approval_requests
       SET 
         file_url = ?,
+        inline_content = ?,
         status = 'pending',
         updated_at = CURRENT_TIMESTAMP
       WHERE 
         request_id = ?
     `;
 
-    await connection.query(updateQuery, [fileUrl, requestId]);
+    await connection.query(updateQuery, [fileUrl || null, inlineContent || null, requestId]);
 
-    // 5. Reset approval status for all contacts
+    // 5. Reset approval status for all contacts (without resetting view status which is now in a separate table)
     const resetApprovalsQuery = `
       UPDATE approval_request_contacts
       SET 
-        has_viewed = 0,
         has_approved = 0,
-        viewed_at = NULL,
         approved_at = NULL
       WHERE 
         request_id = ?
@@ -168,6 +170,7 @@ async function addVersion(
         request_id, 
         version_number, 
         file_url, 
+        inline_content,
         comments, 
         created_by_id, 
         created_at

@@ -12,6 +12,9 @@
     "prepare": "husky install",
     "check": "sh scripts/check-code.sh",
     "fix": "sh scripts/fix-code.sh",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
     "create-authors": "NODE_ENV=development npx ts-node scripts/createSuperstarAuthors.ts",
     "create-compass-tables": "NODE_ENV=development npx ts-node scripts/create-compass-tables.ts"
   },
@@ -47,6 +50,7 @@
     "framer-motion": "^10.15.0",
     "googleapis": "^144.0.0",
     "he": "^1.2.0",
+    "jest-environment-jsdom": "^29.7.0",
     "jodit-react": "^4.1.2",
     "jsonrepair": "^3.9.0",
     "jsonwebtoken": "^9.0.2",
@@ -75,6 +79,8 @@
     "vercel": "^31.2.3"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
     "@types/draft-js": "^0.11.12",
     "@types/file-saver": "^2.0.7",
     "@types/formidable": "^3.4.5",

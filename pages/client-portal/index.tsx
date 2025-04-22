@@ -20,6 +20,7 @@ import {
   MenuItem,
   CircularProgress,
   Alert,
+  Snackbar,
 } from '@mui/material';
 import {
   AccountCircle,
@@ -53,6 +54,9 @@ export default function ClientPortalPage() {
   const router = useRouter();
   const { isValidClient, clientInfo, isLoading, logout } = useClientAuth('/client-portal/login');
 
+  // Get error param from URL if present
+  const { error: errorParam } = router.query;
+
   // State for user menu
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
@@ -64,6 +68,25 @@ export default function ClientPortalPage() {
   const [completedRequests, setCompletedRequests] = useState<ApprovalRequest[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // State for toast notification
+  const [toastOpen, setToastOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+
+  // Set error message and toast based on URL parameter
+  useEffect(() => {
+    if (errorParam === 'unauthorized_request') {
+      const message = 'You do not have permission to view that request.';
+      setError(message);
+      setToastMessage(message);
+      setToastOpen(true);
+    } else if (errorParam === 'request_not_found') {
+      const message = 'The requested content could not be found or has been removed.';
+      setError(message);
+      setToastMessage(message);
+      setToastOpen(true);
+    }
+  }, [errorParam]);
 
   // Fetch requests from the API
   const fetchRequests = useCallback(async () => {
@@ -135,6 +158,17 @@ export default function ClientPortalPage() {
   // Handle view request
   const handleViewRequest = (requestId: number) => {
     router.push(`/client-portal/requests/${requestId}`);
+  };
+
+  // Handle closing the toast
+  const handleCloseToast = () => {
+    setToastOpen(false);
+
+    // Clear the error parameter from the URL
+    if (errorParam) {
+      const { pathname } = router;
+      router.replace(pathname, undefined, { shallow: true });
+    }
   };
 
   // Generate status chip with appropriate color
@@ -265,7 +299,7 @@ export default function ClientPortalPage() {
 
           {/* Error message */}
           {error && (
-            <Alert severity="error" sx={{ mb: 3 }}>
+            <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
               {error}
             </Alert>
           )}
@@ -433,6 +467,18 @@ export default function ClientPortalPage() {
           )}
         </Box>
       </Container>
+
+      {/* Toast Notification */}
+      <Snackbar
+        open={toastOpen}
+        autoHideDuration={6000}
+        onClose={handleCloseToast}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert onClose={handleCloseToast} severity="warning" sx={{ width: '100%' }}>
+          {toastMessage}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }
