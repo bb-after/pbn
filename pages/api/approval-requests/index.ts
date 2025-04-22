@@ -121,6 +121,7 @@ async function getApprovalRequests(req: NextApiRequest, res: NextApiResponse, us
           request_id, 
           version_number, 
           file_url, -- Keep file_url here for historical versions if needed
+          inline_content, -- Add inline_content for historical versions
           comments, 
           created_at
         FROM 
@@ -177,7 +178,7 @@ async function createApprovalRequest(req: NextApiRequest, res: NextApiResponse, 
   const connection = await pool.getConnection();
 
   try {
-    // Start transaction
+    // Start transactiond
     await connection.beginTransaction();
 
     // 1. Create the approval request

@@ -18,6 +18,7 @@ import {
   MenuItem,
   IconButton,
   Divider,
+  Snackbar,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -61,6 +62,9 @@ export default function ClientApprovalPage() {
   const router = useRouter();
   const { isValidUser, isLoading } = useValidateUserToken();
 
+  // Get error param from URL if present
+  const { error: errorParam } = router.query;
+
   // State for data and loading
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,6 +76,20 @@ export default function ClientApprovalPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [clientFilter, setClientFilter] = useState<number | string>('all');
   const [clients, setClients] = useState<{ client_id: number; client_name: string }[]>([]);
+
+  // State for toast notification
+  const [toastOpen, setToastOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+
+  // Set error message and toast based on URL parameter
+  useEffect(() => {
+    if (errorParam === 'request_not_found') {
+      const message = 'The requested content could not be found or has been removed.';
+      setError(message);
+      setToastMessage(message);
+      setToastOpen(true);
+    }
+  }, [errorParam]);
 
   // Load approval requests on mount
   useEffect(() => {
@@ -167,6 +185,17 @@ export default function ClientApprovalPage() {
     return (
       <Chip label={status.charAt(0).toUpperCase() + status.slice(1)} color={color} size="small" />
     );
+  };
+
+  // Handle closing the toast
+  const handleCloseToast = () => {
+    setToastOpen(false);
+
+    // Clear the error parameter from the URL
+    if (errorParam) {
+      const { pathname } = router;
+      router.replace(pathname, undefined, { shallow: true });
+    }
   };
 
   if (isLoading) {
@@ -278,7 +307,9 @@ export default function ClientApprovalPage() {
               <CircularProgress />
             </Box>
           ) : error ? (
-            <Alert severity="error">{error}</Alert>
+            <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
+              {error}
+            </Alert>
           ) : filteredRequests.length === 0 ? (
             <Alert severity="info">
               {tabValue === 0
@@ -364,6 +395,18 @@ export default function ClientApprovalPage() {
           )}
         </Box>
       </Container>
+
+      {/* Toast Notification */}
+      <Snackbar
+        open={toastOpen}
+        autoHideDuration={6000}
+        onClose={handleCloseToast}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert onClose={handleCloseToast} severity="warning" sx={{ width: '100%' }}>
+          {toastMessage}
+        </Alert>
+      </Snackbar>
     </LayoutContainer>
   );
 }

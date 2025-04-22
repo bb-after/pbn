@@ -41,6 +41,7 @@ import {
   Link as LinkIcon,
   Comment as CommentIcon,
   History as HistoryIcon,
+  Article as ArticleIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/router';
 import useClientAuth from '../../../hooks/useClientAuth';
@@ -74,13 +75,24 @@ const loadScript = (src: string): Promise<void> => {
 interface SectionComment {
   section_comment_id: number;
   request_id: number;
-  contact_id: number;
+  contact_id: number | null;
+  staff_id?: string | null;
+  staff_name?: string | null;
   start_offset: number;
   end_offset: number;
   selected_text: string | null;
   comment_text: string;
   created_at: string;
-  contact_name: string;
+  contact_name: string | null;
+  replies?: Array<{
+    reply_id: number;
+    reply_text: string;
+    staff_id?: string | null;
+    staff_name?: string | null;
+    contact_id: number | null;
+    contact_name?: string | null;
+    created_at: string;
+  }>;
 }
 
 interface ApprovalRequest {
@@ -137,6 +149,7 @@ export default function ClientRequestDetailPage() {
   const [request, setRequest] = useState<ApprovalRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [redirecting, setRedirecting] = useState(false);
 
   // State for approval/rejection
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
@@ -161,6 +174,42 @@ export default function ClientRequestDetailPage() {
   const contentRef = useRef<HTMLDivElement>(null);
   const recogitoInstance = useRef<any>(null);
 
+  // Set up axios interceptor for handling 403 errors globally
+  useEffect(() => {
+    // Create response interceptor
+    const interceptor = axios.interceptors.response.use(
+      response => response, // Pass successful responses through
+      error => {
+        if (error.response && router.pathname.includes('/client-portal/requests/')) {
+          // Handle 403 forbidden errors
+          if (error.response.status === 403) {
+            console.log('Access forbidden - redirecting to dashboard');
+            setRedirecting(true);
+            router.push('/client-portal?error=unauthorized_request');
+            // Return a resolved promise to prevent the error from propagating
+            return Promise.resolve({ data: null, status: 403 });
+          }
+
+          // Handle 404 not found errors
+          if (error.response.status === 404) {
+            console.log('Request not found - redirecting to dashboard');
+            setRedirecting(true);
+            router.push('/client-portal?error=request_not_found');
+            // Return a resolved promise to prevent the error from propagating
+            return Promise.resolve({ data: null, status: 404 });
+          }
+        }
+        // Let other errors propagate
+        return Promise.reject(error);
+      }
+    );
+
+    // Clean up interceptor on component unmount
+    return () => {
+      axios.interceptors.response.eject(interceptor);
+    };
+  }, [router]);
+
   // Fetch request details
   const fetchRequestDetails = useCallback(async () => {
     setLoading(true);
@@ -173,9 +222,74 @@ export default function ClientRequestDetailPage() {
       };
 
       const response = await axios.get(`/api/approval-requests/${id}`, { headers });
-      setRequest(response.data);
-    } catch (error) {
+
+      // Only set request if we got valid data
+      if (response.data) {
+        setRequest(response.data);
+
+        // If we have Recogito instance and new comments, update them without reinitializing
+        if (recogitoInstance.current && response.data.section_comments) {
+          try {
+            // Use the same conversion function that's defined elsewhere in the component
+            const convertToAnnotation = (dbComment: SectionComment) => ({
+              '@context': 'http://www.w3.org/ns/anno.jsonld',
+              type: 'Annotation',
+              id: `#section-comment-${dbComment.section_comment_id}`,
+              body: [
+                {
+                  type: 'TextualBody',
+                  value: dbComment.comment_text,
+                  purpose: 'commenting',
+                  creator: {
+                    id: dbComment.staff_id
+                      ? `staff:${dbComment.staff_id}`
+                      : `mailto:${dbComment.contact_name}`,
+                    name: dbComment.staff_name || dbComment.contact_name || 'Unknown',
+                  },
+                  created: dbComment.created_at,
+                },
+                ...(dbComment.replies && dbComment.replies.length > 0
+                  ? dbComment.replies.map((reply: any) => ({
+                      type: 'TextualBody',
+                      purpose: 'replying',
+                      value: reply.reply_text,
+                      creator: {
+                        id: reply.staff_id
+                          ? `staff:${reply.staff_id}`
+                          : `contact:${reply.contact_id}`,
+                        name: reply.staff_name || reply.contact_name || 'Unknown',
+                      },
+                      created: reply.created_at,
+                    }))
+                  : []),
+              ],
+              target: {
+                selector: [
+                  {
+                    type: 'TextQuoteSelector',
+                    exact: dbComment.selected_text || '',
+                  },
+                  {
+                    type: 'TextPositionSelector',
+                    start: dbComment.start_offset,
+                    end: dbComment.end_offset,
+                  },
+                ],
+              },
+            });
+
+            const loadedAnnotations = response.data.section_comments.map(convertToAnnotation);
+            recogitoInstance.current.setAnnotations(loadedAnnotations);
+            console.log('Updated annotations in existing Recogito instance');
+          } catch (error) {
+            console.error('Error updating annotations:', error);
+          }
+        }
+      }
+    } catch (error: any) {
       console.error('Error fetching approval request details:', error);
+
+      // The 403 case is now handled by the interceptor, this is for other errors
       setError('Failed to load request details');
     } finally {
       setLoading(false);
@@ -245,10 +359,25 @@ export default function ClientRequestDetailPage() {
           value: dbComment.comment_text,
           purpose: 'commenting',
           creator: {
-            id: `mailto:${dbComment.contact_name}`,
-            name: dbComment.contact_name,
+            id: dbComment.staff_id
+              ? `staff:${dbComment.staff_id}`
+              : `mailto:${dbComment.contact_name}`,
+            name: dbComment.staff_name || dbComment.contact_name || 'Unknown',
           },
+          created: dbComment.created_at,
         },
+        ...(dbComment.replies && dbComment.replies.length > 0
+          ? dbComment.replies.map((reply: any) => ({
+              type: 'TextualBody',
+              purpose: 'replying',
+              value: reply.reply_text,
+              creator: {
+                id: reply.staff_id ? `staff:${reply.staff_id}` : `contact:${reply.contact_id}`,
+                name: reply.staff_name || reply.contact_name || 'Unknown',
+              },
+              created: reply.created_at,
+            }))
+          : []),
       ],
       target: {
         selector: [
@@ -272,6 +401,31 @@ export default function ClientRequestDetailPage() {
     if (request?.inline_content && contentRef.current && !recogitoInstance.current) {
       let isMounted = true;
 
+      // Add event listener for keydown to handle escape key issues
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape' && recogitoInstance.current) {
+          // Prevent default behavior to avoid the underlying TypeError
+          e.preventDefault();
+          e.stopPropagation();
+
+          // If there's an active annotation, try to cancel it safely
+          try {
+            const activeSelection = document.querySelector('.r6o-editor-inner');
+            if (activeSelection) {
+              const cancelButton = document.querySelector('.r6o-btn.r6o-btn-cancel');
+              if (cancelButton && cancelButton instanceof HTMLElement) {
+                cancelButton.click();
+              }
+            }
+          } catch (err) {
+            console.error('Error handling escape key:', err);
+          }
+        }
+      };
+
+      // Register the event handler
+      document.addEventListener('keydown', handleKeyDown, true);
+
       const initRecogito = async () => {
         try {
           await loadScript('/vendor/recogito.min.js');
@@ -294,15 +448,136 @@ export default function ClientRequestDetailPage() {
             return;
           }
 
+          // Determine if annotations should be read-only based on request status
+          const isReadOnly = request.status !== 'pending';
+          console.log(`Client View: Initializing Recogito (readOnly: ${isReadOnly})`);
+
           // Now Recogito should be the constructor
           const r = new Recogito({
             content: contentRef.current!,
-            readOnly: true,
+            readOnly: isReadOnly,
+            widgets: [
+              {
+                widget: 'COMMENT',
+                options: {
+                  placeholder: 'Add your feedback here...',
+                  allowTags: false,
+                },
+              },
+            ],
           });
 
           r.on('selectAnnotation', (annotation: any) => {
             console.log('Client Selected annotation:', annotation);
           });
+
+          // Add handlers for creating and updating annotations
+          if (!isReadOnly) {
+            r.on('createAnnotation', async (annotation: any) => {
+              console.log('Client created annotation:', annotation);
+              try {
+                // Save the annotation to the server
+                const headers = {
+                  'x-client-portal': 'true',
+                  'x-client-contact-id': clientInfo?.contact_id.toString(),
+                };
+
+                // Extract data from the annotation
+                const body = annotation.body?.[0];
+                const textQuote = annotation.target.selector.find(
+                  (s: any) => s.type === 'TextQuoteSelector'
+                );
+                const textPosition = annotation.target.selector.find(
+                  (s: any) => s.type === 'TextPositionSelector'
+                );
+
+                if (body && textPosition) {
+                  // Show loading indicator or disable UI if needed
+
+                  const response = await axios.post(
+                    `/api/approval-requests/${id}/section-comments`,
+                    {
+                      contactId: clientInfo?.contact_id,
+                      startOffset: textPosition.start,
+                      endOffset: textPosition.end,
+                      selectedText: textQuote?.exact || '',
+                      commentText: body.value,
+                    },
+                    { headers }
+                  );
+
+                  console.log('Annotation saved successfully:', response.data);
+
+                  // Add the new comment to the current list without reinitializing Recogito
+                  if (request.section_comments) {
+                    // Extract the newly created comment from the response
+                    const newComment = response.data.comment; // This is the correct path to the comment data
+                    const updatedRequest = {
+                      ...request,
+                      section_comments: [...request.section_comments, newComment],
+                    };
+                    setRequest(updatedRequest);
+                  }
+
+                  // Refresh the request data to ensure all comments are up to date
+                  fetchRequestDetails();
+                }
+              } catch (error) {
+                console.error('Error saving annotation:', error);
+                // Handle error - maybe show toast notification
+                setError('Failed to save comment. Please try again.');
+              }
+            });
+
+            // Add handler for client to update annotations (add replies)
+            r.on('updateAnnotation', async (annotation: any, previous: any) => {
+              console.log('Client updated annotation:', annotation);
+              try {
+                const headers = {
+                  'x-client-portal': 'true',
+                  'x-client-contact-id': clientInfo?.contact_id.toString(),
+                };
+
+                // Extract annotation ID from the format '#section-comment-123'
+                const idMatch = annotation.id.match(/#section-comment-(\d+)/);
+                if (!idMatch || !idMatch[1]) {
+                  console.error('Could not extract comment ID from annotation:', annotation.id);
+                  return;
+                }
+
+                const commentId = parseInt(idMatch[1]);
+
+                // Get all the bodies, which include the original comment and any replies
+                const bodies = annotation.body || [];
+
+                // The last body should be the newly added reply
+                const newReply = bodies[bodies.length - 1];
+
+                if (!newReply || !newReply.value) {
+                  console.error('No valid reply found in updated annotation');
+                  return;
+                }
+
+                // Send the reply to the server
+                const response = await axios.post(
+                  `/api/approval-requests/${id}/section-comments/${commentId}/replies`,
+                  {
+                    contactId: clientInfo?.contact_id,
+                    replyText: newReply.value,
+                  },
+                  { headers }
+                );
+
+                console.log('Client reply saved successfully:', response.data);
+
+                // Refresh the request data to get all comments and replies
+                fetchRequestDetails();
+              } catch (error) {
+                console.error('Error saving reply:', error);
+                setError('Failed to save reply. Please try again.');
+              }
+            });
+          }
 
           if (request.section_comments && request.section_comments.length > 0) {
             console.log('Client View: Loading annotations:', request.section_comments);
@@ -315,7 +590,9 @@ export default function ClientRequestDetailPage() {
           }
 
           recogitoInstance.current = r;
-          console.log('Client View: Recogito Initialized (Read-Only) via loadScript');
+          console.log(
+            `Client View: Recogito Initialized (${isReadOnly ? 'Read-Only' : 'Editable'}) via loadScript`
+          );
         } catch (error) {
           console.error('Client View: Failed to load or initialize Recogito:', error);
         }
@@ -325,6 +602,8 @@ export default function ClientRequestDetailPage() {
 
       return () => {
         isMounted = false;
+        // Remove the event handler when the component unmounts
+        document.removeEventListener('keydown', handleKeyDown, true);
         if (recogitoInstance.current) {
           console.log('Client View: Destroying Recogito instance...');
           recogitoInstance.current.destroy();
@@ -332,7 +611,7 @@ export default function ClientRequestDetailPage() {
         }
       };
     }
-  }, [request, clientInfo, id, fetchRequestDetails]);
+  }, [request?.inline_content]); // Only reinitialize when inline_content changes, not on every render or data fetch
   // --- End Recogito Initialization Effect ---
 
   // Handle user menu open
@@ -514,6 +793,21 @@ export default function ClientRequestDetailPage() {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
         <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (redirecting) {
+    return (
+      <Box
+        display="flex"
+        flexDirection="column"
+        justifyContent="center"
+        alignItems="center"
+        height="100vh"
+      >
+        <CircularProgress sx={{ mb: 2 }} />
+        <Typography variant="body1">Redirecting to dashboard...</Typography>
       </Box>
     );
   }
@@ -977,17 +1271,31 @@ export default function ClientRequestDetailPage() {
                               {version.comments}
                             </Typography>
                           )}
-                          <Button
-                            variant="outlined"
-                            size="small"
-                            startIcon={<DownloadIcon />}
-                            href={version.file_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            sx={{ mt: 2 }}
-                          >
-                            View / Download
-                          </Button>
+                          {version.file_url ? (
+                            // For file-based versions
+                            <Button
+                              variant="outlined"
+                              size="small"
+                              startIcon={<DownloadIcon />}
+                              href={version.file_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              sx={{ mt: 2 }}
+                            >
+                              Download File
+                            </Button>
+                          ) : (
+                            // For inline content versions
+                            <Button
+                              variant="outlined"
+                              size="small"
+                              startIcon={<ArticleIcon />}
+                              onClick={() => setVersionHistoryOpen(false)} // Close version history
+                              sx={{ mt: 2 }}
+                            >
+                              View Content
+                            </Button>
+                          )}
                         </>
                       }
                     />
