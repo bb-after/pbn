@@ -48,6 +48,8 @@ import useClientAuth from '../../../hooks/useClientAuth';
 import axios from 'axios';
 import DOMPurify from 'dompurify';
 import Head from 'next/head';
+import ReactionPicker from 'components/ReactionPicker';
+import { createRoot } from 'react-dom/client';
 
 /// <reference path="./recogito.d.ts" />
 
@@ -76,22 +78,26 @@ interface SectionComment {
   section_comment_id: number;
   request_id: number;
   contact_id: number | null;
-  staff_id?: string | null;
-  staff_name?: string | null;
+  user_id?: string | null;
+  user_name?: string | null;
   start_offset: number;
   end_offset: number;
   selected_text: string | null;
   comment_text: string;
   created_at: string;
+  created_at_iso?: string; // ISO formatted timestamp
   contact_name: string | null;
   replies?: Array<{
     reply_id: number;
     reply_text: string;
-    staff_id?: string | null;
-    staff_name?: string | null;
-    contact_id: number | null;
+    user_id?: string | null;
+    user_name?: string | null;
+    client_contact_id?: number | null;
+    client_name?: string | null;
+    author_name?: string | null;
     contact_name?: string | null;
     created_at: string;
+    created_at_iso?: string; // ISO formatted timestamp
   }>;
 }
 
@@ -128,7 +134,7 @@ interface ApprovalRequest {
   comments: Array<{
     comment_id: number;
     comment: string;
-    created_by_id: string | null;
+    user_id: string | null;
     contact_id: number | null;
     contact_name: string | null;
     created_at: string;
@@ -140,7 +146,8 @@ interface ApprovalRequest {
 export default function ClientRequestDetailPage() {
   const router = useRouter();
   const { id } = router.query;
-  const { isValidClient, clientInfo, isLoading, logout } = useClientAuth('/client-portal/login');
+  const { isValidClient, isLoading, clientInfo, logout } = useClientAuth('/client-portal/login');
+  const [clientAuthToken, setClientAuthToken] = useState<string | null>(null);
 
   // State for user menu
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -173,6 +180,14 @@ export default function ClientRequestDetailPage() {
   // --- Recogito Refs & State ---
   const contentRef = useRef<HTMLDivElement>(null);
   const recogitoInstance = useRef<any>(null);
+
+  // Get client token from localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('client_token') || undefined;
+      setClientAuthToken(token || null);
+    }
+  }, []);
 
   // Set up axios interceptor for handling 403 errors globally
   useEffect(() => {
@@ -241,12 +256,12 @@ export default function ClientRequestDetailPage() {
                   value: dbComment.comment_text,
                   purpose: 'commenting',
                   creator: {
-                    id: dbComment.staff_id
-                      ? `staff:${dbComment.staff_id}`
+                    id: dbComment.user_id
+                      ? `staff:${dbComment.user_id}`
                       : `mailto:${dbComment.contact_name}`,
-                    name: dbComment.staff_name || dbComment.contact_name || 'Unknown',
+                    name: dbComment.user_name || dbComment.contact_name || 'Unknown',
                   },
-                  created: dbComment.created_at,
+                  created: dbComment.created_at_iso || dbComment.created_at,
                 },
                 ...(dbComment.replies && dbComment.replies.length > 0
                   ? dbComment.replies.map((reply: any) => ({
@@ -254,12 +269,13 @@ export default function ClientRequestDetailPage() {
                       purpose: 'replying',
                       value: reply.reply_text,
                       creator: {
-                        id: reply.staff_id
-                          ? `staff:${reply.staff_id}`
-                          : `contact:${reply.contact_id}`,
-                        name: reply.staff_name || reply.contact_name || 'Unknown',
+                        id: reply.user_id
+                          ? `staff:${reply.user_id}`
+                          : `contact:${reply.client_contact_id}`,
+                        name:
+                          reply.author_name || reply.user_name || reply.client_name || 'Unknown',
                       },
-                      created: reply.created_at,
+                      created: reply.created_at_iso || reply.created_at,
                     }))
                   : []),
               ],
@@ -276,6 +292,40 @@ export default function ClientRequestDetailPage() {
                   },
                 ],
               },
+              htmlBody: `
+                <div class="section-comment">
+                  <div class="comment-header">
+                    <span class="commenter-name">${dbComment.contact_name || dbComment.user_name || 'Unknown'}</span>
+                    <span class="comment-date">${new Date(dbComment.created_at_iso || dbComment.created_at).toLocaleString()}</span>
+                  </div>
+                  <div class="comment-text">${dbComment.comment_text}</div>
+                  <div id="reaction-container-section-${dbComment.section_comment_id}" class="reaction-container"></div>
+                  ${
+                    dbComment.replies && dbComment.replies.length > 0
+                      ? `<div class="replies">
+                        ${dbComment.replies
+                          .map(
+                            reply => `
+                          <div class="reply">
+                            <div class="reply-header">
+                              <span class="reply-author">${reply.author_name || reply.user_name || reply.client_name || 'Unknown'}</span>
+                              <span class="reply-date">${new Date(reply.created_at_iso || reply.created_at).toLocaleString()}</span>
+                            </div>
+                            <div class="reply-text">${reply.reply_text}</div>
+                            <div id="reaction-container-reply-${reply.reply_id}" class="reaction-container"></div>
+                          </div>
+                        `
+                          )
+                          .join('')}
+                      </div>`
+                      : ''
+                  }
+                  <div class="add-reply-container">
+                    <textarea class="add-reply-input" placeholder="Add a reply..."></textarea>
+                    <button class="add-reply-button">Reply</button>
+                  </div>
+                </div>
+              `,
             });
 
             const loadedAnnotations = response.data.section_comments.map(convertToAnnotation);
@@ -359,12 +409,12 @@ export default function ClientRequestDetailPage() {
           value: dbComment.comment_text,
           purpose: 'commenting',
           creator: {
-            id: dbComment.staff_id
-              ? `staff:${dbComment.staff_id}`
+            id: dbComment.user_id
+              ? `staff:${dbComment.user_id}`
               : `mailto:${dbComment.contact_name}`,
-            name: dbComment.staff_name || dbComment.contact_name || 'Unknown',
+            name: dbComment.user_name || dbComment.contact_name || 'Unknown',
           },
-          created: dbComment.created_at,
+          created: dbComment.created_at_iso || dbComment.created_at,
         },
         ...(dbComment.replies && dbComment.replies.length > 0
           ? dbComment.replies.map((reply: any) => ({
@@ -372,10 +422,10 @@ export default function ClientRequestDetailPage() {
               purpose: 'replying',
               value: reply.reply_text,
               creator: {
-                id: reply.staff_id ? `staff:${reply.staff_id}` : `contact:${reply.contact_id}`,
-                name: reply.staff_name || reply.contact_name || 'Unknown',
+                id: reply.user_id ? `staff:${reply.user_id}` : `contact:${reply.client_contact_id}`,
+                name: reply.author_name || reply.user_name || reply.client_name || 'Unknown',
               },
-              created: reply.created_at,
+              created: reply.created_at_iso || reply.created_at,
             }))
           : []),
       ],
@@ -426,6 +476,16 @@ export default function ClientRequestDetailPage() {
       // Register the event handler
       document.addEventListener('keydown', handleKeyDown, true);
 
+      // Create a simple CSS style that doesn't modify reaction containers
+      const style = document.createElement('style');
+      style.textContent = `
+        .r6o-annotation {
+          border-bottom: 2px solid yellow;
+          background-color: rgba(255, 255, 0, 0.2);
+        }
+      `;
+      document.head.appendChild(style);
+
       const initRecogito = async () => {
         try {
           await loadScript('/vendor/recogito.min.js');
@@ -443,7 +503,7 @@ export default function ClientRequestDetailPage() {
           if (!isMounted || !Recogito) {
             console.error(
               'Client View: Recogito constructor not found within window.Recogito module object.',
-              (window as any).Recogito
+              window.Recogito
             );
             return;
           }
@@ -611,8 +671,7 @@ export default function ClientRequestDetailPage() {
         }
       };
     }
-  }, [request?.inline_content]); // Only reinitialize when inline_content changes, not on every render or data fetch
-  // --- End Recogito Initialization Effect ---
+  }, [request?.inline_content, contentRef, clientInfo, id, clientAuthToken]);
 
   // Handle user menu open
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
@@ -1063,44 +1122,61 @@ export default function ClientRequestDetailPage() {
                     <Divider sx={{ my: 2 }} />
 
                     {request.comments && request.comments.length > 0 ? (
-                      <List>
-                        {request.comments.map(comment => (
-                          <React.Fragment key={comment.comment_id}>
-                            <ListItem alignItems="flex-start">
-                              <ListItemAvatar>
-                                <Avatar>
-                                  {comment.contact_name
-                                    ? comment.contact_name.charAt(0).toUpperCase()
-                                    : 'S'}
-                                </Avatar>
-                              </ListItemAvatar>
-                              <ListItemText
-                                primary={
-                                  <Box display="flex" justifyContent="space-between">
-                                    <Typography variant="subtitle2">
-                                      {comment.contact_name || 'Staff'}
+                      <Box sx={{ maxHeight: '400px', overflow: 'auto' }}>
+                        <List>
+                          {request.comments.map(comment => (
+                            <React.Fragment key={comment.comment_id}>
+                              <ListItem alignItems="flex-start">
+                                <ListItemAvatar>
+                                  <Avatar>
+                                    {comment.contact_name
+                                      ? comment.contact_name.charAt(0).toUpperCase()
+                                      : 'S'}
+                                  </Avatar>
+                                </ListItemAvatar>
+                                <ListItemText
+                                  primary={
+                                    <Box display="flex" justifyContent="space-between">
+                                      <Typography variant="subtitle2">
+                                        {comment.contact_name || 'Staff'}
+                                      </Typography>
+                                      <Typography variant="caption" color="textSecondary">
+                                        {new Date(comment.created_at).toLocaleString(undefined, {
+                                          year: 'numeric',
+                                          month: 'short',
+                                          day: 'numeric',
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                          timeZoneName: 'short',
+                                        })}
+                                      </Typography>
+                                    </Box>
+                                  }
+                                  secondary={
+                                    <Typography
+                                      component="span"
+                                      variant="body2"
+                                      color="textPrimary"
+                                      sx={{ mt: 1, display: 'block' }}
+                                    >
+                                      {comment.comment}
+                                      <ReactionPicker
+                                        targetType="comment"
+                                        targetId={comment.comment_id}
+                                        requestId={Number(id)}
+                                        isClientPortal={true}
+                                        clientContactId={clientInfo?.contact_id}
+                                        token={clientAuthToken || undefined}
+                                      />
                                     </Typography>
-                                    <Typography variant="caption" color="textSecondary">
-                                      {new Date(comment.created_at).toLocaleString()}
-                                    </Typography>
-                                  </Box>
-                                }
-                                secondary={
-                                  <Typography
-                                    component="span"
-                                    variant="body2"
-                                    color="textPrimary"
-                                    sx={{ mt: 1, display: 'block' }}
-                                  >
-                                    {comment.comment}
-                                  </Typography>
-                                }
-                              />
-                            </ListItem>
-                            <Divider variant="inset" component="li" />
-                          </React.Fragment>
-                        ))}
-                      </List>
+                                  }
+                                />
+                              </ListItem>
+                              <Divider variant="inset" component="li" />
+                            </React.Fragment>
+                          ))}
+                        </List>
+                      </Box>
                     ) : (
                       <Typography variant="body2" color="textSecondary" align="center">
                         No comments yet
@@ -1255,7 +1331,14 @@ export default function ClientRequestDetailPage() {
                         <Box display="flex" justifyContent="space-between">
                           <Typography variant="h6">Version {version.version_number}</Typography>
                           <Typography variant="body2" color="textSecondary">
-                            {new Date(version.created_at).toLocaleString()}
+                            {new Date(version.created_at).toLocaleString(undefined, {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              timeZoneName: 'short',
+                            })}
                           </Typography>
                         </Box>
                       }

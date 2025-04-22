@@ -45,7 +45,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const { id } = req.query;
-  const { startOffset, endOffset, selectedText, commentText, staffId, staffName } = req.body;
+  const { startOffset, endOffset, selectedText, commentText, user_id } = req.body;
 
   // --- Input Validation ---
   if (!id || isNaN(Number(id))) {
@@ -120,30 +120,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Staff comment
       insertQuery = `
         INSERT INTO approval_request_section_comments
-          (request_id, contact_id, staff_id, staff_name, start_offset, end_offset, selected_text, comment_text)
-        VALUES (?, NULL, ?, ?, ?, ?, ?, ?)
+          (request_id, client_contact_id, user_id, start_offset, end_offset, selected_text, comment_text)
+        VALUES (?, NULL, ?, ?, ?, ?, ?)
       `;
       insertValues = [
         requestId,
-        staffId || staffUserInfo.id,
-        staffName || staffUserInfo.name || 'Staff',
+        user_id || staffUserInfo.id,
         Number(startOffset),
         Number(endOffset),
         selectedText || null,
         commentText.trim(),
       ];
 
+      // Get staff name from the users table
       getCommentQuery = `
-        SELECT sc.*, NULL as contact_name, sc.staff_name as contact_name 
+        SELECT sc.*, u.name as user_name,
+               DATE_FORMAT(sc.created_at, '%Y-%m-%dT%H:%i:%sZ') as created_at_iso
         FROM approval_request_section_comments sc
+        JOIN users u ON sc.user_id = u.id
         WHERE sc.section_comment_id = ?
       `;
     } else {
       // Client comment
       insertQuery = `
         INSERT INTO approval_request_section_comments
-          (request_id, contact_id, staff_id, staff_name, start_offset, end_offset, selected_text, comment_text)
-        VALUES (?, ?, NULL, NULL, ?, ?, ?, ?)
+          (request_id, client_contact_id, user_id, start_offset, end_offset, selected_text, comment_text)
+        VALUES (?, ?, NULL, ?, ?, ?, ?)
       `;
       insertValues = [
         requestId,
@@ -155,9 +157,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ];
 
       getCommentQuery = `
-        SELECT sc.*, cc.name as contact_name 
+        SELECT sc.*, cc.name as contact_name,
+               DATE_FORMAT(sc.created_at, '%Y-%m-%dT%H:%i:%sZ') as created_at_iso
         FROM approval_request_section_comments sc
-        JOIN client_contacts cc ON sc.contact_id = cc.contact_id
+        JOIN client_contacts cc ON sc.client_contact_id = cc.contact_id
         WHERE sc.section_comment_id = ?
       `;
     }
