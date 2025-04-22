@@ -40,7 +40,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const { id, commentId } = req.query;
-  const { replyText, staffId, staffName, contactId } = req.body;
+  const { replyText, user_id, contactId } = req.body;
 
   // --- Input Validation ---
   if (!id || isNaN(Number(id))) {
@@ -130,17 +130,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // --- Save Reply to Database ---
   try {
     // Create a new comment_reply table or use an existing one
-    // This example assumes you have a table called approval_request_comment_replies
     const insertQuery = `
       INSERT INTO approval_request_comment_replies
-        (section_comment_id, staff_id, staff_name, contact_id, reply_text)
-      VALUES (?, ?, ?, ?, ?)
+        (section_comment_id, user_id, client_contact_id, reply_text)
+      VALUES (?, ?, ?, ?)
     `;
 
     const insertValues = [
       sectionCommentId,
-      isStaffReply ? staffId || staffUserInfo.id : null,
-      isStaffReply ? staffName || staffUserInfo.name || 'Staff' : null,
+      isStaffReply ? user_id || staffUserInfo.id : null,
       isStaffReply ? null : Number(contactIdHeader),
       replyText.trim(),
     ];
@@ -148,11 +146,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const [result] = await pool.query(insertQuery, insertValues);
     const replyId = (result as any).insertId;
 
-    // Fetch the newly created reply
-    const getReplyQuery = `
-      SELECT * FROM approval_request_comment_replies
-      WHERE reply_id = ?
-    `;
+    // Fetch the newly created reply with author name
+    let getReplyQuery;
+    if (isStaffReply) {
+      getReplyQuery = `
+        SELECT r.*, u.name as author_name
+        FROM approval_request_comment_replies r
+        JOIN users u ON r.user_id = u.id
+        WHERE r.reply_id = ?
+      `;
+    } else {
+      getReplyQuery = `
+        SELECT r.*, cc.name as author_name
+        FROM approval_request_comment_replies r
+        JOIN client_contacts cc ON r.client_contact_id = cc.contact_id
+        WHERE r.reply_id = ?
+      `;
+    }
+
     const [replyRows] = await pool.query(getReplyQuery, [replyId]);
     const replyData = (replyRows as any[])[0] || null;
 

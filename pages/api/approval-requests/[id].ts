@@ -7,7 +7,7 @@ import { URL } from 'url';
 AWS.config.update({ region: 'us-east-2' }); // Force us-east-2 based on bucket URL
 const s3 = new AWS.S3();
 
-// Create a connection pool
+// Create a connection pool (reuse across requests)
 const pool = mysql.createPool({
   host: process.env.DB_HOST_NAME,
   user: process.env.DB_USER_NAME,
@@ -192,8 +192,8 @@ async function getApprovalRequest(
       SELECT c.*, cc.name as contact_name, u.name as staff_name,
         COALESCE(cc.name, u.name, 'Unknown') as commenter_name
       FROM approval_request_comments c
-      LEFT JOIN client_contacts cc ON c.contact_id = cc.contact_id
-      LEFT JOIN users u ON c.created_by_id = u.id
+      LEFT JOIN client_contacts cc ON c.client_contact_id = cc.contact_id
+      LEFT JOIN users u ON c.user_id = u.id
       WHERE c.request_id = ?
       ORDER BY c.created_at DESC
     `;
@@ -201,9 +201,13 @@ async function getApprovalRequest(
 
     // Query to get section comments
     const sectionCommentsQuery = `
-      SELECT sc.*, cc.name as contact_name 
+      SELECT sc.*, 
+             cc.name as contact_name, 
+             u.name as user_name,
+             DATE_FORMAT(sc.created_at, '%Y-%m-%dT%H:%i:%sZ') as created_at_iso
       FROM approval_request_section_comments sc
-      LEFT JOIN client_contacts cc ON sc.contact_id = cc.contact_id
+      LEFT JOIN client_contacts cc ON sc.client_contact_id = cc.contact_id
+      LEFT JOIN users u ON sc.user_id = u.id
       WHERE sc.request_id = ?
       ORDER BY sc.created_at DESC
     `;
@@ -214,10 +218,24 @@ async function getApprovalRequest(
     if ((sectionCommentRows as any[]).length > 0) {
       const commentIds = (sectionCommentRows as any[]).map(comment => comment.section_comment_id);
 
+      // Updated query to join with users and client_contacts tables to get names
       const repliesQuery = `
-        SELECT * FROM approval_request_comment_replies
-        WHERE section_comment_id IN (?)
-        ORDER BY created_at ASC
+        SELECT 
+          r.*,
+          u.name as user_name,
+          cc.name as client_name,
+          COALESCE(u.name, cc.name, 'Unknown') as author_name,
+          DATE_FORMAT(r.created_at, '%Y-%m-%dT%H:%i:%sZ') as created_at_iso
+        FROM 
+          approval_request_comment_replies r
+        LEFT JOIN 
+          users u ON r.user_id = u.id
+        LEFT JOIN 
+          client_contacts cc ON r.client_contact_id = cc.contact_id
+        WHERE 
+          r.section_comment_id IN (?)
+        ORDER BY 
+          r.created_at ASC
       `;
 
       const [repliesRows] = await pool.query(repliesQuery, [commentIds]);
@@ -462,5 +480,22 @@ async function deleteApprovalRequest(requestId: number, res: NextApiResponse) {
     return res.status(500).json({ error: 'Failed to delete approval request' });
   } finally {
     connection.release();
+  }
+}
+
+export async function validateUserToken(req: NextApiRequest) {
+  // ...
+  try {
+    // Create a connection to the database using the pool instead of dbConfig
+    const connection = await pool.getConnection();
+
+    try {
+      // Query the database
+      // ...
+    } finally {
+      connection.release(); // Release the connection back to the pool
+    }
+  } catch (error) {
+    // Handle error
   }
 }

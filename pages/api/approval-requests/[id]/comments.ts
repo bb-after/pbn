@@ -90,7 +90,7 @@ async function getComments(requestId: number, res: NextApiResponse) {
         arc.request_id, 
         arc.version_id, 
         arc.comment, 
-        arc.created_by_id, 
+        arc.user_id, 
         arc.contact_id,
         cc.name as contact_name, 
         u.name as staff_name, -- Get staff name from users table (Reverted)
@@ -100,7 +100,7 @@ async function getComments(requestId: number, res: NextApiResponse) {
       LEFT JOIN
         client_contacts cc ON arc.contact_id = cc.contact_id
       LEFT JOIN
-        users u ON arc.created_by_id = u.id -- Join with users table
+        users u ON arc.user_id = u.id -- Join with users table
       WHERE 
         arc.request_id = ?
       ORDER BY 
@@ -180,15 +180,15 @@ async function addComment(
     // Add the comment
     const insertQuery = `
       INSERT INTO approval_request_comments 
-        (request_id, version_id, comment, created_by_id, contact_id) 
+        (request_id, version_id, comment, user_id, contact_id) 
       VALUES 
         (?, ?, ?, ?, ?)
     `;
 
     const insertValues = [requestId, versionId || null, comment, createdById, contactId];
 
-    // Log the value being inserted for created_by_id
-    console.log('Inserting comment with createdById:', createdById);
+    // Log the value being inserted for user_id
+    console.log('Inserting comment with userId:', createdById);
 
     const [result] = await pool.query(insertQuery, insertValues);
     const commentId = (result as any).insertId;
@@ -200,7 +200,7 @@ async function addComment(
         arc.request_id, 
         arc.version_id, 
         arc.comment, 
-        arc.created_by_id, 
+        arc.user_id, 
         arc.contact_id,
         cc.name as contact_name, 
         u.name as staff_name, -- Get staff name (Reverted)
@@ -210,7 +210,7 @@ async function addComment(
       LEFT JOIN
         client_contacts cc ON arc.contact_id = cc.contact_id
       LEFT JOIN
-        users u ON arc.created_by_id = u.id -- Join with users
+        users u ON arc.user_id = u.id -- Join with users
       WHERE 
         arc.comment_id = ?
     `;

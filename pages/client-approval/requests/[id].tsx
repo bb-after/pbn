@@ -62,6 +62,8 @@ import useValidateUserToken from 'hooks/useValidateUserToken';
 import axios from 'axios';
 import DOMPurify from 'dompurify';
 import dynamic from 'next/dynamic';
+import ReactionPicker from 'components/ReactionPicker';
+import { createRoot } from 'react-dom/client';
 
 // Import Quill CSS
 import 'react-quill/dist/quill.snow.css';
@@ -94,22 +96,26 @@ interface SectionComment {
   section_comment_id: number;
   request_id: number;
   contact_id: number | null;
-  staff_id?: string | null;
-  staff_name?: string | null;
+  user_id?: string | null;
+  user_name?: string | null;
   start_offset: number;
   end_offset: number;
   selected_text: string | null;
   comment_text: string;
   created_at: string;
+  created_at_iso?: string; // ISO formatted timestamp
   contact_name: string | null;
   replies?: Array<{
     reply_id: number;
     reply_text: string;
-    staff_id?: string | null;
-    staff_name?: string | null;
-    contact_id: number | null;
+    user_id?: string | null;
+    user_name?: string | null;
+    client_contact_id?: number | null;
+    client_name?: string | null;
+    author_name?: string | null;
     contact_name?: string | null;
     created_at: string;
+    created_at_iso?: string; // ISO formatted timestamp
   }>;
 }
 
@@ -141,7 +147,7 @@ interface ApprovalRequest {
   comments: Array<{
     comment_id: number;
     comment: string;
-    created_by_id: string | null;
+    user_id: string | null;
     contact_id: number | null;
     contact_name: string | null;
     created_at: string;
@@ -464,10 +470,10 @@ export default function ApprovalRequestDetailPage() {
         purpose: 'commenting',
         value: comment.comment_text,
         creator: {
-          id: comment.staff_id ? `staff:${comment.staff_id}` : `contact:${comment.contact_id}`,
-          name: comment.staff_name || comment.contact_name,
+          id: comment.user_id ? `staff:${comment.user_id}` : `contact:${comment.contact_id}`,
+          name: comment.user_name || comment.contact_name || 'Unknown',
         },
-        created: comment.created_at,
+        created: comment.created_at_iso || comment.created_at,
       },
       ...(comment.replies && comment.replies.length > 0
         ? comment.replies.map((reply: any) => ({
@@ -475,10 +481,10 @@ export default function ApprovalRequestDetailPage() {
             purpose: 'replying',
             value: reply.reply_text,
             creator: {
-              id: reply.staff_id ? `staff:${reply.staff_id}` : `contact:${reply.contact_id}`,
-              name: reply.staff_name || reply.contact_name || 'Unknown',
+              id: reply.user_id ? `staff:${reply.user_id}` : `contact:${reply.client_contact_id}`,
+              name: reply.author_name || reply.user_name || reply.client_name || 'Unknown',
             },
-            created: reply.created_at,
+            created: reply.created_at_iso || reply.created_at,
           }))
         : []),
     ],
@@ -488,11 +494,56 @@ export default function ApprovalRequestDetailPage() {
         { type: 'TextPositionSelector', start: comment.start_offset, end: comment.end_offset },
       ],
     },
+    // Add the HTML body with reaction containers
+    htmlBody: `
+      <div class="section-comment">
+        <div class="comment-header">
+          <span class="commenter-name">${comment.contact_name || comment.user_name || 'Unknown'}</span>
+          <span class="comment-date">${new Date(comment.created_at_iso || comment.created_at).toLocaleString()}</span>
+        </div>
+        <div class="comment-text">${comment.comment_text}</div>
+        <div id="reaction-container-section-${comment.section_comment_id}" class="reaction-container"></div>
+        ${
+          comment.replies && comment.replies.length > 0
+            ? `<div class="replies">
+              ${comment.replies
+                .map(
+                  reply => `
+                <div class="reply">
+                  <div class="reply-header">
+                    <span class="reply-author">${reply.author_name || reply.user_name || reply.client_name || 'Unknown'}</span>
+                    <span class="reply-date">${new Date(reply.created_at_iso || reply.created_at).toLocaleString()}</span>
+                  </div>
+                  <div class="reply-text">${reply.reply_text}</div>
+                  <div id="reaction-container-reply-${reply.reply_id}" class="reaction-container"></div>
+                </div>
+              `
+                )
+                .join('')}
+            </div>`
+            : ''
+        }
+        <div class="add-reply-container">
+          <textarea class="add-reply-input" placeholder="Add a reply..."></textarea>
+          <button class="add-reply-button">Reply</button>
+        </div>
+      </div>
+    `,
   });
 
   // --- Recogito Initialization Effect ---
   useEffect(() => {
     let isMounted = true;
+
+    // Create basic CSS for annotations without reaction-specific styling
+    const style = document.createElement('style');
+    style.textContent = `
+      .r6o-annotation {
+        border-bottom: 2px solid yellow;
+        background-color: rgba(255, 255, 0, 0.2);
+      }
+    `;
+    document.head.appendChild(style);
 
     if (request?.inline_content && contentRef.current && !recogitoInstance.current) {
       const initRecogito = async () => {
@@ -572,9 +623,8 @@ export default function ApprovalRequestDetailPage() {
                     const response = await axios.post(
                       `/api/approval-requests/${id}/section-comments`,
                       {
-                        // Pass staff ID instead of contact ID
-                        staffId: user?.id,
-                        staffName: user?.name || 'Staff',
+                        // Pass user_id instead of staff_id
+                        user_id: user?.id,
                         startOffset: textPosition.start,
                         endOffset: textPosition.end,
                         selectedText: textQuote?.exact || '',
@@ -645,8 +695,7 @@ export default function ApprovalRequestDetailPage() {
                     const response = await axios.post(
                       `/api/approval-requests/${id}/section-comments/${commentId}/replies`,
                       {
-                        staffId: user?.id,
-                        staffName: user?.name || 'Staff',
+                        user_id: user?.id,
                         replyText: newReply.value,
                       },
                       { headers }
@@ -1101,44 +1150,63 @@ export default function ApprovalRequestDetailPage() {
                           <Divider sx={{ my: 2 }} />
 
                           {request.comments && request.comments.length > 0 ? (
-                            <List>
-                              {request.comments.map(comment => (
-                                <React.Fragment key={comment.comment_id}>
-                                  <ListItem alignItems="flex-start">
-                                    <ListItemAvatar>
-                                      <Avatar>
-                                        {comment.contact_name
-                                          ? comment.contact_name.charAt(0).toUpperCase()
-                                          : 'S'}
-                                      </Avatar>
-                                    </ListItemAvatar>
-                                    <ListItemText
-                                      primary={
-                                        <Box display="flex" justifyContent="space-between">
-                                          <Typography variant="subtitle2">
-                                            {comment.commenter_name || 'Unknown'}
+                            <Box sx={{ maxHeight: '400px', overflow: 'auto' }}>
+                              <List>
+                                {request.comments.map(comment => (
+                                  <React.Fragment key={comment.comment_id}>
+                                    <ListItem alignItems="flex-start">
+                                      <ListItemAvatar>
+                                        <Avatar>
+                                          {comment.contact_name
+                                            ? comment.contact_name.charAt(0).toUpperCase()
+                                            : 'S'}
+                                        </Avatar>
+                                      </ListItemAvatar>
+                                      <ListItemText
+                                        primary={
+                                          <Box display="flex" justifyContent="space-between">
+                                            <Typography variant="subtitle2">
+                                              {comment.commenter_name || 'Unknown'}
+                                            </Typography>
+                                            <Typography variant="caption" color="textSecondary">
+                                              {new Date(comment.created_at).toLocaleString(
+                                                undefined,
+                                                {
+                                                  year: 'numeric',
+                                                  month: 'short',
+                                                  day: 'numeric',
+                                                  hour: '2-digit',
+                                                  minute: '2-digit',
+                                                  timeZoneName: 'short',
+                                                }
+                                              )}
+                                            </Typography>
+                                          </Box>
+                                        }
+                                        secondary={
+                                          <Typography
+                                            component="span"
+                                            variant="body2"
+                                            color="textPrimary"
+                                            sx={{ mt: 1, display: 'block' }}
+                                          >
+                                            {comment.comment}
+                                            <ReactionPicker
+                                              targetType="comment"
+                                              targetId={comment.comment_id}
+                                              requestId={Number(id)}
+                                              userId={user?.id}
+                                              token={token || undefined}
+                                            />
                                           </Typography>
-                                          <Typography variant="caption" color="textSecondary">
-                                            {new Date(comment.created_at).toLocaleString()}
-                                          </Typography>
-                                        </Box>
-                                      }
-                                      secondary={
-                                        <Typography
-                                          component="span"
-                                          variant="body2"
-                                          color="textPrimary"
-                                          sx={{ mt: 1, display: 'block' }}
-                                        >
-                                          {comment.comment}
-                                        </Typography>
-                                      }
-                                    />
-                                  </ListItem>
-                                  <Divider variant="inset" component="li" />
-                                </React.Fragment>
-                              ))}
-                            </List>
+                                        }
+                                      />
+                                    </ListItem>
+                                    <Divider variant="inset" component="li" />
+                                  </React.Fragment>
+                                ))}
+                              </List>
+                            </Box>
                           ) : (
                             <Typography variant="body2" color="textSecondary" align="center">
                               No comments yet
@@ -1296,7 +1364,14 @@ export default function ApprovalRequestDetailPage() {
                                         Version {version.version_number}
                                       </Typography>
                                       <Typography variant="body2" color="textSecondary">
-                                        {new Date(version.created_at).toLocaleString()}
+                                        {new Date(version.created_at).toLocaleString(undefined, {
+                                          year: 'numeric',
+                                          month: 'short',
+                                          day: 'numeric',
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                          timeZoneName: 'short',
+                                        })}
                                       </Typography>
                                     </Box>
                                   }
