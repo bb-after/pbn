@@ -1047,7 +1047,11 @@ export default function ClientRequestDetailPage() {
                           >
                             <div
                               dangerouslySetInnerHTML={{
-                                __html: DOMPurify.sanitize(request.inline_content || ''),
+                                __html: DOMPurify.sanitize(
+                                  request?.inline_content
+                                    ? `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request.title}</h1>${request.inline_content}`
+                                    : ''
+                                ),
                               }}
                             />
                           </div>

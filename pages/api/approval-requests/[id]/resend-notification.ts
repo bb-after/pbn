@@ -46,20 +46,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // --- Fetch Required Data ---
     // 1. Get Request Title
     const [requestRows]: any = await connection.query(
-      'SELECT title FROM client_approval_requests WHERE request_id = ?',
+      'SELECT * FROM client_approval_requests WHERE request_id = ?',
       [requestId]
     );
     if (requestRows.length === 0) {
       await connection.rollback();
       return res.status(404).json({ error: 'Approval request not found' });
     }
-    const requestTitle = requestRows[0].title;
+    const requestData = requestRows[0];
 
     // 2. Get Contact Details (Email, Name, Client Name)
     const [contactRows]: any = await connection.query(
       `SELECT 
+         cc.contact_id,
          cc.email, 
          cc.name, 
+         cc.client_id,
          c.client_name 
        FROM client_contacts cc
        JOIN approval_request_contacts arc ON cc.contact_id = arc.contact_id
@@ -85,7 +87,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await connection.query(insertTokenQuery, [contactId, token, expiresAt]);
 
     // --- Send Email Notification using Utility ---
-    await sendLoginEmail(contactDetails, token); // Pass contact object and token
+    await sendLoginEmail(contactDetails, token, requestData); // Pass full request data
 
     // --- Commit Transaction ---
     await connection.commit();

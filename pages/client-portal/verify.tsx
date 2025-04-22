@@ -41,8 +41,15 @@ export default function VerifyLoginPage() {
 
       setVerified(true);
 
-      // Redirect to the client portal immediately
-      router.push('/client-portal');
+      // Check if verification response includes a requestId to redirect to
+      const requestId = new URLSearchParams(window.location.search).get('requestId');
+      if (requestId) {
+        // Redirect to the specific approval request
+        router.push(`/client-portal/requests/${requestId}`);
+      } else {
+        // Redirect to the client portal home
+        router.push('/client-portal');
+      }
     } catch (error: any) {
       console.error('Error verifying token:', error);
       if (error.response) {

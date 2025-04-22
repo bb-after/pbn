@@ -69,40 +69,79 @@ export async function sendEmail(options: EmailOptions): Promise<void> {
 /**
  * Send a client portal login email
  */
-export async function sendLoginEmail(contact: any, token: string): Promise<void> {
-  // Create login URL with token
-  const loginUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/client-portal/verify?token=${token}`;
+export async function sendLoginEmail(contact: any, token: string, request?: any): Promise<void> {
+  // Create login URL with token, adding requestId if available
+  const loginUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/client-portal/verify?token=${token}${request ? `&requestId=${request.request_id}` : ''}`;
 
-  // HTML email content
-  const htmlBody = `
+  // HTML email content with optional request information
+  let htmlBody = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <h2>Content Approval Portal</h2>
       <p>Hello ${contact.name},</p>
+  `;
+
+  // Add request-specific information if available
+  if (request) {
+    htmlBody += `
+      <p>New content has been submitted for your approval for <strong>${contact.client_name}</strong>.</p>
+      <div style="background-color: #f5f5f5; border-left: 4px solid #4CAF50; padding: 15px; margin: 20px 0;">
+        <h3 style="margin-top: 0;">${request.title}</h3>
+        ${request.description ? `<p>${request.description}</p>` : ''}
+      </div>
+      <p>Please review this content and provide your approval or feedback.</p>
+    `;
+  } else {
+    htmlBody += `
       <p>You have requested access to the Content Approval Portal for <strong>${contact.client_name}</strong>.</p>
-      <p>Click the button below to login. This link will expire in 30 minutes.</p>
+    `;
+  }
+
+  // Continue with the login button and remainder of email
+  htmlBody += `
       <p style="text-align: center; margin: 30px 0;">
         <a href="${loginUrl}" style="background-color: #4CAF50; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block; font-weight: bold;">
-          Login to Portal
+          ${request ? 'Login & Review Content' : 'Login to Portal'}
         </a>
       </p>
-      <p>If you did not request this login, please ignore this email.</p>
+      <p>This login link will expire in 7 days.</p>
+      <p>If you did not expect this email, please contact your account manager.</p>
       <p>Thank you,<br>Content Approval Team</p>
     </div>
   `;
 
   // Plain text version for email clients that don't support HTML
-  const textBody = `
+  let textBody = `
     Content Approval Portal
     
     Hello ${contact.name},
+  `;
+
+  // Add request-specific information in text version if available
+  if (request) {
+    textBody += `
+    
+    New content has been submitted for your approval for ${contact.client_name}.
+    
+    Title: ${request.title}
+    ${request.description ? `Description: ${request.description}\n` : ''}
+    
+    Please review this content and provide your approval or feedback.
+    `;
+  } else {
+    textBody += `
     
     You have requested access to the Content Approval Portal for ${contact.client_name}.
+    `;
+  }
+
+  // Continue with login link and remainder of text email
+  textBody += `
     
-    Click the link below to login. This link will expire in 30 minutes.
+    Click the link below to login. This link will expire in 7 days.
     
     ${loginUrl}
     
-    If you did not request this login, please ignore this email.
+    If you did not expect this email, please contact your account manager.
     
     Thank you,
     Content Approval Team
@@ -110,7 +149,9 @@ export async function sendLoginEmail(contact: any, token: string): Promise<void>
 
   await sendEmail({
     to: contact.email,
-    subject: `${contact.client_name} - Login Link for Content Approval Portal`,
+    subject: request
+      ? `[Action Required] New Content for Approval - ${request.title}`
+      : `${contact.client_name} - Login Link for Content Approval Portal`,
     htmlBody,
     textBody,
   });
@@ -118,6 +159,7 @@ export async function sendLoginEmail(contact: any, token: string): Promise<void>
 
 /**
  * Send a new approval request notification email to client
+ * @deprecated Use sendLoginEmail with a request parameter instead for proper authentication
  */
 export async function sendNewApprovalRequestEmail(contact: any, request: any): Promise<void> {
   // Create approval URL
