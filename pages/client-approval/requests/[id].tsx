@@ -1004,10 +1004,6 @@ export default function ApprovalRequestDetailPage() {
                     <Grid container spacing={3}>
                       <Grid item xs={12} md={7}>
                         <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-                          <Typography variant="h6" gutterBottom>
-                            Content & Annotations
-                          </Typography>
-
                           {/* Add status banner for approved content */}
                           {request.status === 'approved' && (
                             <Alert severity="success" sx={{ mb: 2 }} icon={<CheckIcon />}>
@@ -1018,6 +1014,9 @@ export default function ApprovalRequestDetailPage() {
 
                           {(() => {
                             if (request.inline_content) {
+                              // Prepend the title as H1 to the inline content
+                              const contentWithTitle = `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request.title}</h1>${request.inline_content}`;
+
                               return (
                                 <Box
                                   mt={2}
@@ -1041,9 +1040,7 @@ export default function ApprovalRequestDetailPage() {
                                   }}
                                   ref={contentRef}
                                 >
-                                  <div
-                                    dangerouslySetInnerHTML={{ __html: request.inline_content }}
-                                  />
+                                  <div dangerouslySetInnerHTML={{ __html: contentWithTitle }} />
                                 </Box>
                               );
                             } else if (request.file_url) {
@@ -1652,7 +1649,11 @@ export default function ApprovalRequestDetailPage() {
                             },
                           }}
                           dangerouslySetInnerHTML={{
-                            __html: DOMPurify.sanitize(selectedVersion.inline_content || ''),
+                            __html: DOMPurify.sanitize(
+                              request?.inline_content
+                                ? `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request.title}</h1>${request.inline_content}`
+                                : ''
+                            ),
                           }}
                         />
                       </>
@@ -1715,7 +1716,11 @@ export default function ApprovalRequestDetailPage() {
                             },
                           }}
                           dangerouslySetInnerHTML={{
-                            __html: DOMPurify.sanitize(request.inline_content || ''),
+                            __html: DOMPurify.sanitize(
+                              request?.inline_content
+                                ? `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request.title}</h1>${request.inline_content}`
+                                : ''
+                            ),
                           }}
                         />
                       </>

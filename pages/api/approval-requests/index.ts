@@ -270,10 +270,38 @@ async function createApprovalRequest(req: NextApiRequest, res: NextApiResponse, 
     // Send email notifications AFTER commit
     if (contactsToSend.length > 0) {
       try {
-        const { sendNewApprovalRequestEmail } = require('../../../utils/email'); // Ensure path is correct
-        // Consider adapting sendNewApprovalRequestEmail if it needs different parameters now
-        await sendNewApprovalRequestEmail(requestData, contactsToSend);
-        console.log(`Emails sent successfully for request ${requestId}`);
+        // Import required utility functions and modules
+        const { sendLoginEmail } = require('../../../utils/email');
+        const crypto = require('crypto');
+
+        // Loop through each contact and generate tokens + send emails
+        for (const contact of contactsToSend) {
+          try {
+            // Generate a token for this contact
+            const token = crypto.randomBytes(32).toString('hex');
+            const expiresAt = new Date();
+            expiresAt.setDate(expiresAt.getDate() + 7); // Token expires in 7 days
+
+            // Store the token in the database
+            const insertTokenQuery = `
+              INSERT INTO client_auth_tokens (contact_id, token, expires_at, is_used)
+              VALUES (?, ?, ?, 0)
+            `;
+            await pool.query(insertTokenQuery, [contact.contact_id, token, expiresAt]);
+
+            // Send the login email with the token
+            await sendLoginEmail(contact, token, requestData);
+            console.log(
+              `Authentication email sent successfully to ${contact.email} for request ${requestId}`
+            );
+          } catch (individualEmailError) {
+            console.error(
+              `Failed to send email to ${contact.email} for request ${requestId}:`,
+              individualEmailError
+            );
+            // Continue with other contacts even if one fails
+          }
+        }
       } catch (emailError) {
         console.error(
           `Request ${requestId} created, but failed to send email notifications:`,
