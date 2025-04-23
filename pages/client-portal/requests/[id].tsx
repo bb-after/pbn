@@ -706,11 +706,20 @@ export default function ClientRequestDetailPage() {
 
           if (!isMounted || !contentRef.current) return;
 
-          // Find the inner div that contains the content
-          const innerDiv = contentRef.current.querySelector('div');
-          if (!innerDiv) {
-            console.error('Inner div not found');
-            return;
+          // Create a new div with a unique ID if one doesn't exist
+          let contentDiv = contentRef.current.querySelector('#content-view');
+          if (!contentDiv) {
+            console.log('Creating content-view div');
+            contentDiv = document.createElement('div');
+            contentDiv.id = 'content-view';
+
+            // Create the HTML content
+            const contentWithTitle = DOMPurify.sanitize(
+              `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request.title}</h1>${request.inline_content}`
+            );
+
+            contentDiv.innerHTML = contentWithTitle;
+            contentRef.current.appendChild(contentDiv);
           }
 
           // Determine if annotations should be read-only based on request status
@@ -719,7 +728,7 @@ export default function ClientRequestDetailPage() {
 
           // Initialize Recogito using our shared utility
           const r = await initVersionRecogito({
-            contentElementId: innerDiv.id || 'content-view',
+            contentElementId: 'content-view',
             annotations: [],
             readOnly: isReadOnly,
             currentInstance: null,
@@ -1076,75 +1085,57 @@ export default function ClientRequestDetailPage() {
                         {request.status === 'pending' ? 'Content for Review' : 'Reviewed Content'}
                       </Typography>
 
-                      {(() => {
-                        if (request.inline_content) {
-                          // Render Recogito container for inline content
-                          return (
-                            <Box
-                              mt={2}
-                              sx={{
-                                '& p': { my: 1.5 },
-                                '& ul, & ol': { my: 1.5, pl: 3 },
-                                '& li': { mb: 0.5 },
-                                '& h1, & h2, & h3, & h4, & h5, & h6': {
-                                  my: 2,
-                                  fontWeight: 'bold',
-                                },
-                                '& a': {
-                                  color: 'primary.main',
-                                  textDecoration: 'underline',
-                                  '&:hover': {
-                                    color: 'primary.dark',
-                                  },
-                                },
-                              }}
-                              ref={contentRef}
-                            >
-                              <div
-                                id="content-view"
-                                dangerouslySetInnerHTML={{
-                                  __html: DOMPurify.sanitize(
-                                    `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request.title}</h1>${request.inline_content}`
-                                  ),
-                                }}
-                              />
-                            </Box>
-                          );
-                        } else if (request.file_url) {
-                          // Render download button for file-based requests
-                          return (
-                            <Box display="flex" alignItems="center" my={2}>
-                              <DocumentIcon color="primary" sx={{ mr: 2 }} />
-                              <Typography variant="body1">
-                                {getFileTypeName(request.file_url)}
-                              </Typography>
-                              <Box flexGrow={1} />
-                              <Button
-                                variant="contained"
-                                startIcon={<DownloadIcon />}
-                                href={request.file_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                View / Download
-                              </Button>
-                            </Box>
-                          );
-                        } else {
-                          // Fallback if neither exists
-                          return (
-                            <Typography variant="body2" color="textSecondary" sx={{ mt: 2 }}>
-                              No content available for review.
-                            </Typography>
-                          );
-                        }
-                      })()}
+                      {/* Content viewing section */}
+                      {!viewingVersion && request?.inline_content && (
+                        <Box
+                          mt={2}
+                          ref={contentRef}
+                          sx={{
+                            '& p': { my: 1.5 },
+                            '& ul, & ol': { my: 1.5, pl: 3 },
+                            '& li': { mb: 0.5 },
+                            '& h1, & h2, & h3, & h4, & h5, & h6': {
+                              my: 2,
+                              fontWeight: 'bold',
+                            },
+                            '& a': {
+                              color: 'primary.main',
+                              textDecoration: 'underline',
+                              '&:hover': {
+                                color: 'primary.dark',
+                              },
+                            },
+                          }}
+                          className="annotatable-container"
+                        >
+                          {/* The content-view div will be created dynamically in the effect */}
+                        </Box>
+                      )}
 
-                      {/* Conditional text */}
-                      {request.status === 'pending' && !request.inline_content && (
+                      {/* File download button for file-based requests */}
+                      {!viewingVersion && !request?.inline_content && request?.file_url && (
+                        <Box display="flex" alignItems="center" my={2}>
+                          <DocumentIcon color="primary" sx={{ mr: 2 }} />
+                          <Typography variant="body1">
+                            {getFileTypeName(request.file_url)}
+                          </Typography>
+                          <Box flexGrow={1} />
+                          <Button
+                            variant="contained"
+                            startIcon={<DownloadIcon />}
+                            href={request.file_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            View / Download
+                          </Button>
+                        </Box>
+                      )}
+
+                      {/* Fallback if no content exists */}
+                      {!viewingVersion && !request?.inline_content && !request?.file_url && (
                         <Typography variant="body2" color="textSecondary" sx={{ mt: 2 }}>
-                          Please review the document carefully before providing your approval or
-                          feedback.
+                          No content available for review.
                         </Typography>
                       )}
                     </Paper>
