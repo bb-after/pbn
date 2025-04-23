@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import mysql from 'mysql2/promise';
 import { verify } from 'jsonwebtoken';
+import { JwtPayload } from 'jsonwebtoken';
 
 // Database connection pool (reuse configuration)
 const pool = mysql.createPool({
@@ -40,37 +41,157 @@ async function validateToken(token: string): Promise<any> {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
-
   const { id } = req.query;
-  const { startOffset, endOffset, selectedText, commentText, user_id } = req.body;
 
-  // --- Input Validation ---
   if (!id || isNaN(Number(id))) {
-    return res.status(400).json({ error: 'Valid request ID is required' });
+    return res.status(400).json({ error: 'Valid request ID required' });
   }
-  if (
-    startOffset === undefined ||
-    startOffset === null ||
-    isNaN(Number(startOffset)) ||
-    Number(startOffset) < 0
-  ) {
-    return res.status(400).json({ error: 'Valid startOffset is required' });
+
+  // Handle different HTTP methods
+  switch (req.method) {
+    case 'GET':
+      return getSectionComments(req, res);
+    case 'POST':
+      return createSectionComment(req, res);
+    default:
+      res.setHeader('Allow', ['GET', 'POST']);
+      return res.status(405).json({ error: 'Method Not Allowed' });
   }
-  if (
-    endOffset === undefined ||
-    endOffset === null ||
-    isNaN(Number(endOffset)) ||
-    Number(endOffset) <= Number(startOffset)
-  ) {
-    return res
-      .status(400)
-      .json({ error: 'Valid endOffset (greater than startOffset) is required' });
+}
+
+// GET handler to retrieve section comments
+async function getSectionComments(req: NextApiRequest, res: NextApiResponse) {
+  const { id } = req.query;
+  const versionId = req.query.versionId ? Number(req.query.versionId) : null;
+
+  try {
+    // Build the SQL query with optional version filter
+    let query = `
+      SELECT 
+        sc.*, 
+        u.name as user_name,
+        cc.name as contact_name,
+        DATE_FORMAT(sc.created_at, '%Y-%m-%dT%H:%i:%sZ') as created_at_iso
+      FROM 
+        approval_request_section_comments sc
+      LEFT JOIN 
+        users u ON sc.user_id = u.id
+      LEFT JOIN 
+        client_contacts cc ON sc.client_contact_id = cc.contact_id
+      WHERE 
+        sc.request_id = ?
+    `;
+
+    const params = [Number(id)];
+
+    // Add version filter if specified
+    if (versionId !== null) {
+      query += ' AND sc.version_id = ?';
+      params.push(versionId);
+    }
+
+    query += ' ORDER BY sc.created_at ASC';
+
+    const [rows] = await pool.query(query, params);
+
+    // Get reactions for each comment
+    const commentsWithReactions = await Promise.all(
+      (rows as any[]).map(async comment => {
+        // Query to get reactions for this comment
+        const reactionQuery = `
+          SELECT 
+            r.reaction_id,
+            r.emoji,
+            u.id as user_id,
+            u.name as user_name,
+            cc.contact_id,
+            cc.name as contact_name
+          FROM 
+            reactions r
+          LEFT JOIN 
+            users u ON r.user_id = u.id
+          LEFT JOIN 
+            client_contacts cc ON r.contact_id = cc.contact_id
+          WHERE 
+            r.target_type = 'section_comment' AND r.target_id = ?
+        `;
+
+        const [reactionRows] = await pool.query(reactionQuery, [comment.section_comment_id]);
+
+        // Format reactions
+        const reactions = (reactionRows as any[]).map(reaction => ({
+          id: reaction.reaction_id,
+          emoji: reaction.emoji,
+          userId: reaction.user_id || null,
+          userName: reaction.user_name || null,
+          contactId: reaction.contact_id || null,
+          contactName: reaction.contact_name || null,
+        }));
+
+        // Get replies for this comment
+        const repliesQuery = `
+          SELECT 
+            r.reply_id,
+            r.reply_text,
+            DATE_FORMAT(r.created_at, '%Y-%m-%dT%H:%i:%sZ') as created_at_iso,
+            u.id as user_id,
+            u.name as user_name,
+            cc.contact_id,
+            cc.name as contact_name
+          FROM 
+            approval_request_comment_replies r
+          LEFT JOIN 
+            users u ON r.user_id = u.id
+          LEFT JOIN 
+            client_contacts cc ON r.contact_id = cc.contact_id
+          WHERE 
+            r.section_comment_id = ?
+          ORDER BY 
+            r.created_at ASC
+        `;
+
+        const [replyRows] = await pool.query(repliesQuery, [comment.section_comment_id]);
+
+        // Format replies
+        const replies = (replyRows as any[]).map(reply => ({
+          id: reply.reply_id,
+          text: reply.reply_text,
+          createdAt: reply.created_at_iso,
+          userId: reply.user_id || null,
+          userName: reply.user_name || null,
+          contactId: reply.contact_id || null,
+          contactName: reply.contact_name || null,
+        }));
+
+        // Return comment with reactions and replies
+        return {
+          ...comment,
+          reactions,
+          replies,
+        };
+      })
+    );
+
+    return res.status(200).json({
+      comments: commentsWithReactions,
+      message:
+        `Retrieved ${commentsWithReactions.length} comments` +
+        (versionId ? ` for version ${versionId}` : ''),
+    });
+  } catch (error) {
+    console.error('Error fetching section comments:', error);
+    return res.status(500).json({ error: 'Database error while fetching comments' });
   }
-  if (!commentText || typeof commentText !== 'string' || !commentText.trim()) {
-    return res.status(400).json({ error: 'Comment text is required' });
+}
+
+// POST handler to create a new section comment
+async function createSectionComment(req: NextApiRequest, res: NextApiResponse) {
+  // Validate input parameters
+  const { id } = req.query;
+  const { startOffset, endOffset, commentText, selectedText, versionId } = req.body;
+
+  if (!id || !startOffset || !endOffset || !commentText || !selectedText) {
+    return res.status(400).json({ error: 'Missing required parameters' });
   }
 
   const requestId = Number(id);
@@ -109,43 +230,65 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(401).json({ error: 'Unauthorized - Valid authentication required' });
   }
 
+  // --- Get the current version if not provided ---
+  let currentVersionId = versionId;
+  if (!currentVersionId) {
+    try {
+      const versionQuery = `
+        SELECT version_id FROM approval_request_versions 
+        WHERE request_id = ? 
+        ORDER BY version_number DESC 
+        LIMIT 1
+      `;
+      const [versionResult] = await pool.query(versionQuery, [requestId]);
+      if ((versionResult as any[]).length === 0) {
+        return res.status(404).json({ error: 'Current version not found' });
+      }
+      currentVersionId = (versionResult as any[])[0].version_id;
+    } catch (error) {
+      console.error('Error fetching current version ID:', error);
+      // Continue even if we can't get the version ID
+    }
+  }
+
   // --- Save Comment to Database ---
   try {
     let insertQuery = '';
     let insertValues = [];
     let getCommentQuery = '';
-    let queryParams = [];
 
     if (isStaffComment) {
       // Staff comment
       insertQuery = `
         INSERT INTO approval_request_section_comments
-          (request_id, client_contact_id, user_id, start_offset, end_offset, selected_text, comment_text)
-        VALUES (?, NULL, ?, ?, ?, ?, ?)
+          (request_id, client_contact_id, user_id, start_offset, end_offset, selected_text, comment_text, version_id)
+        VALUES (?, NULL, ?, ?, ?, ?, ?, ?)
       `;
       insertValues = [
         requestId,
-        user_id || staffUserInfo.id,
+        staffUserInfo.id,
         Number(startOffset),
         Number(endOffset),
         selectedText || null,
         commentText.trim(),
+        currentVersionId || null,
       ];
 
       // Get staff name from the users table
       getCommentQuery = `
-        SELECT sc.*, u.name as user_name,
+        SELECT sc.*, u.name as user_name, v.version_number,
                DATE_FORMAT(sc.created_at, '%Y-%m-%dT%H:%i:%sZ') as created_at_iso
         FROM approval_request_section_comments sc
         JOIN users u ON sc.user_id = u.id
+        LEFT JOIN approval_request_versions v ON sc.version_id = v.version_id
         WHERE sc.section_comment_id = ?
       `;
     } else {
       // Client comment
       insertQuery = `
         INSERT INTO approval_request_section_comments
-          (request_id, client_contact_id, user_id, start_offset, end_offset, selected_text, comment_text)
-        VALUES (?, ?, NULL, ?, ?, ?, ?)
+          (request_id, client_contact_id, user_id, start_offset, end_offset, selected_text, comment_text, version_id)
+        VALUES (?, ?, NULL, ?, ?, ?, ?, ?)
       `;
       insertValues = [
         requestId,
@@ -154,13 +297,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         Number(endOffset),
         selectedText || null,
         commentText.trim(),
+        currentVersionId || null,
       ];
 
       getCommentQuery = `
-        SELECT sc.*, cc.name as contact_name,
+        SELECT sc.*, cc.name as contact_name, v.version_number,
                DATE_FORMAT(sc.created_at, '%Y-%m-%dT%H:%i:%sZ') as created_at_iso
         FROM approval_request_section_comments sc
         JOIN client_contacts cc ON sc.client_contact_id = cc.contact_id
+        LEFT JOIN approval_request_versions v ON sc.version_id = v.version_id
         WHERE sc.section_comment_id = ?
       `;
     }

@@ -64,6 +64,7 @@ import DOMPurify from 'dompurify';
 import dynamic from 'next/dynamic';
 import ReactionPicker from 'components/ReactionPicker';
 import { createRoot } from 'react-dom/client';
+import { initVersionRecogito } from 'utils/recogito';
 
 // Import Quill CSS
 import 'react-quill/dist/quill.snow.css';
@@ -105,6 +106,7 @@ interface SectionComment {
   created_at: string;
   created_at_iso?: string; // ISO formatted timestamp
   contact_name: string | null;
+  version_id?: number | null; // Version ID this comment belongs to
   replies?: Array<{
     reply_id: number;
     reply_text: string;
@@ -233,6 +235,7 @@ export default function ApprovalRequestDetailPage() {
     created_by_id: string | null;
     created_at: string;
   } | null>(null);
+  const [versionAnnotations, setVersionAnnotations] = useState<any[]>([]);
   // --- End State for Version Content Modal ---
 
   // --- Add State for New Version Dialog ---
@@ -629,6 +632,8 @@ export default function ApprovalRequestDetailPage() {
                         endOffset: textPosition.end,
                         selectedText: textQuote?.exact || '',
                         commentText: body.value,
+                        // Use the current version ID (latest version)
+                        versionId: request?.versions?.[0]?.version_id,
                       },
                       { headers }
                     );
@@ -792,6 +797,22 @@ export default function ApprovalRequestDetailPage() {
   }) => {
     setSelectedVersion(version);
     setVersionContentModalOpen(true);
+
+    // If section comments are available, filter them for this specific version
+    if (request?.section_comments) {
+      const versionSpecificComments = request.section_comments.filter(
+        comment => comment.version_id === version.version_id
+      );
+      console.log(
+        `Found ${versionSpecificComments.length} comments for version ${version.version_number}`
+      );
+
+      // Pre-convert annotations for this version
+      const versionAnnotations = versionSpecificComments.map(convertDbCommentToAnnotation);
+      setVersionAnnotations(versionAnnotations);
+    } else {
+      setVersionAnnotations([]);
+    }
   };
 
   const handleCloseVersionContent = () => {
@@ -803,6 +824,42 @@ export default function ApprovalRequestDetailPage() {
     setVersionContentModalOpen(false);
     setSelectedVersion(null);
   };
+
+  // Function to initialize Recogito in the Version Content dialog
+  const initVersionContentRecogito = useCallback(() => {
+    if (!versionContentModalOpen || !selectedVersion) return;
+
+    console.log('Starting version content Recogito initialization...');
+
+    // Use the shared utility function
+    setTimeout(async () => {
+      window._versionRecogitoInstance = await initVersionRecogito({
+        contentElementId: 'version-content-view',
+        annotations: versionAnnotations,
+        readOnly: true,
+        currentInstance: window._versionRecogitoInstance,
+      });
+    }, 300);
+  }, [versionContentModalOpen, selectedVersion, versionAnnotations]);
+
+  // Effect to initialize Recogito when the modal opens
+  useEffect(() => {
+    if (versionContentModalOpen && selectedVersion) {
+      initVersionContentRecogito();
+    }
+
+    return () => {
+      // Clean up on modal close
+      if (window._versionRecogitoInstance) {
+        try {
+          window._versionRecogitoInstance.destroy();
+        } catch (e) {
+          console.error('Error cleaning up Recogito:', e);
+        }
+        window._versionRecogitoInstance = undefined;
+      }
+    };
+  }, [versionContentModalOpen, selectedVersion, initVersionContentRecogito]);
   // --- End Version Modal Handlers ---
 
   // --- Add New Version Dialog Handlers ---
@@ -1593,136 +1650,37 @@ export default function ApprovalRequestDetailPage() {
                   /* For inline content, show historical content if available */
                   <Box py={3}>
                     {selectedVersion.inline_content ? (
-                      // For versions with stored inline_content (future versions)
+                      // For versions with stored inline_content
                       <>
-                        {request?.section_comments && request.section_comments.length > 0 && (
+                        {versionAnnotations.length > 0 ? (
                           <Alert severity="info" sx={{ mb: 2 }}>
-                            Annotations shown are from the current version. In the future,
-                            annotations will be version-specific.
+                            Showing {versionAnnotations.length} comments specific to this version.
+                          </Alert>
+                        ) : (
+                          <Alert severity="info" sx={{ mb: 2 }}>
+                            No comments were found for this specific version.
                           </Alert>
                         )}
-                        <Box
-                          ref={el => {
-                            if (el && selectedVersion.inline_content) {
-                              // Initialize Recogito on this element after a short delay
-                              setTimeout(() => {
-                                if (el && window.Recogito) {
-                                  // Destroy previous instance if it exists
-                                  if (window._versionRecogitoInstance) {
-                                    window._versionRecogitoInstance.destroy();
-                                  }
-
-                                  // Create new instance
-                                  const r = new window.Recogito.Recogito({
-                                    content: el,
-                                    readOnly: true,
-                                  });
-
-                                  // Load annotations if available
-                                  if (
-                                    request?.section_comments &&
-                                    request.section_comments.length > 0
-                                  ) {
-                                    const annotations = request.section_comments.map(
-                                      convertDbCommentToAnnotation
-                                    );
-                                    r.setAnnotations(annotations);
-                                  }
-
-                                  // Store instance for cleanup
-                                  window._versionRecogitoInstance = r;
-                                }
-                              }, 100);
-                            }
-                          }}
-                          sx={{
-                            border: '1px solid #e0e0e0',
-                            borderRadius: 1,
-                            p: 2,
-                            textAlign: 'left',
-                            '& p': { my: 1.5 },
-                            '& ul, & ol': { my: 1.5, pl: 3 },
-                            '& li': { mb: 0.5 },
-                            '& h1, & h2, & h3, & h4, & h5, & h6': {
-                              my: 2,
-                              fontWeight: 'bold',
-                            },
-                          }}
-                          dangerouslySetInnerHTML={{
-                            __html: DOMPurify.sanitize(
-                              request?.inline_content
-                                ? `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request.title}</h1>${request.inline_content}`
-                                : ''
-                            ),
-                          }}
-                        />
-                      </>
-                    ) : request &&
-                      selectedVersion &&
-                      request.versions.length > 0 &&
-                      selectedVersion.version_number === request.versions[0].version_number ? (
-                      // For the latest version, show the current request's inline content if version doesn't have it
-                      <>
-                        {request?.section_comments && request.section_comments.length > 0 && (
-                          <Alert severity="info" sx={{ mb: 2 }}>
-                            Annotations shown are from the current version.
-                          </Alert>
-                        )}
-                        <Box
-                          ref={el => {
-                            if (el && request.inline_content) {
-                              // Initialize Recogito on this element after a short delay
-                              setTimeout(() => {
-                                if (el && window.Recogito) {
-                                  // Destroy previous instance if it exists
-                                  if (window._versionRecogitoInstance) {
-                                    window._versionRecogitoInstance.destroy();
-                                  }
-
-                                  // Create new instance
-                                  const r = new window.Recogito.Recogito({
-                                    content: el,
-                                    readOnly: true,
-                                  });
-
-                                  // Load annotations if available
-                                  if (
-                                    request?.section_comments &&
-                                    request.section_comments.length > 0
-                                  ) {
-                                    const annotations = request.section_comments.map(
-                                      convertDbCommentToAnnotation
-                                    );
-                                    r.setAnnotations(annotations);
-                                  }
-
-                                  // Store instance for cleanup
-                                  window._versionRecogitoInstance = r;
-                                }
-                              }, 100);
-                            }
-                          }}
-                          sx={{
-                            border: '1px solid #e0e0e0',
-                            borderRadius: 1,
-                            p: 2,
-                            textAlign: 'left',
-                            '& p': { my: 1.5 },
-                            '& ul, & ol': { my: 1.5, pl: 3 },
-                            '& li': { mb: 0.5 },
-                            '& h1, & h2, & h3, & h4, & h5, & h6': {
-                              my: 2,
-                              fontWeight: 'bold',
-                            },
-                          }}
-                          dangerouslySetInnerHTML={{
-                            __html: DOMPurify.sanitize(
-                              request?.inline_content
-                                ? `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request.title}</h1>${request.inline_content}`
-                                : ''
-                            ),
-                          }}
-                        />
+                        {/* Create a separate container DIV first to ensure it's in the DOM */}
+                        <div id="version-content-container">
+                          <div
+                            id="version-content-view"
+                            className="annotatable-content"
+                            style={{
+                              border: '1px solid #e0e0e0',
+                              borderRadius: '4px',
+                              padding: '16px',
+                              textAlign: 'left',
+                            }}
+                            dangerouslySetInnerHTML={{
+                              __html: DOMPurify.sanitize(
+                                selectedVersion.inline_content
+                                  ? `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request?.title || ''}</h1>${selectedVersion.inline_content}`
+                                  : ''
+                              ),
+                            }}
+                          />
+                        </div>
                       </>
                     ) : (
                       <Box textAlign="center">
