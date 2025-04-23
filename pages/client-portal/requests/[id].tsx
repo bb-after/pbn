@@ -35,7 +35,6 @@ import {
   Description as DocumentIcon,
   ArrowBack as BackIcon,
   CheckCircle as CheckCircleIcon,
-  Cancel as CancelIcon,
   Send as SendIcon,
   Download as DownloadIcon,
   Link as LinkIcon,
@@ -50,6 +49,7 @@ import DOMPurify from 'dompurify';
 import Head from 'next/head';
 import ReactionPicker from 'components/ReactionPicker';
 import { createRoot } from 'react-dom/client';
+import { initVersionRecogito } from 'utils/recogito';
 
 /// <reference path="./recogito.d.ts" />
 
@@ -74,6 +74,18 @@ const loadScript = (src: string): Promise<void> => {
   });
 };
 
+// Helper function to load CSS
+const loadStyle = (url: string): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = url;
+    link.onload = () => resolve();
+    link.onerror = () => reject(new Error(`Failed to load stylesheet: ${url}`));
+    document.head.appendChild(link);
+  });
+};
+
 interface SectionComment {
   section_comment_id: number;
   request_id: number;
@@ -87,6 +99,7 @@ interface SectionComment {
   created_at: string;
   created_at_iso?: string; // ISO formatted timestamp
   contact_name: string | null;
+  version_id?: number | null; // Version ID this comment belongs to
   replies?: Array<{
     reply_id: number;
     reply_text: string;
@@ -160,8 +173,6 @@ export default function ClientRequestDetailPage() {
 
   // State for approval/rejection
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
-  const [rejectionDialogOpen, setRejectionDialogOpen] = useState(false);
-  const [rejectionReason, setRejectionReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
   // State for comments
@@ -170,6 +181,12 @@ export default function ClientRequestDetailPage() {
 
   // State for version history dialog
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
+
+  // State for currently viewed version
+  const [currentVersionId, setCurrentVersionId] = useState<number | null>(null);
+  const [versionContent, setVersionContent] = useState<string | null>(null);
+  const [versionLoading, setVersionLoading] = useState(false);
+  const [viewingVersion, setViewingVersion] = useState(false);
 
   // State for annotations
   const [annotations, setAnnotations] = useState<any[]>([]);
@@ -180,6 +197,8 @@ export default function ClientRequestDetailPage() {
   // --- Recogito Refs & State ---
   const contentRef = useRef<HTMLDivElement>(null);
   const recogitoInstance = useRef<any>(null);
+  const versionContentRef = useRef<HTMLDivElement>(null);
+  const versionRecogitoInstance = useRef<any>(null);
 
   // Get client token from localStorage
   useEffect(() => {
@@ -446,232 +465,65 @@ export default function ClientRequestDetailPage() {
   };
   // --- End Recogito Helper Function ---
 
-  // --- Recogito Initialization Effect ---
-  useEffect(() => {
-    if (request?.inline_content && contentRef.current && !recogitoInstance.current) {
-      let isMounted = true;
+  // Handle version content view
+  const handleViewVersionContent = async (version: any) => {
+    try {
+      // First close history modal and set loading state
+      setVersionHistoryOpen(false);
+      setVersionLoading(true);
+      setViewingVersion(true);
+      setCurrentVersionId(version.version_id);
 
-      // Add event listener for keydown to handle escape key issues
-      const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'Escape' && recogitoInstance.current) {
-          // Prevent default behavior to avoid the underlying TypeError
-          e.preventDefault();
-          e.stopPropagation();
+      // Set content based on version
+      if (version.version_number === request?.versions[0]?.version_number) {
+        setVersionContent(request?.inline_content || '');
+      } else {
+        setVersionContent(version.inline_content || '');
+      }
 
-          // If there's an active annotation, try to cancel it safely
-          try {
-            const activeSelection = document.querySelector('.r6o-editor-inner');
-            if (activeSelection) {
-              const cancelButton = document.querySelector('.r6o-btn.r6o-btn-cancel');
-              if (cancelButton && cancelButton instanceof HTMLElement) {
-                cancelButton.click();
-              }
-            }
-          } catch (err) {
-            console.error('Error handling escape key:', err);
-          }
-        }
-      };
+      // Filter section comments for this version
+      if (request?.section_comments) {
+        const versionSpecificComments = request.section_comments.filter(
+          comment => comment.version_id === version.version_id
+        );
+        console.log(
+          `Found ${versionSpecificComments.length} comments for version ${version.version_number}`
+        );
+        setAnnotations(versionSpecificComments.map(convertDbCommentToAnnotation));
+      } else {
+        setAnnotations([]);
+      }
 
-      // Register the event handler
-      document.addEventListener('keydown', handleKeyDown, true);
-
-      // Create a simple CSS style that doesn't modify reaction containers
-      const style = document.createElement('style');
-      style.textContent = `
-        .r6o-annotation {
-          border-bottom: 2px solid yellow;
-          background-color: rgba(255, 255, 0, 0.2);
-        }
-      `;
-      document.head.appendChild(style);
-
-      const initRecogito = async () => {
-        try {
-          await loadScript('/vendor/recogito.min.js');
-
-          // Debug: Check what's on the window object
-          console.log('Script loaded, checking window.Recogito:', (window as any).Recogito);
-          console.log(
-            'Script loaded, checking window.recogito (lowercase):',
-            (window as any).recogito
-          );
-
-          // Try accessing the constructor from the module object on window
-          const Recogito = (window as any).Recogito?.Recogito || (window as any).Recogito?.default;
-
-          if (!isMounted || !Recogito) {
-            console.error(
-              'Client View: Recogito constructor not found within window.Recogito module object.',
-              window.Recogito
-            );
-            return;
-          }
-
-          // Determine if annotations should be read-only based on request status
-          const isReadOnly = request.status !== 'pending';
-          console.log(`Client View: Initializing Recogito (readOnly: ${isReadOnly})`);
-
-          // Now Recogito should be the constructor
-          const r = new Recogito({
-            content: contentRef.current!,
-            readOnly: isReadOnly,
-            widgets: [
-              {
-                widget: 'COMMENT',
-                options: {
-                  placeholder: 'Add your feedback here...',
-                  allowTags: false,
-                },
-              },
-            ],
-          });
-
-          r.on('selectAnnotation', (annotation: any) => {
-            console.log('Client Selected annotation:', annotation);
-          });
-
-          // Add handlers for creating and updating annotations
-          if (!isReadOnly) {
-            r.on('createAnnotation', async (annotation: any) => {
-              console.log('Client created annotation:', annotation);
-              try {
-                // Save the annotation to the server
-                const headers = {
-                  'x-client-portal': 'true',
-                  'x-client-contact-id': clientInfo?.contact_id.toString(),
-                };
-
-                // Extract data from the annotation
-                const body = annotation.body?.[0];
-                const textQuote = annotation.target.selector.find(
-                  (s: any) => s.type === 'TextQuoteSelector'
-                );
-                const textPosition = annotation.target.selector.find(
-                  (s: any) => s.type === 'TextPositionSelector'
-                );
-
-                if (body && textPosition) {
-                  // Show loading indicator or disable UI if needed
-
-                  const response = await axios.post(
-                    `/api/approval-requests/${id}/section-comments`,
-                    {
-                      contactId: clientInfo?.contact_id,
-                      startOffset: textPosition.start,
-                      endOffset: textPosition.end,
-                      selectedText: textQuote?.exact || '',
-                      commentText: body.value,
-                    },
-                    { headers }
-                  );
-
-                  console.log('Annotation saved successfully:', response.data);
-
-                  // Add the new comment to the current list without reinitializing Recogito
-                  if (request.section_comments) {
-                    // Extract the newly created comment from the response
-                    const newComment = response.data.comment; // This is the correct path to the comment data
-                    const updatedRequest = {
-                      ...request,
-                      section_comments: [...request.section_comments, newComment],
-                    };
-                    setRequest(updatedRequest);
-                  }
-
-                  // Refresh the request data to ensure all comments are up to date
-                  fetchRequestDetails();
-                }
-              } catch (error) {
-                console.error('Error saving annotation:', error);
-                // Handle error - maybe show toast notification
-                setError('Failed to save comment. Please try again.');
-              }
-            });
-
-            // Add handler for client to update annotations (add replies)
-            r.on('updateAnnotation', async (annotation: any, previous: any) => {
-              console.log('Client updated annotation:', annotation);
-              try {
-                const headers = {
-                  'x-client-portal': 'true',
-                  'x-client-contact-id': clientInfo?.contact_id.toString(),
-                };
-
-                // Extract annotation ID from the format '#section-comment-123'
-                const idMatch = annotation.id.match(/#section-comment-(\d+)/);
-                if (!idMatch || !idMatch[1]) {
-                  console.error('Could not extract comment ID from annotation:', annotation.id);
-                  return;
-                }
-
-                const commentId = parseInt(idMatch[1]);
-
-                // Get all the bodies, which include the original comment and any replies
-                const bodies = annotation.body || [];
-
-                // The last body should be the newly added reply
-                const newReply = bodies[bodies.length - 1];
-
-                if (!newReply || !newReply.value) {
-                  console.error('No valid reply found in updated annotation');
-                  return;
-                }
-
-                // Send the reply to the server
-                const response = await axios.post(
-                  `/api/approval-requests/${id}/section-comments/${commentId}/replies`,
-                  {
-                    contactId: clientInfo?.contact_id,
-                    replyText: newReply.value,
-                  },
-                  { headers }
-                );
-
-                console.log('Client reply saved successfully:', response.data);
-
-                // Refresh the request data to get all comments and replies
-                fetchRequestDetails();
-              } catch (error) {
-                console.error('Error saving reply:', error);
-                setError('Failed to save reply. Please try again.');
-              }
-            });
-          }
-
-          if (request.section_comments && request.section_comments.length > 0) {
-            console.log('Client View: Loading annotations:', request.section_comments);
-            try {
-              const loadedAnnotations = request.section_comments.map(convertDbCommentToAnnotation);
-              r.setAnnotations(loadedAnnotations);
-            } catch (error) {
-              console.error('Client View: Error converting/loading annotations:', error);
-            }
-          }
-
-          recogitoInstance.current = r;
-          console.log(
-            `Client View: Recogito Initialized (${isReadOnly ? 'Read-Only' : 'Editable'}) via loadScript`
-          );
-        } catch (error) {
-          console.error('Client View: Failed to load or initialize Recogito:', error);
-        }
-      };
-
-      initRecogito();
-
-      return () => {
-        isMounted = false;
-        // Remove the event handler when the component unmounts
-        document.removeEventListener('keydown', handleKeyDown, true);
-        if (recogitoInstance.current) {
-          console.log('Client View: Destroying Recogito instance...');
-          recogitoInstance.current.destroy();
-          recogitoInstance.current = null;
-        }
-      };
+      // Wait for the DOM to update with the new content
+      setTimeout(async () => {
+        // Now initialize Recogito using the shared utility
+        versionRecogitoInstance.current = await initVersionRecogito({
+          contentElementId: 'version-content-view',
+          annotations: annotations,
+          readOnly: true,
+          currentInstance: versionRecogitoInstance.current,
+        });
+      }, 500);
+    } catch (error) {
+      console.error('Error viewing version content:', error);
+      setError('Failed to load version content');
+    } finally {
+      setVersionLoading(false);
     }
-  }, [request?.inline_content, contentRef, clientInfo, id, clientAuthToken]);
+  };
+
+  // Return to current version view
+  const handleCloseVersionView = () => {
+    setViewingVersion(false);
+    setVersionContent(null);
+    setCurrentVersionId(null);
+
+    // Cleanup any version-specific Recogito instance
+    if (versionRecogitoInstance.current) {
+      versionRecogitoInstance.current.destroy();
+      versionRecogitoInstance.current = null;
+    }
+  };
 
   // Handle user menu open
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
@@ -713,52 +565,6 @@ export default function ClientRequestDetailPage() {
     } catch (error) {
       console.error('Error approving request:', error);
       setError('Failed to approve request');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  // Handle reject request
-  const handleReject = async () => {
-    if (!rejectionReason.trim()) {
-      setError('Please provide a reason for rejection');
-      return;
-    }
-
-    setActionLoading(true);
-
-    try {
-      const headers = {
-        'x-client-portal': 'true',
-        'x-client-contact-id': clientInfo?.contact_id.toString(),
-      };
-
-      // First add a comment with the rejection reason
-      await axios.post(
-        `/api/approval-requests/${id}/comments`,
-        {
-          comment: `Rejection reason: ${rejectionReason}`,
-          contactId: clientInfo?.contact_id,
-        },
-        { headers }
-      );
-
-      // Then update the status
-      await axios.put(
-        `/api/approval-requests/${id}`,
-        {
-          status: 'rejected',
-          contactId: clientInfo?.contact_id,
-        },
-        { headers }
-      );
-
-      setRejectionDialogOpen(false);
-      setRejectionReason('');
-      fetchRequestDetails();
-    } catch (error) {
-      console.error('Error rejecting request:', error);
-      setError('Failed to reject request');
     } finally {
       setActionLoading(false);
     }
@@ -847,6 +653,239 @@ export default function ClientRequestDetailPage() {
       <Chip label={status.charAt(0).toUpperCase() + status.slice(1)} color={color} size="small" />
     );
   };
+
+  // Add this in the React.useEffect for Recogito initialization
+  useEffect(() => {
+    if (
+      request?.inline_content &&
+      contentRef.current &&
+      !recogitoInstance.current &&
+      !viewingVersion
+    ) {
+      let isMounted = true;
+
+      // Add event listener for keydown to handle escape key issues
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape' && recogitoInstance.current) {
+          // Prevent default behavior to avoid the underlying TypeError
+          e.preventDefault();
+          e.stopPropagation();
+
+          // If there's an active annotation, try to cancel it safely
+          try {
+            const activeSelection = document.querySelector('.r6o-editor-inner');
+            if (activeSelection) {
+              const cancelButton = document.querySelector('.r6o-btn.r6o-btn-cancel');
+              if (cancelButton && cancelButton instanceof HTMLElement) {
+                cancelButton.click();
+              }
+            }
+          } catch (err) {
+            console.error('Error handling escape key:', err);
+          }
+        }
+      };
+
+      // Register the event handler
+      document.addEventListener('keydown', handleKeyDown, true);
+
+      // Create a simple CSS style that doesn't modify reaction containers
+      const style = document.createElement('style');
+      style.textContent = `
+        .r6o-annotation {
+          border-bottom: 2px solid yellow;
+          background-color: rgba(255, 255, 0, 0.2);
+        }
+      `;
+      document.head.appendChild(style);
+
+      const initMainRecogito = async () => {
+        try {
+          // Wait for DOM to be ready
+          await new Promise(resolve => setTimeout(resolve, 300));
+
+          if (!isMounted || !contentRef.current) return;
+
+          // Find the inner div that contains the content
+          const innerDiv = contentRef.current.querySelector('div');
+          if (!innerDiv) {
+            console.error('Inner div not found');
+            return;
+          }
+
+          // Determine if annotations should be read-only based on request status
+          const isReadOnly = request.status !== 'pending';
+          console.log(`Client View: Initializing Recogito (readOnly: ${isReadOnly})`);
+
+          // Initialize Recogito using our shared utility
+          const r = await initVersionRecogito({
+            contentElementId: innerDiv.id || 'content-view',
+            annotations: [],
+            readOnly: isReadOnly,
+            currentInstance: null,
+          });
+
+          if (!r) {
+            console.error('Failed to initialize Recogito');
+            return;
+          }
+
+          // If we want to make the annotations editable, add event handlers here
+          if (!isReadOnly) {
+            r.on('createAnnotation', async (annotation: any) => {
+              console.log('Client created annotation:', annotation);
+              try {
+                // Save the annotation to the server
+                const headers = {
+                  'x-client-portal': 'true',
+                  'x-client-contact-id': clientInfo?.contact_id.toString(),
+                };
+
+                // Extract data from the annotation
+                const body = annotation.body?.[0];
+                const textQuote = annotation.target.selector.find(
+                  (s: any) => s.type === 'TextQuoteSelector'
+                );
+                const textPosition = annotation.target.selector.find(
+                  (s: any) => s.type === 'TextPositionSelector'
+                );
+
+                if (body && textPosition) {
+                  // Show loading indicator or disable UI if needed
+
+                  const response = await axios.post(
+                    `/api/approval-requests/${id}/section-comments`,
+                    {
+                      contactId: clientInfo?.contact_id,
+                      startOffset: textPosition.start,
+                      endOffset: textPosition.end,
+                      selectedText: textQuote?.exact || '',
+                      commentText: body.value,
+                      versionId: request.versions[0]?.version_id,
+                    },
+                    { headers }
+                  );
+
+                  console.log('Annotation saved successfully:', response.data);
+
+                  // Add the new comment to the current list without reinitializing Recogito
+                  if (request.section_comments) {
+                    // Extract the newly created comment from the response
+                    const newComment = response.data.comment; // This is the correct path to the comment data
+                    const updatedRequest = {
+                      ...request,
+                      section_comments: [...request.section_comments, newComment],
+                    };
+                    setRequest(updatedRequest);
+                  }
+
+                  // Refresh the request data to ensure all comments are up to date
+                  fetchRequestDetails();
+                }
+              } catch (error) {
+                console.error('Error saving annotation:', error);
+                // Handle error - maybe show toast notification
+                setError('Failed to save comment. Please try again.');
+              }
+            });
+
+            // Add handler for client to update annotations (add replies)
+            r.on('updateAnnotation', async (annotation: any, previous: any) => {
+              console.log('Client updated annotation:', annotation);
+              try {
+                const headers = {
+                  'x-client-portal': 'true',
+                  'x-client-contact-id': clientInfo?.contact_id.toString(),
+                };
+
+                // Extract annotation ID from the format '#section-comment-123'
+                const idMatch = annotation.id.match(/#section-comment-(\d+)/);
+                if (!idMatch || !idMatch[1]) {
+                  console.error('Could not extract comment ID from annotation:', annotation.id);
+                  return;
+                }
+
+                const commentId = parseInt(idMatch[1]);
+
+                // Get all the bodies, which include the original comment and any replies
+                const bodies = annotation.body || [];
+
+                // The last body should be the newly added reply
+                const newReply = bodies[bodies.length - 1];
+
+                if (!newReply || !newReply.value) {
+                  console.error('No valid reply found in updated annotation');
+                  return;
+                }
+
+                // Send the reply to the server
+                const response = await axios.post(
+                  `/api/approval-requests/${id}/section-comments/${commentId}/replies`,
+                  {
+                    contactId: clientInfo?.contact_id,
+                    replyText: newReply.value,
+                  },
+                  { headers }
+                );
+
+                console.log('Client reply saved successfully:', response.data);
+
+                // Refresh the request data to get all comments and replies
+                fetchRequestDetails();
+              } catch (error) {
+                console.error('Error saving reply:', error);
+                setError('Failed to save reply. Please try again.');
+              }
+            });
+          }
+
+          if (request.section_comments && request.section_comments.length > 0) {
+            console.log('Client View: Loading annotations:', request.section_comments);
+            try {
+              // Filter section comments to only include those for the current version
+              const currentVersionId = request.versions[0]?.version_id;
+              const currentVersionComments = request.section_comments.filter(
+                comment => !comment.version_id || comment.version_id === currentVersionId
+              );
+
+              const loadedAnnotations = currentVersionComments.map(convertDbCommentToAnnotation);
+              r.setAnnotations(loadedAnnotations);
+            } catch (error) {
+              console.error('Client View: Error converting/loading annotations:', error);
+            }
+          }
+
+          recogitoInstance.current = r;
+          console.log(
+            `Client View: Recogito Initialized (${isReadOnly ? 'Read-Only' : 'Editable'})`
+          );
+        } catch (error) {
+          console.error('Client View: Failed to load or initialize Recogito:', error);
+        }
+      };
+
+      initMainRecogito();
+
+      return () => {
+        isMounted = false;
+        // Remove the event handler when the component unmounts
+        document.removeEventListener('keydown', handleKeyDown, true);
+        if (recogitoInstance.current) {
+          console.log('Client View: Destroying Recogito instance...');
+          recogitoInstance.current.destroy();
+          recogitoInstance.current = null;
+        }
+      };
+    }
+  }, [
+    request?.inline_content,
+    contentRef,
+    clientInfo,
+    id,
+    clientAuthToken,
+    viewingVersion,
+    fetchRequestDetails,
+  ]);
 
   if (isLoading || (loading && !request)) {
     return (
@@ -1027,225 +1066,298 @@ export default function ClientRequestDetailPage() {
               </Paper>
 
               {/* Main content grid */}
-              <Grid container spacing={3}>
-                {/* Left column: document and comments */}
-                <Grid item xs={12} md={8}>
-                  {/* Document card - Updated Rendering Logic */}
-                  <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-                    <Typography variant="h6" gutterBottom>
-                      Content for Review
-                    </Typography>
+              {!viewingVersion ? (
+                <Grid container spacing={3}>
+                  {/* Left column: document and comments */}
+                  <Grid item xs={12} md={8}>
+                    {/* Document card - Updated Rendering Logic */}
+                    <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+                      <Typography variant="h6" gutterBottom>
+                        {request.status === 'pending' ? 'Content for Review' : 'Reviewed Content'}
+                      </Typography>
 
-                    {(() => {
-                      if (request.inline_content) {
-                        // Render Recogito container for inline content
-                        return (
-                          <div
-                            ref={contentRef}
-                            className="annotatable"
-                            style={{ marginTop: '16px' }}
+                      {(() => {
+                        if (request.inline_content) {
+                          // Render Recogito container for inline content
+                          return (
+                            <Box
+                              mt={2}
+                              sx={{
+                                '& p': { my: 1.5 },
+                                '& ul, & ol': { my: 1.5, pl: 3 },
+                                '& li': { mb: 0.5 },
+                                '& h1, & h2, & h3, & h4, & h5, & h6': {
+                                  my: 2,
+                                  fontWeight: 'bold',
+                                },
+                                '& a': {
+                                  color: 'primary.main',
+                                  textDecoration: 'underline',
+                                  '&:hover': {
+                                    color: 'primary.dark',
+                                  },
+                                },
+                              }}
+                              ref={contentRef}
+                            >
+                              <div
+                                id="content-view"
+                                dangerouslySetInnerHTML={{
+                                  __html: DOMPurify.sanitize(
+                                    `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request.title}</h1>${request.inline_content}`
+                                  ),
+                                }}
+                              />
+                            </Box>
+                          );
+                        } else if (request.file_url) {
+                          // Render download button for file-based requests
+                          return (
+                            <Box display="flex" alignItems="center" my={2}>
+                              <DocumentIcon color="primary" sx={{ mr: 2 }} />
+                              <Typography variant="body1">
+                                {getFileTypeName(request.file_url)}
+                              </Typography>
+                              <Box flexGrow={1} />
+                              <Button
+                                variant="contained"
+                                startIcon={<DownloadIcon />}
+                                href={request.file_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                View / Download
+                              </Button>
+                            </Box>
+                          );
+                        } else {
+                          // Fallback if neither exists
+                          return (
+                            <Typography variant="body2" color="textSecondary" sx={{ mt: 2 }}>
+                              No content available for review.
+                            </Typography>
+                          );
+                        }
+                      })()}
+
+                      {/* Conditional text */}
+                      {request.status === 'pending' && !request.inline_content && (
+                        <Typography variant="body2" color="textSecondary" sx={{ mt: 2 }}>
+                          Please review the document carefully before providing your approval or
+                          feedback.
+                        </Typography>
+                      )}
+                    </Paper>
+
+                    {/* Comments section */}
+                    <Paper elevation={2} sx={{ p: 3 }}>
+                      <Typography variant="h6" gutterBottom>
+                        Comments
+                      </Typography>
+
+                      <Box mt={2} mb={3}>
+                        <TextField
+                          fullWidth
+                          multiline
+                          rows={3}
+                          label="Add a comment"
+                          placeholder="Enter your feedback here..."
+                          value={newComment}
+                          onChange={e => setNewComment(e.target.value)}
+                        />
+                        <Box display="flex" justifyContent="flex-end" mt={2}>
+                          <Button
+                            variant="contained"
+                            startIcon={<SendIcon />}
+                            onClick={handleSubmitComment}
+                            disabled={submittingComment || !newComment.trim()}
                           >
+                            {submittingComment ? <CircularProgress size={24} /> : 'Send Feedback'}
+                          </Button>
+                        </Box>
+                      </Box>
+
+                      <Divider sx={{ my: 2 }} />
+
+                      {request.comments && request.comments.length > 0 ? (
+                        <Box sx={{ maxHeight: '400px', overflow: 'auto' }}>
+                          <List>
+                            {request.comments.map(comment => (
+                              <React.Fragment key={comment.comment_id}>
+                                <ListItem alignItems="flex-start">
+                                  <ListItemAvatar>
+                                    <Avatar>
+                                      {comment.contact_name
+                                        ? comment.contact_name.charAt(0).toUpperCase()
+                                        : 'S'}
+                                    </Avatar>
+                                  </ListItemAvatar>
+                                  <ListItemText
+                                    primary={
+                                      <Box display="flex" justifyContent="space-between">
+                                        <Typography variant="subtitle2">
+                                          {comment.contact_name || 'Staff'}
+                                        </Typography>
+                                        <Typography variant="caption" color="textSecondary">
+                                          {new Date(comment.created_at).toLocaleString(undefined, {
+                                            year: 'numeric',
+                                            month: 'short',
+                                            day: 'numeric',
+                                            hour: '2-digit',
+                                            minute: '2-digit',
+                                            timeZoneName: 'short',
+                                          })}
+                                        </Typography>
+                                      </Box>
+                                    }
+                                    secondary={
+                                      <Typography
+                                        component="span"
+                                        variant="body2"
+                                        color="textPrimary"
+                                        sx={{ mt: 1, display: 'block' }}
+                                      >
+                                        {comment.comment}
+                                        <ReactionPicker
+                                          targetType="comment"
+                                          targetId={comment.comment_id}
+                                          requestId={Number(id)}
+                                          isClientPortal={true}
+                                          clientContactId={clientInfo?.contact_id}
+                                          token={clientAuthToken || undefined}
+                                        />
+                                      </Typography>
+                                    }
+                                  />
+                                </ListItem>
+                                <Divider variant="inset" component="li" />
+                              </React.Fragment>
+                            ))}
+                          </List>
+                        </Box>
+                      ) : (
+                        <Typography variant="body2" color="textSecondary" align="center">
+                          No comments yet
+                        </Typography>
+                      )}
+                    </Paper>
+                  </Grid>
+
+                  {/* Right column: approval actions */}
+                  <Grid item xs={12} md={4}>
+                    <Paper
+                      elevation={2}
+                      sx={{
+                        p: 3,
+                        position: { md: 'sticky' },
+                        top: { md: '20px' },
+                        alignSelf: { md: 'flex-start' },
+                        zIndex: 1,
+                      }}
+                    >
+                      <Typography variant="h6" gutterBottom>
+                        Your Decision
+                      </Typography>
+
+                      {request.status === 'approved' ? (
+                        <Alert severity="success" sx={{ mt: 2 }}>
+                          You have approved this content.
+                        </Alert>
+                      ) : request.status === 'rejected' ? (
+                        <Alert severity="error" sx={{ mt: 2 }}>
+                          You have rejected this content.
+                        </Alert>
+                      ) : hasApproved() ? (
+                        <Alert severity="success" sx={{ mt: 2 }}>
+                          You have approved this content. Waiting for other stakeholders to review.
+                        </Alert>
+                      ) : (
+                        <>
+                          <Typography variant="body2" paragraph sx={{ mt: 2 }}>
+                            Please review the content and provide your decision. Once approved, the
+                            content will be prepared for publishing.
+                          </Typography>
+
+                          <Grid container spacing={2} sx={{ mt: 1 }}>
+                            <Grid item xs={12}>
+                              <Button
+                                fullWidth
+                                variant="contained"
+                                color="success"
+                                startIcon={<CheckCircleIcon />}
+                                onClick={() => setApprovalDialogOpen(true)}
+                                size="large"
+                              >
+                                Approve
+                              </Button>
+                            </Grid>
+                          </Grid>
+                        </>
+                      )}
+                    </Paper>
+                  </Grid>
+                </Grid>
+              ) : (
+                // Version history content view
+                <Grid container spacing={3}>
+                  <Grid item xs={12}>
+                    <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+                      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                        <Typography variant="h6">
+                          Version{' '}
+                          {request.versions.find(v => v.version_id === currentVersionId)
+                            ?.version_number || ''}{' '}
+                          Content
+                        </Typography>
+                        <Button
+                          variant="outlined"
+                          startIcon={<BackIcon />}
+                          onClick={handleCloseVersionView}
+                        >
+                          Back to Current Version
+                        </Button>
+                      </Box>
+
+                      {versionLoading ? (
+                        <Box display="flex" justifyContent="center" my={4}>
+                          <CircularProgress />
+                        </Box>
+                      ) : versionContent ? (
+                        <Box sx={{ mt: 2 }}>
+                          <Typography variant="body2" color="textSecondary" gutterBottom>
+                            {annotations.length} comment{annotations.length !== 1 ? 's' : ''} for
+                            this version.
+                          </Typography>
+
+                          {/* Content container with exactly the same structure as staff view */}
+                          <div id="version-content-container">
                             <div
+                              id="version-content-view"
+                              className="annotatable-content"
+                              style={{
+                                border: '1px solid #e0e0e0',
+                                borderRadius: '4px',
+                                padding: '16px',
+                                textAlign: 'left',
+                              }}
                               dangerouslySetInnerHTML={{
                                 __html: DOMPurify.sanitize(
-                                  request?.inline_content
-                                    ? `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request.title}</h1>${request.inline_content}`
-                                    : ''
+                                  `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request.title}</h1>${versionContent}`
                                 ),
                               }}
                             />
                           </div>
-                        );
-                      } else if (request.file_url) {
-                        // Render download button for file-based requests
-                        return (
-                          <Box display="flex" alignItems="center" my={2}>
-                            <DocumentIcon color="primary" sx={{ mr: 2 }} />
-                            <Typography variant="body1">
-                              {getFileTypeName(request.file_url)}
-                            </Typography>
-                            <Box flexGrow={1} />
-                            <Button
-                              variant="contained"
-                              startIcon={<DownloadIcon />}
-                              href={request.file_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              View / Download
-                            </Button>
-                          </Box>
-                        );
-                      } else {
-                        // Fallback if neither exists
-                        return (
-                          <Typography variant="body2" color="textSecondary" sx={{ mt: 2 }}>
-                            No content available for review.
-                          </Typography>
-                        );
-                      }
-                    })()}
-
-                    {/* Conditional text */}
-                    {request.status === 'pending' && !request.inline_content && (
-                      <Typography variant="body2" color="textSecondary" sx={{ mt: 2 }}>
-                        Please review the document carefully before providing your approval or
-                        feedback.
-                      </Typography>
-                    )}
-                  </Paper>
-
-                  {/* Comments section */}
-                  <Paper elevation={2} sx={{ p: 3 }}>
-                    <Typography variant="h6" gutterBottom>
-                      Comments
-                    </Typography>
-
-                    <Box mt={2} mb={3}>
-                      <TextField
-                        fullWidth
-                        multiline
-                        rows={3}
-                        label="Add a comment"
-                        placeholder="Enter your feedback here..."
-                        value={newComment}
-                        onChange={e => setNewComment(e.target.value)}
-                      />
-                      <Box display="flex" justifyContent="flex-end" mt={2}>
-                        <Button
-                          variant="contained"
-                          startIcon={<SendIcon />}
-                          onClick={handleSubmitComment}
-                          disabled={submittingComment || !newComment.trim()}
-                        >
-                          {submittingComment ? <CircularProgress size={24} /> : 'Send Feedback'}
-                        </Button>
-                      </Box>
-                    </Box>
-
-                    <Divider sx={{ my: 2 }} />
-
-                    {request.comments && request.comments.length > 0 ? (
-                      <Box sx={{ maxHeight: '400px', overflow: 'auto' }}>
-                        <List>
-                          {request.comments.map(comment => (
-                            <React.Fragment key={comment.comment_id}>
-                              <ListItem alignItems="flex-start">
-                                <ListItemAvatar>
-                                  <Avatar>
-                                    {comment.contact_name
-                                      ? comment.contact_name.charAt(0).toUpperCase()
-                                      : 'S'}
-                                  </Avatar>
-                                </ListItemAvatar>
-                                <ListItemText
-                                  primary={
-                                    <Box display="flex" justifyContent="space-between">
-                                      <Typography variant="subtitle2">
-                                        {comment.contact_name || 'Staff'}
-                                      </Typography>
-                                      <Typography variant="caption" color="textSecondary">
-                                        {new Date(comment.created_at).toLocaleString(undefined, {
-                                          year: 'numeric',
-                                          month: 'short',
-                                          day: 'numeric',
-                                          hour: '2-digit',
-                                          minute: '2-digit',
-                                          timeZoneName: 'short',
-                                        })}
-                                      </Typography>
-                                    </Box>
-                                  }
-                                  secondary={
-                                    <Typography
-                                      component="span"
-                                      variant="body2"
-                                      color="textPrimary"
-                                      sx={{ mt: 1, display: 'block' }}
-                                    >
-                                      {comment.comment}
-                                      <ReactionPicker
-                                        targetType="comment"
-                                        targetId={comment.comment_id}
-                                        requestId={Number(id)}
-                                        isClientPortal={true}
-                                        clientContactId={clientInfo?.contact_id}
-                                        token={clientAuthToken || undefined}
-                                      />
-                                    </Typography>
-                                  }
-                                />
-                              </ListItem>
-                              <Divider variant="inset" component="li" />
-                            </React.Fragment>
-                          ))}
-                        </List>
-                      </Box>
-                    ) : (
-                      <Typography variant="body2" color="textSecondary" align="center">
-                        No comments yet
-                      </Typography>
-                    )}
-                  </Paper>
-                </Grid>
-
-                {/* Right column: approval actions */}
-                <Grid item xs={12} md={4}>
-                  <Paper elevation={2} sx={{ p: 3 }}>
-                    <Typography variant="h6" gutterBottom>
-                      Your Decision
-                    </Typography>
-
-                    {request.status === 'approved' ? (
-                      <Alert severity="success" sx={{ mt: 2 }}>
-                        You have approved this content.
-                      </Alert>
-                    ) : request.status === 'rejected' ? (
-                      <Alert severity="error" sx={{ mt: 2 }}>
-                        You have rejected this content.
-                      </Alert>
-                    ) : hasApproved() ? (
-                      <Alert severity="success" sx={{ mt: 2 }}>
-                        You have approved this content. Waiting for other stakeholders to review.
-                      </Alert>
-                    ) : (
-                      <>
-                        <Typography variant="body2" paragraph sx={{ mt: 2 }}>
-                          Please review the content and provide your decision. Once approved, the
-                          content will be prepared for publishing.
+                        </Box>
+                      ) : (
+                        <Typography variant="body2" color="textSecondary" align="center">
+                          Historical inline content is not preserved for older versions. The
+                          database has been updated to store inline content for future versions.
                         </Typography>
-
-                        <Grid container spacing={2} sx={{ mt: 1 }}>
-                          <Grid item xs={6}>
-                            <Button
-                              fullWidth
-                              variant="contained"
-                              color="error"
-                              startIcon={<CancelIcon />}
-                              onClick={() => setRejectionDialogOpen(true)}
-                              size="large"
-                            >
-                              Reject
-                            </Button>
-                          </Grid>
-                          <Grid item xs={6}>
-                            <Button
-                              fullWidth
-                              variant="contained"
-                              color="success"
-                              startIcon={<CheckCircleIcon />}
-                              onClick={() => setApprovalDialogOpen(true)}
-                              size="large"
-                            >
-                              Approve
-                            </Button>
-                          </Grid>
-                        </Grid>
-                      </>
-                    )}
-                  </Paper>
+                      )}
+                    </Paper>
+                  </Grid>
                 </Grid>
-              </Grid>
+              )}
             </>
           )}
         </Box>
@@ -1269,40 +1381,6 @@ export default function ClientRequestDetailPage() {
             disabled={actionLoading}
           >
             {actionLoading ? <CircularProgress size={24} /> : 'Approve'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Rejection dialog */}
-      <Dialog open={rejectionDialogOpen} onClose={() => setRejectionDialogOpen(false)}>
-        <DialogTitle>Reject Content</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Please provide a reason for rejecting this content. This feedback will help in making
-            appropriate revisions.
-          </DialogContentText>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Reason for Rejection"
-            fullWidth
-            multiline
-            rows={4}
-            value={rejectionReason}
-            onChange={e => setRejectionReason(e.target.value)}
-            variant="outlined"
-            sx={{ mt: 2 }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setRejectionDialogOpen(false)}>Cancel</Button>
-          <Button
-            onClick={handleReject}
-            variant="contained"
-            color="error"
-            disabled={actionLoading || !rejectionReason.trim()}
-          >
-            {actionLoading ? <CircularProgress size={24} /> : 'Reject'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1377,7 +1455,10 @@ export default function ClientRequestDetailPage() {
                               variant="outlined"
                               size="small"
                               startIcon={<ArticleIcon />}
-                              onClick={() => setVersionHistoryOpen(false)} // Close version history
+                              onClick={() => {
+                                handleViewVersionContent(version);
+                                setVersionHistoryOpen(false);
+                              }}
                               sx={{ mt: 2 }}
                             >
                               View Content
