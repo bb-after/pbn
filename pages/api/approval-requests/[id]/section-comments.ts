@@ -188,10 +188,25 @@ async function getSectionComments(req: NextApiRequest, res: NextApiResponse) {
 async function createSectionComment(req: NextApiRequest, res: NextApiResponse) {
   // Validate input parameters
   const { id } = req.query;
-  const { startOffset, endOffset, commentText, selectedText, versionId } = req.body;
+  const {
+    startOffset,
+    endOffset,
+    commentText,
+    selectedText,
+    versionId,
+    contactId: bodyContactId,
+  } = req.body;
 
-  if (!id || !startOffset || !endOffset || !commentText || !selectedText) {
-    return res.status(400).json({ error: 'Missing required parameters' });
+  if (!id) {
+    return res.status(400).json({ error: 'Request ID is required' });
+  }
+
+  if (startOffset === undefined || endOffset === undefined) {
+    return res.status(400).json({ error: 'Start and end offsets are required' });
+  }
+
+  if (!commentText) {
+    return res.status(400).json({ error: 'Comment text is required' });
   }
 
   const requestId = Number(id);
@@ -208,7 +223,14 @@ async function createSectionComment(req: NextApiRequest, res: NextApiResponse) {
   // Check for client portal authentication
   if (isClientPortal && contactIdHeader && !isNaN(Number(contactIdHeader))) {
     contactId = Number(contactIdHeader);
+  }
+  // Also check for contactId in the request body (for client requests coming from Recogito)
+  else if (bodyContactId && !isNaN(Number(bodyContactId))) {
+    contactId = Number(bodyContactId);
+  }
 
+  // For client comments, check access
+  if (contactId) {
     // Verify contact has access to this specific request
     const hasAccess = await checkContactAccess(requestId, contactId);
     if (!hasAccess) {
@@ -217,7 +239,7 @@ async function createSectionComment(req: NextApiRequest, res: NextApiResponse) {
         .json({ error: 'Forbidden - Contact does not have access to this request' });
     }
   }
-  // Check for staff authentication
+  // Check for staff authentication if not a client request
   else if (authToken) {
     staffUserInfo = await validateToken(authToken);
     if (!staffUserInfo) {
