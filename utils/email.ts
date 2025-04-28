@@ -1,5 +1,4 @@
 import AWS from 'aws-sdk';
-import { getBaseUrl } from './config';
 
 // Configure AWS SDK
 AWS.config.update({
@@ -71,7 +70,8 @@ export async function sendEmail(options: EmailOptions): Promise<void> {
  * Send a client portal login email
  */
 export async function sendLoginEmail(contact: any, token: string, request?: any): Promise<void> {
-  const loginUrl = `${getBaseUrl()}/client-portal/verify?token=${token}${request ? `&requestId=${request.request_id}` : ''}`;
+  // Create login URL with token, adding requestId if available
+  const loginUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/client-portal/verify?token=${token}${request ? `&requestId=${request.request_id}` : ''}`;
 
   // HTML email content with optional request information
   let htmlBody = `
