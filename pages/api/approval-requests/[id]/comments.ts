@@ -91,14 +91,14 @@ async function getComments(requestId: number, res: NextApiResponse) {
         arc.version_id, 
         arc.comment, 
         arc.user_id, 
-        arc.contact_id,
+        arc.client_contact_id,
         cc.name as contact_name, 
         u.name as staff_name, -- Get staff name from users table (Reverted)
         arc.created_at
       FROM 
         approval_request_comments arc
       LEFT JOIN
-        client_contacts cc ON arc.contact_id = cc.contact_id
+        client_contacts cc ON arc.client_contact_id = cc.contact_id
       LEFT JOIN
         users u ON arc.user_id = u.id -- Join with users table
       WHERE 
@@ -180,7 +180,7 @@ async function addComment(
     // Add the comment
     const insertQuery = `
       INSERT INTO approval_request_comments 
-        (request_id, version_id, comment, user_id, contact_id) 
+        (request_id, version_id, comment, user_id, client_contact_id) 
       VALUES 
         (?, ?, ?, ?, ?)
     `;
@@ -201,14 +201,14 @@ async function addComment(
         arc.version_id, 
         arc.comment, 
         arc.user_id, 
-        arc.contact_id,
+        arc.client_contact_id,
         cc.name as contact_name, 
         u.name as staff_name, -- Get staff name (Reverted)
         arc.created_at
       FROM 
         approval_request_comments arc
       LEFT JOIN
-        client_contacts cc ON arc.contact_id = cc.contact_id
+        client_contacts cc ON arc.client_contact_id = cc.contact_id
       LEFT JOIN
         users u ON arc.user_id = u.id -- Join with users
       WHERE 
