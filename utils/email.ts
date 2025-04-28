@@ -71,7 +71,6 @@ export async function sendEmail(options: EmailOptions): Promise<void> {
  * Send a client portal login email
  */
 export async function sendLoginEmail(contact: any, token: string, request?: any): Promise<void> {
-  console.log('DEBUG - Base URL:', getBaseUrl());
   const loginUrl = `${getBaseUrl()}/client-portal/verify?token=${token}${request ? `&requestId=${request.request_id}` : ''}`;
 
   // HTML email content with optional request information
