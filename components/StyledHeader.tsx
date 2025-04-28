@@ -167,6 +167,11 @@ const StyledHeader = () => {
           href: '/content-compass',
           description: 'Navigate content placement for clients',
         },
+        {
+          text: 'Client Approval (Beta - do not use)',
+          href: '/client-approval',
+          description: 'Approve client content',
+        },
       ],
     },
     {
