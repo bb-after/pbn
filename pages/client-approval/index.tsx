@@ -100,12 +100,14 @@ export default function ClientApprovalPage() {
   }, [isValidUser]);
 
   // Fetch all approval requests
-  const fetchApprovalRequests = async () => {
+  const fetchApprovalRequests = async (includeArchived = false) => {
     setLoading(true);
     setError(null);
 
     try {
-      const response = await axios.get('/api/approval-requests');
+      const response = await axios.get(
+        `/api/approval-requests${includeArchived ? '?include_archived=true' : ''}`
+      );
       setRequests(response.data);
     } catch (error) {
       console.error('Error fetching approval requests:', error);
@@ -128,6 +130,7 @@ export default function ClientApprovalPage() {
   // Handle tab change
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
+    fetchApprovalRequests(newValue === 1); // true for archived tab
   };
 
   // Handle creating a new approval request
@@ -293,7 +296,7 @@ export default function ClientApprovalPage() {
                   fullWidth
                   variant="outlined"
                   startIcon={<RefreshIcon />}
-                  onClick={fetchApprovalRequests}
+                  onClick={() => fetchApprovalRequests(true)}
                 >
                   Refresh
                 </Button>
