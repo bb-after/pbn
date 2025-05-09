@@ -1,45 +1,34 @@
 // components/Form.tsx
-import React, { useRef, useState, useEffect } from "react";
-import dynamic from "next/dynamic"; // Import dynamic from Next.js
-import { Button, SelectChangeEvent } from "@mui/material";
-import styles from "./styles.module.css";
-import {
-  Send,
-  ArrowBack,
-  Edit,
-  Download,
-  Blender,
-  Undo,
-  RestartAlt,
-} from "@mui/icons-material";
-import CopyToClipboardButton from "./CopyToClipboardButton";
-import PreviousResponseComponent from "./PreviousResponseComponent";
-import RemixModal from "./RemixModal";
-import PbnSubmissionModal from "./PbnSubmissionModal";
-import { postToSlack } from "../utils/postToSlack";
-import Step1LoadingStateComponent from "./Step1LoadingState";
-import FinalLoadingStateComponent from "./FinalLoadingState";
-import ArticleForm from "./ArticleForm";
-import {
-  insertBacklinks,
-  getBacklinkArray,
-  parseTitleFromArticle,
-} from "../utils/openai";
-import { sendDataToStatusCrawl } from "../utils/statusCrawl";
-import useValidateUserToken from "../hooks/useValidateUserToken";
-import axios from "axios";
+import React, { useRef, useState, useEffect } from 'react';
+import dynamic from 'next/dynamic'; // Import dynamic from Next.js
+import { Button, SelectChangeEvent } from '@mui/material';
+import styles from './styles.module.css';
+import { Send, ArrowBack, Edit, Download, Blender, Undo, RestartAlt } from '@mui/icons-material';
+import CopyToClipboardButton from './CopyToClipboardButton';
+import PreviousResponseComponent from './PreviousResponseComponent';
+import RemixModal from './RemixModal';
+import PbnSubmissionModal from './PbnSubmissionModal';
+import { postToSlack } from '../utils/postToSlack';
+import Step1LoadingStateComponent from './Step1LoadingState';
+import FinalLoadingStateComponent from './FinalLoadingState';
+import ArticleForm from './ArticleForm';
+import { insertBacklinks, getBacklinkArray, parseTitleFromArticle } from '../utils/openai';
+import { sendDataToStatusCrawl } from '../utils/statusCrawl';
+import useValidateUserToken from '../hooks/useValidateUserToken';
+import axios from 'axios';
+import { formatPbnjContent } from '../utils/formatPbnjContent';
 
 // Dynamically import JoditEditor to prevent SSR issues
-const JoditEditor = dynamic(() => import("jodit-react"), { ssr: false });
+const JoditEditor = dynamic(() => import('jodit-react'), { ssr: false });
 
 interface FormProps {}
 
 const Form: React.FC<FormProps> = () => {
   const editor = useRef(null); // Reference to Jodit editor instance
-  const [content, setContent] = useState(""); // State for editor content
-  const [response, setResponse] = useState<string>(""); // Initialize with an empty string
-  const [articleTitle, setArticleTitle] = useState<string>(""); // State for article title
-  const [backlinks, setBacklinks] = useState([""]); // State to hold list of backlinks
+  const [content, setContent] = useState(''); // State for editor content
+  const [response, setResponse] = useState<string>(''); // Initialize with an empty string
+  const [articleTitle, setArticleTitle] = useState<string>(''); // State for article title
+  const [backlinks, setBacklinks] = useState(['']); // State to hold list of backlinks
   const [previousResponses, setPreviousResponses] = useState<string[]>([]);
   const [missingBacklinks, setMissingBacklinks] = useState<string[]>([]);
 
@@ -50,18 +39,18 @@ const Form: React.FC<FormProps> = () => {
   const [showForm, setShowForm] = useState(true);
   const [isEditingState, setEditingState] = useState(false);
 
-  const [keywords, setKeywords] = useState("");
-  const [engine, setEngine] = useState("gpt-4o-mini");
-  const [language, setLanguage] = useState("English");
-  const [wordCount, setWordCount] = useState(300);
-  const [keywordsToExclude, setKeywordsToExclude] = useState("");
-  const [sourceUrl, setSourceUrl] = useState("");
+  const [keywords, setKeywords] = useState('');
+  const [engine, setEngine] = useState('gpt-4o-mini');
+  const [language, setLanguage] = useState('English');
+  const [wordCount, setWordCount] = useState(500);
+  const [keywordsToExclude, setKeywordsToExclude] = useState('');
+  const [sourceUrl, setSourceUrl] = useState('');
   const [articleCount, setArticleCount] = useState(1);
   const [tone, setTone] = useState<string[]>([]);
-  const [otherInstructions, setOtherInstructions] = useState("");
+  const [otherInstructions, setOtherInstructions] = useState('');
   const [isRemixModalOpen, setRemixModalOpen] = useState(false);
   const [isPbnModalOpen, setPbnModalOpen] = useState(false);
-  const [sourceContent, setSourceContent] = useState(""); // Added to hold the pasted content
+  const [sourceContent, setSourceContent] = useState(''); // Added to hold the pasted content
   const [useSourceContent, setUseSourceContent] = useState(false); // Determines if source content or URL should be used
 
   const handleRemixModalOpen = () => {
@@ -71,18 +60,15 @@ const Form: React.FC<FormProps> = () => {
   const handlePbnModalOpen = (response: string) => {
     const postTitle = parseTitleFromArticle(response);
     setArticleTitle(postTitle);
-    setResponse(wrapInParagraphs(normalizeLineBreaks(response)));
+    setResponse(formatPbnjContent(response));
     setPbnModalOpen(true);
   };
 
   const { token } = useValidateUserToken(); // Destructure the returned object
 
-  const handleRemixModalSubmit = async (
-    iterations: number,
-    remixMode: string
-  ) => {
+  const handleRemixModalSubmit = async (iterations: number, remixMode: string) => {
     if (!token) {
-      console.error("User token not found.");
+      console.error('User token not found.');
       return;
     }
 
@@ -98,10 +84,10 @@ const Form: React.FC<FormProps> = () => {
         setLoadingFirstRequest(true);
 
         // Send request to backend endpoint instead of calling OpenAI directly
-        const firstResponse = await axios.post("/api/remix-article", {
+        const firstResponse = await axios.post('/api/remix-article', {
           mode,
           inputData,
-          response: mode !== "generate" ? response : null,
+          response: mode !== 'generate' ? response : null,
         });
 
         const articleContent = firstResponse.data.content;
@@ -113,27 +99,24 @@ const Form: React.FC<FormProps> = () => {
         let hyperlinkedResponse: string;
 
         try {
-          const { data } = await axios.post("/api/insert-backlinks", {
+          const { data } = await axios.post('/api/insert-backlinks', {
             backlinkArray,
             articleContent,
           });
 
           hyperlinkedResponse = data.content || articleContent; // Fallback to original content if `data.content` is missing
         } catch (error) {
-          console.warn(
-            "Backlink insertion failed, using original content:",
-            error
-          );
+          console.warn('Backlink insertion failed, using original content:', error);
           hyperlinkedResponse = articleContent; // Fallback to original content on error
         }
 
         const missingBacklinks = backlinkArray.filter(
-          (backlink) => !hyperlinkedResponse.includes(backlink)
+          backlink => !hyperlinkedResponse.includes(backlink)
         );
         setMissingBacklinks(missingBacklinks); // Update state with missing backlinks
 
-        setResponse(hyperlinkedResponse);
-        addResponseToPreviousResponses(hyperlinkedResponse);
+        setResponse(formatPbnjContent(hyperlinkedResponse));
+        addResponseToPreviousResponses(formatPbnjContent(hyperlinkedResponse));
 
         // Optional: Post result to Slack or other integrations
         postToSlack(`*Iteration #${i}*:\n${hyperlinkedResponse}`);
@@ -142,7 +125,7 @@ const Form: React.FC<FormProps> = () => {
         setLoadingThirdRequest(false);
       }
     } catch (error) {
-      console.error("Error during Remix Modal Submit:", error);
+      console.error('Error during Remix Modal Submit:', error);
       setLoadingFirstRequest(false);
       setLoadingThirdRequest(false);
     } finally {
@@ -153,16 +136,14 @@ const Form: React.FC<FormProps> = () => {
 
   const handleToneChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const { value } = event.target;
-    setTone((prevTone) =>
-      prevTone.includes(value)
-        ? prevTone.filter((item) => item !== value)
-        : [...prevTone, value]
+    setTone(prevTone =>
+      prevTone.includes(value) ? prevTone.filter(item => item !== value) : [...prevTone, value]
     );
   };
 
   const addResponseToPreviousResponses = (response: string) => {
-    if (response !== "" && !previousResponses.includes(response)) {
-      setPreviousResponses((prevResponses) => [...prevResponses, response]);
+    if (response !== '' && !previousResponses.includes(response)) {
+      setPreviousResponses(prevResponses => [...prevResponses, response]);
     }
   };
 
@@ -174,13 +155,13 @@ const Form: React.FC<FormProps> = () => {
 
   const handleStartOver = () => {
     const confirmed = window.confirm(
-      "Are you sure you want to start over? This action will clear your current data."
+      'Are you sure you want to start over? This action will clear your current data.'
     );
 
     if (confirmed) {
       setShowForm(true);
       setEditingState(false);
-      setResponse("");
+      setResponse('');
       setPreviousResponses([]);
     }
   };
@@ -191,11 +172,11 @@ const Form: React.FC<FormProps> = () => {
     setShowForm(false);
   };
   const normalizeLineBreaks = (htmlContent: string) => {
-    return htmlContent.replace(/(<br\s*\/?>\s*){2,}/g, "</p><p>");
+    return htmlContent.replace(/(<br\s*\/?>\s*){2,}/g, '</p><p>');
     // return htmlContent.replace(/<br\s*\/?>/g, "\n\n");
   };
   const wrapInParagraphs = (htmlContent: string) => {
-    return `<p>${htmlContent.replace(/\n/g, "</p><p>")}</p>`;
+    return `<p>${htmlContent.replace(/\n/g, '</p><p>')}</p>`;
   };
 
   const openEditor = () => {
@@ -212,9 +193,9 @@ const Form: React.FC<FormProps> = () => {
   };
 
   function downloadContent(filename: string, content: string) {
-    const blob = new Blob([content], { type: "text/html" });
+    const blob = new Blob([content], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
+    const a = document.createElement('a');
     a.href = url;
     a.download = filename;
     a.click();
@@ -222,15 +203,15 @@ const Form: React.FC<FormProps> = () => {
   }
 
   function downloadAllContent(filename: string, previousResponses: string[]) {
-    let combinedContent = "";
+    let combinedContent = '';
     previousResponses.reverse().forEach((prevResponse, index) => {
       const version = `<strong>Version ${index + 1}:</strong><br>`;
       combinedContent += `${version}\n${prevResponse}<br><br>`;
     });
 
-    const blob = new Blob([combinedContent], { type: "text/html" });
+    const blob = new Blob([combinedContent], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
+    const a = document.createElement('a');
     a.href = url;
     a.download = filename;
     a.click();
@@ -246,11 +227,11 @@ const Form: React.FC<FormProps> = () => {
   };
 
   const getInputData = () => ({
-    keywords: keywords.split(","),
-    keywordsToExclude: keywordsToExclude.split(","),
-    sourceUrl: useSourceContent ? "" : sourceUrl,
-    sourceContent: useSourceContent ? sourceContent : "",
-    tone: tone.join(", "),
+    keywords: keywords.split(','),
+    keywordsToExclude: keywordsToExclude.split(','),
+    sourceUrl: useSourceContent ? '' : sourceUrl,
+    sourceContent: useSourceContent ? sourceContent : '',
+    tone: tone.join(', '),
     wordCount,
     engine,
     articleCount,
@@ -268,7 +249,7 @@ const Form: React.FC<FormProps> = () => {
     const inputData = getInputData();
 
     if (!token) {
-      alert("User token not found.");
+      alert('User token not found.');
       return;
     }
 
@@ -276,7 +257,7 @@ const Form: React.FC<FormProps> = () => {
       setShowForm(false);
       setLoadingFirstRequest(true);
 
-      const firstResponse = await axios.post("/api/generate-article", {
+      const firstResponse = await axios.post('/api/generate-article', {
         wordCount,
         keywords,
         keywordsToExclude,
@@ -299,35 +280,32 @@ const Form: React.FC<FormProps> = () => {
       let hyperlinkedResponse: string;
 
       try {
-        const { data } = await axios.post("/api/insert-backlinks", {
+        const { data } = await axios.post('/api/insert-backlinks', {
           backlinkArray,
           articleContent,
         });
 
         hyperlinkedResponse = data.content || articleContent; // Fallback to original content if `data.content` is missing
       } catch (error) {
-        console.warn(
-          "Backlink insertion failed, using original content:",
-          error
-        );
+        console.warn('Backlink insertion failed, using original content:', error);
         hyperlinkedResponse = articleContent; // Fallback to original content on error
       }
 
       // Check for missing backlinks
       const missingBacklinks = backlinkArray.filter(
-        (backlink) => !hyperlinkedResponse.includes(backlink)
+        backlink => !hyperlinkedResponse.includes(backlink)
       );
       setMissingBacklinks(missingBacklinks); // Update state with missing backlinks
 
-      setResponse(hyperlinkedResponse);
-      addResponseToPreviousResponses(hyperlinkedResponse);
+      setResponse(formatPbnjContent(hyperlinkedResponse));
+      addResponseToPreviousResponses(formatPbnjContent(hyperlinkedResponse));
 
       setLoadingThirdRequest(false);
       postToSlack(hyperlinkedResponse);
 
       await sendDataToStatusCrawl(inputData, hyperlinkedResponse, token);
     } catch (error) {
-      console.error("Error during article generation:", error);
+      console.error('Error during article generation:', error);
       setLoadingFirstRequest(false);
       setLoadingThirdRequest(false);
     }
@@ -380,13 +358,12 @@ const Form: React.FC<FormProps> = () => {
         </div>
       ) : (
         <div className="response">
-          {(isLoadingFirstRequest || isLoadingThirdRequest) &&
-          iterationCount > 0 ? (
+          {(isLoadingFirstRequest || isLoadingThirdRequest) && iterationCount > 0 ? (
             <div className={styles.iterationCount}>
               Remixing {iterationCount} / {iterationTotal}
             </div>
           ) : (
-            ""
+            ''
           )}
           {isLoadingFirstRequest ? (
             <Step1LoadingStateComponent />
@@ -397,9 +374,8 @@ const Form: React.FC<FormProps> = () => {
               {missingBacklinks.length > 0 && (
                 <div className={styles.missingBacklinksWarning}>
                   <h4 color="red">
-                    The content was generated but we were unable to insert all
-                    backlinks. Please review the text below and manually add
-                    your backlinks.
+                    The content was generated but we were unable to insert all backlinks. Please
+                    review the text below and manually add your backlinks.
                   </h4>
                   <ul>
                     {missingBacklinks.map((backlink, index) => (
@@ -417,8 +393,8 @@ const Form: React.FC<FormProps> = () => {
                     ref={editor}
                     value={content}
                     // config={config}
-                    onBlur={(newContent) => setContent(newContent)}
-                    onChange={(newContent) => setContent(newContent)}
+                    onBlur={newContent => setContent(newContent)}
+                    onChange={newContent => setContent(newContent)}
                   />
                   <Button
                     size="small"
@@ -467,7 +443,7 @@ const Form: React.FC<FormProps> = () => {
                       size="small"
                       variant="contained"
                       startIcon={<Download />}
-                      onClick={() => downloadContent("response.html", response)}
+                      onClick={() => downloadContent('response.html', response)}
                     >
                       Download Content
                     </Button>
@@ -478,12 +454,7 @@ const Form: React.FC<FormProps> = () => {
                           size="small"
                           variant="contained"
                           startIcon={<Download />}
-                          onClick={() =>
-                            downloadAllContent(
-                              "response.html",
-                              previousResponses
-                            )
-                          }
+                          onClick={() => downloadAllContent('response.html', previousResponses)}
                         >
                           Download All Versions
                         </Button>
@@ -546,7 +517,7 @@ const Form: React.FC<FormProps> = () => {
                 size="small"
                 variant="contained"
                 startIcon={<Download />}
-                onClick={() => downloadContent("response.html", prevResponse)}
+                onClick={() => downloadContent('response.html', prevResponse)}
               >
                 Download Content
               </Button>

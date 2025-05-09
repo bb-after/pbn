@@ -31,57 +31,54 @@ export default function VerifyLoginPage() {
     setError(null);
     setErrorType(null);
 
+    let response;
     try {
       console.log('Verifying token:', token);
-
       // Use the debug endpoint that works with both GET and POST methods
       // and provides more detailed error information
-      const response = await axios.get(`/api/client-auth/verify-debug?token=${token}`);
+      response = await axios.get(`/api/client-auth/verify-debug?token=${token}`);
       console.log('Verification successful:', response.data);
-
-      setVerified(true);
-
-      // Check if verification response includes a requestId to redirect to
-      const requestId = new URLSearchParams(window.location.search).get('requestId');
-      if (requestId) {
-        // Redirect to the specific approval request
-        router.push(`/client-portal/requests/${requestId}`);
-      } else {
-        // Redirect to the client portal home
-        router.push('/client-portal');
-      }
-    } catch (error: any) {
-      console.error('Error verifying token:', error);
-      if (error.response) {
-        console.error('Response data:', error.response.data);
-        console.error('Response status:', error.response.status);
-
-        // Check for specific error types
-        const errorMessage = error.response.data.error || 'Failed to verify login token';
-        setError(errorMessage);
-
-        // Set error type for better user experience
-        if (errorMessage.includes('expired')) {
-          setErrorType('expired');
-        } else if (errorMessage.includes('used')) {
-          setErrorType('used');
-        } else if (errorMessage.includes('Invalid token')) {
-          setErrorType('invalid');
-        } else {
-          setErrorType('general');
+    } catch (err: any) {
+      // Defensive: always set a string error
+      let errorMessage = 'Failed to verify login token';
+      if (err.response && err.response.data) {
+        if (typeof err.response.data === 'string') {
+          errorMessage = err.response.data;
+        } else if (typeof err.response.data.error === 'string') {
+          errorMessage = err.response.data.error;
         }
-      } else if (error.request) {
-        console.error('No response received:', error.request);
-        setError('Server did not respond. Please try again later.');
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      setError(errorMessage);
+      // Defensive: always set an errorType
+      if (errorMessage.toLowerCase().includes('expired')) {
+        setErrorType('expired');
+      } else if (errorMessage.toLowerCase().includes('used')) {
+        setErrorType('used');
+      } else if (errorMessage.toLowerCase().includes('invalid')) {
+        setErrorType('invalid');
+      } else if (err.request) {
         setErrorType('network');
       } else {
-        console.error('Error setting up request:', error.message);
-        setError('An unexpected error occurred. Please try again.');
         setErrorType('general');
       }
-    } finally {
       setVerifying(false);
+      return;
     }
+
+    setVerified(true);
+
+    // Check if verification response includes a requestId to redirect to
+    const requestId = new URLSearchParams(window.location.search).get('requestId');
+    if (requestId) {
+      // Redirect to the specific approval request
+      router.push(`/client-portal/requests/${requestId}`);
+    } else {
+      // Redirect to the client portal home
+      router.push('/client-portal');
+    }
+    setVerifying(false);
   }, [token, router]);
 
   useEffect(() => {

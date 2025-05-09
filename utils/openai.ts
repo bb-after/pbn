@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import axios from 'axios';
 
 // Constants
-const modelType = process.env.NEXT_PUBLIC_GPT_ENGINE || 'gpt-4o-mini'; // Default to GPT-4
+const modelType = process.env.NEXT_PUBLIC_GPT_ENGINE || 'claude-3-5-sonnet-20241022'; // Default to Claude 3.5 Sonnet
 const mockData = process.env.NEXT_PUBLIC_USE_MOCK_DATA === '1';
 const skipOpenAiRevision = process.env.NEXT_PUBLIC_SKIP_OPENAI_REVISION === '1';
 const maxTokens = 16000;
@@ -96,7 +96,7 @@ export const callOpenAI = async (inputData: any) => {
     return `Mocked response based on input: ${JSON.stringify(inputData)}`;
   }
 
-  const { engine = 'gpt-4o-mini', sourceContent = '', sourceUrl } = inputData;
+  const { engine = 'claude-3-5-sonnet-20241022', sourceContent = '', sourceUrl } = inputData;
 
   // Use customPrompt if provided, otherwise construct the default prompt
   let promptMessage;
@@ -107,7 +107,13 @@ export const callOpenAI = async (inputData: any) => {
     const keywordsToExclude = Array.isArray(inputData.keywordsToExclude)
       ? inputData.keywordsToExclude
       : [inputData.keywordsToExclude];
-    promptMessage = `Write an article approximately ${inputData.wordCount} words long, incorporating these keywords: "${keywords.join(', ')}". Avoid: "${keywordsToExclude.join(', ')}". Use a ${inputData.tone} tone.`;
+    if (inputData.sourceContent && inputData.sourceContent.trim()) {
+      promptMessage = `Using the following source content as reference, write an article approximately ${inputData.wordCount} words long, incorporating these keywords: "${keywords.join(', ')}". Avoid: "${keywordsToExclude.join(', ')}". Use a ${inputData.tone} tone.\n\nSource Content:\n${inputData.sourceContent}`;
+    } else if (inputData.sourceUrl && inputData.sourceUrl.trim()) {
+      promptMessage = `Using the article at this URL as reference (${inputData.sourceUrl}), write an article approximately ${inputData.wordCount} words long, incorporating these keywords: "${keywords.join(', ')}". Avoid: "${keywordsToExclude.join(', ')}". Use a ${inputData.tone} tone.`;
+    } else {
+      promptMessage = `Write an article approximately ${inputData.wordCount} words long, incorporating these keywords: "${keywords.join(', ')}". Avoid: "${keywordsToExclude.join(', ')}". Use a ${inputData.tone} tone.`;
+    }
   }
 
   if (engine === 'gpt-4o-mini' || engine === 'gpt-4') {
@@ -147,6 +153,7 @@ export const callOpenAI = async (inputData: any) => {
           model: engine,
           max_tokens: maxAnthropicTokens,
           messages: messages,
+          tools: [{ type: 'web_search_20250305', name: 'web_search' }],
         },
         {
           headers: {

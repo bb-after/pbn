@@ -50,6 +50,7 @@ import Head from 'next/head';
 import ReactionPicker from 'components/ReactionPicker';
 import { createRoot } from 'react-dom/client';
 import { initVersionRecogito } from 'utils/recogito';
+import Joyride, { CallBackProps, STATUS } from 'react-joyride';
 
 /// <reference path="./recogito.d.ts" />
 
@@ -199,6 +200,9 @@ export default function ClientRequestDetailPage() {
   const recogitoInstance = useRef<any>(null);
   const versionContentRef = useRef<HTMLDivElement>(null);
   const versionRecogitoInstance = useRef<any>(null);
+
+  // State for showing the guide
+  const [showGuide, setShowGuide] = useState(false);
 
   // Get client token from localStorage
   useEffect(() => {
@@ -896,6 +900,42 @@ export default function ClientRequestDetailPage() {
     fetchRequestDetails,
   ]);
 
+  // Show the guide only for first-time users
+  useEffect(() => {
+    // Only show if not already completed
+    if (typeof window !== 'undefined' && !localStorage.getItem('reviewerGuideComplete')) {
+      setShowGuide(true);
+    }
+  }, []);
+
+  const handleJoyrideCallback = (data: CallBackProps) => {
+    const { status } = data;
+    if (status === 'finished' || status === 'skipped') {
+      setShowGuide(false);
+      localStorage.setItem('reviewerGuideComplete', 'true');
+    }
+  };
+
+  const steps = [
+    {
+      target: '[data-joyride="highlight"]',
+      content: 'Highlight text in the document to leave feedback directly on specific sections.',
+      disableBeacon: true,
+    },
+    {
+      target: '[data-joyride="comment-box"]',
+      content: 'You can also leave general feedback in the comments box below.',
+    },
+    {
+      target: '[data-joyride="approve-button"]',
+      content: 'If everything looks good, approve the content here.',
+    },
+    {
+      target: '[data-joyride="back-arrow"]',
+      content: 'Use this arrow to return to your list of content requests.',
+    },
+  ];
+
   if (isLoading || (loading && !request)) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
@@ -1107,6 +1147,7 @@ export default function ClientRequestDetailPage() {
                             },
                           }}
                           className="annotatable-container"
+                          data-joyride="highlight"
                         >
                           {/* The content-view div will be created dynamically in the effect */}
                         </Box>
@@ -1278,6 +1319,7 @@ export default function ClientRequestDetailPage() {
                                 startIcon={<CheckCircleIcon />}
                                 onClick={() => setApprovalDialogOpen(true)}
                                 size="large"
+                                data-joyride="approve-button"
                               >
                                 Approve
                               </Button>
@@ -1304,6 +1346,7 @@ export default function ClientRequestDetailPage() {
                           variant="outlined"
                           startIcon={<BackIcon />}
                           onClick={handleCloseVersionView}
+                          data-joyride="back-arrow"
                         >
                           Back to Current Version
                         </Button>
@@ -1468,6 +1511,25 @@ export default function ClientRequestDetailPage() {
           <Button onClick={() => setVersionHistoryOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Joyride component */}
+      <Joyride
+        steps={steps}
+        run={showGuide}
+        continuous
+        showSkipButton
+        showProgress
+        callback={handleJoyrideCallback}
+        styles={{
+          options: {
+            primaryColor: '#4CAF50', // Brand primary (green)
+            textColor: '#222',
+            backgroundColor: '#fff',
+            arrowColor: '#4CAF50',
+            zIndex: 10000,
+          },
+        }}
+      />
     </Box>
   );
 }
