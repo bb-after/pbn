@@ -23,6 +23,7 @@ export default function EditClientPage() {
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [formSaved, setFormSaved] = useState(false);
 
   useEffect(() => {
     if (id && isValidUser) {
@@ -43,7 +44,8 @@ export default function EditClientPage() {
   };
 
   const handleSave = () => {
-    router.push('/clients');
+    setFormSaved(true);
+    // No redirection - stay on the page
   };
 
   const handleCancel = () => {
@@ -84,11 +86,15 @@ export default function EditClientPage() {
           <Typography variant="h5" gutterBottom>
             Edit Client: {client.client_name}
           </Typography>
+
           <ClientForm client={client} onSave={handleSave} onCancel={handleCancel} />
 
-          {/* Client Contacts Management Section */}
-          {client && (
-            <ClientContactList clientId={client.client_id} clientName={client.client_name} />
+          {formSaved && (
+            <Box mt={3}>
+              <Typography variant="subtitle1" color="success.main" gutterBottom>
+                Client information saved successfully!
+              </Typography>
+            </Box>
           )}
         </Paper>
       </Container>

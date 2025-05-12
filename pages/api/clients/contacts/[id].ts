@@ -1,9 +1,15 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { Pool } from 'pg';
+import mysql from 'mysql2/promise';
 import { validateUserToken } from '../../../api/validate-user-token';
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+// Create a connection pool
+const pool = mysql.createPool({
+  host: process.env.DB_HOST_NAME,
+  user: process.env.DB_USER_NAME,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_DATABASE,
+  waitForConnections: true,
+  connectionLimit: 10,
 });
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -41,6 +47,7 @@ async function getContactById(contactId: number, res: NextApiResponse) {
         contact_id, 
         client_id, 
         name, 
+        job_title,
         email, 
         phone, 
         is_active, 
@@ -49,16 +56,16 @@ async function getContactById(contactId: number, res: NextApiResponse) {
       FROM 
         client_contacts
       WHERE 
-        contact_id = $1
+        contact_id = ?
     `;
 
-    const result = await pool.query(query, [contactId]);
+    const [rows] = await pool.query(query, [contactId]);
 
-    if (result.rowCount === 0) {
+    if ((rows as any[]).length === 0) {
       return res.status(404).json({ error: 'Contact not found' });
     }
 
-    return res.status(200).json(result.rows[0]);
+    return res.status(200).json((rows as any[])[0]);
   } catch (error) {
     console.error('Error fetching contact:', error);
     return res.status(500).json({ error: 'Failed to fetch contact' });
@@ -67,7 +74,7 @@ async function getContactById(contactId: number, res: NextApiResponse) {
 
 // Update a contact by ID
 async function updateContact(contactId: number, req: NextApiRequest, res: NextApiResponse) {
-  const { name, email, phone, is_active } = req.body;
+  const { name, job_title, email, phone, is_active } = req.body;
 
   if (!name || !email) {
     return res.status(400).json({ error: 'Name and email are required' });
@@ -75,36 +82,41 @@ async function updateContact(contactId: number, req: NextApiRequest, res: NextAp
 
   try {
     // First check if the contact exists
-    const checkQuery = 'SELECT contact_id FROM client_contacts WHERE contact_id = $1';
-    const checkResult = await pool.query(checkQuery, [contactId]);
+    const checkQuery = 'SELECT contact_id FROM client_contacts WHERE contact_id = ?';
+    const [checkResult] = await pool.query(checkQuery, [contactId]);
 
-    if (checkResult.rowCount === 0) {
+    if ((checkResult as any[]).length === 0) {
       return res.status(404).json({ error: 'Contact not found' });
     }
 
     const query = `
       UPDATE client_contacts
       SET 
-        name = $1, 
-        email = $2, 
-        phone = $3, 
-        is_active = $4,
+        name = ?, 
+        job_title = ?,
+        email = ?, 
+        phone = ?, 
+        is_active = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE 
-        contact_id = $5
-      RETURNING 
-        contact_id, client_id, name, email, phone, is_active, created_at, updated_at
+        contact_id = ?
     `;
 
-    const values = [name, email, phone || null, is_active, contactId];
-    const result = await pool.query(query, values);
+    const values = [name, job_title || null, email, phone || null, is_active ? 1 : 0, contactId];
+    await pool.query(query, values);
 
-    return res.status(200).json(result.rows[0]);
+    // Get the updated record
+    const [updatedRows] = await pool.query(
+      'SELECT contact_id, client_id, name, job_title, email, phone, is_active, created_at, updated_at FROM client_contacts WHERE contact_id = ?',
+      [contactId]
+    );
+
+    return res.status(200).json((updatedRows as any[])[0]);
   } catch (error) {
     console.error('Error updating contact:', error);
 
     // Check for duplicate email error
-    if (error instanceof Error && error.message.includes('duplicate key')) {
+    if (error instanceof Error && error.message.includes('Duplicate entry')) {
       return res.status(409).json({ error: 'A contact with this email already exists' });
     }
 
@@ -116,10 +128,10 @@ async function updateContact(contactId: number, req: NextApiRequest, res: NextAp
 async function deleteContact(contactId: number, res: NextApiResponse) {
   try {
     // First check if the contact exists
-    const checkQuery = 'SELECT contact_id FROM client_contacts WHERE contact_id = $1';
-    const checkResult = await pool.query(checkQuery, [contactId]);
+    const checkQuery = 'SELECT contact_id FROM client_contacts WHERE contact_id = ?';
+    const [checkResult] = await pool.query(checkQuery, [contactId]);
 
-    if (checkResult.rowCount === 0) {
+    if ((checkResult as any[]).length === 0) {
       return res.status(404).json({ error: 'Contact not found' });
     }
 
@@ -127,17 +139,17 @@ async function deleteContact(contactId: number, res: NextApiResponse) {
     const approvalCheckQuery = `
       SELECT COUNT(*) as count 
       FROM approval_request_contacts 
-      WHERE contact_id = $1
+      WHERE contact_id = ?
     `;
-    const approvalCheck = await pool.query(approvalCheckQuery, [contactId]);
+    const [approvalCheck] = await pool.query(approvalCheckQuery, [contactId]);
+    const hasApprovalRequests = (approvalCheck as any[])[0].count > 0;
 
-    if (approvalCheck.rows[0].count > 0) {
+    if (hasApprovalRequests) {
       // If contact has approval requests, just mark as inactive
       const updateQuery = `
         UPDATE client_contacts
-        SET is_active = false, updated_at = CURRENT_TIMESTAMP
-        WHERE contact_id = $1
-        RETURNING contact_id
+        SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+        WHERE contact_id = ?
       `;
       await pool.query(updateQuery, [contactId]);
 
@@ -148,7 +160,7 @@ async function deleteContact(contactId: number, res: NextApiResponse) {
     }
 
     // If no approval requests, proceed with deletion
-    const deleteQuery = 'DELETE FROM client_contacts WHERE contact_id = $1';
+    const deleteQuery = 'DELETE FROM client_contacts WHERE contact_id = ?';
     await pool.query(deleteQuery, [contactId]);
 
     return res.status(200).json({ message: 'Contact deleted successfully' });

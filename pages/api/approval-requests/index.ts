@@ -14,9 +14,30 @@ const pool = mysql.createPool({
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Validate user token for staff operations
-  // const userInfo = await validateUserToken(req);
-  // Replace test-user with actual user ID from validated token/session
-  const userInfo = { isValid: true, user_id: 'staff-user-id-from-token' }; // Example: Replace!
+  const token = (req.headers['x-auth-token'] as string) || (req.cookies && req.cookies.auth_token);
+
+  // Log token for debugging
+  console.log('Token received in approval-requests API:', token ? 'Present' : 'Missing');
+
+  const userInfo = await validateUserToken(req);
+
+  // Log validation result for debugging
+  console.log('User validation result:', { isValid: userInfo.isValid, userId: userInfo.user_id });
+
+  if (!userInfo.isValid) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (!userInfo.user_id) {
+    console.error('Valid token but missing user_id - this should not happen');
+    return res.status(500).json({ error: 'Authentication error: Valid token but missing user_id' });
+  }
+
+  // Ensure userInfo.user_id is a valid value, not the placeholder
+  if (userInfo.user_id === 'staff-user-id-from-token') {
+    console.error('Using placeholder user ID instead of actual user ID');
+    return res.status(500).json({ error: 'Server configuration error: Using placeholder user ID' });
+  }
 
   switch (req.method) {
     case 'GET':
@@ -24,9 +45,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return getApprovalRequests(req, res, userInfo);
     case 'POST':
       // Ensure only authenticated staff can create
-      if (!userInfo.isValid || !userInfo.user_id) {
-        return res.status(401).json({ error: 'Unauthorized: Staff login required' });
-      }
       return createApprovalRequest(req, res, userInfo);
     default:
       res.setHeader('Allow', ['GET', 'POST']); // Inform client of allowed methods
@@ -36,8 +54,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 // Get approval requests with filtering options
 async function getApprovalRequests(req: NextApiRequest, res: NextApiResponse, userInfo: any) {
-  const { client_id, status, contact_id } = req.query;
+  const { client_id, status, contact_id, user_id } = req.query;
   const isClientPortal = req.headers['x-client-portal'] === 'true';
+
+  // Debug request parameters
+  console.log('Request query params:', { client_id, status, contact_id, user_id });
+  console.log('Request query raw:', req.query);
 
   try {
     let query = `
@@ -94,6 +116,54 @@ async function getApprovalRequests(req: NextApiRequest, res: NextApiResponse, us
       `);
       queryParams.push(contact_id);
     }
+    // For staff users, check role first
+    else if (userInfo && userInfo.user_id) {
+      // Check if user is an admin
+      const isAdmin = userInfo.role === 'admin';
+      console.log('User role check:', { userId: userInfo.user_id, isAdmin });
+
+      // If user is not an admin, filter by their user ID
+      if (!isAdmin) {
+        // Regular staff only see their own requests
+        conditions.push(`ar.created_by_id = ?`);
+        queryParams.push(userInfo.user_id);
+      }
+      // If admin and specific user_id is provided, filter by that user
+      else if (user_id && user_id !== 'all') {
+        // Admin filtering by a specific user
+        console.log('Admin filtering by user ID:', user_id, 'type:', typeof user_id);
+
+        // Convert user_id to a number if it's a string to ensure type consistency
+        const numericUserId = parseInt(user_id as string, 10);
+        console.log('Converted user ID to number:', numericUserId);
+
+        // Use CAST to ensure consistent type comparison in SQL
+        conditions.push(`CAST(ar.created_by_id AS CHAR) = CAST(? AS CHAR)`);
+        queryParams.push(user_id);
+
+        // Also log the raw created_by_id value type in the database for debugging
+        console.log('Running test query to check created_by_id type in database');
+        const testQuery = `
+          SELECT created_by_id, typeof(created_by_id) as id_type 
+          FROM client_approval_requests 
+          WHERE created_by_id = ? 
+          LIMIT 1
+        `;
+
+        try {
+          const [testResult]: any = await pool.query(testQuery, [user_id]);
+          if (testResult && testResult.length > 0) {
+            console.log('Database created_by_id sample:', testResult[0]);
+          } else {
+            console.log('No records found in test query');
+          }
+        } catch (error) {
+          console.log('Error in test query (typeof might not be supported in MySQL):', error);
+        }
+      } else {
+        console.log('Admin viewing all requests - no user_id filter applied');
+      }
+    }
 
     // Exclude archived requests by default unless specified otherwise
     if (req.query.include_archived !== 'true') {
@@ -108,7 +178,139 @@ async function getApprovalRequests(req: NextApiRequest, res: NextApiResponse, us
     // Order by created_at
     query += ' ORDER BY ar.created_at DESC';
 
+    console.log('SQL Query:', query);
+    console.log('Query params:', queryParams);
+
     const [rows] = await pool.query(query, queryParams);
+    console.log('Query returned', (rows as any[]).length, 'results');
+
+    // If we're filtering by user_id and got zero results, try a direct query approach
+    if (user_id && user_id !== 'all' && (rows as any[]).length === 0) {
+      console.log('No results found using parameterized query. Trying direct query...');
+
+      // Try a direct query without parameterization to exactly match what was run in the DB directly
+      const directQuery = `
+        SELECT COUNT(*) as count
+        FROM client_approval_requests ar
+        JOIN clients c ON ar.client_id = c.client_id
+        WHERE ar.created_by_id = ${user_id} AND ar.is_archived = 0
+      `;
+
+      try {
+        const [directResult]: any = await pool.query(directQuery);
+        console.log('Direct query count result:', directResult[0].count);
+
+        if (directResult[0].count > 0) {
+          console.log('Direct query found results! This suggests a type conversion issue.');
+
+          // Try once more with the full query to get actual records
+          const fullDirectQuery = `
+            SELECT ar.request_id, ar.title, ar.created_by_id
+            FROM client_approval_requests ar
+            JOIN clients c ON ar.client_id = c.client_id
+            WHERE ar.created_by_id = ${user_id} AND ar.is_archived = 0
+            LIMIT 5
+          `;
+
+          const [fullResult]: any = await pool.query(fullDirectQuery);
+          if (fullResult && fullResult.length > 0) {
+            console.log('Direct query sample results:', fullResult);
+
+            // Override the empty results with these direct results
+            console.log('Overriding empty results with direct query results');
+
+            // Get the full records with versions
+            const directRequestIds = fullResult.map((row: any) => row.request_id);
+
+            // Build a new query to get all the data for these records
+            const recoveryQuery = `
+              SELECT 
+                ar.request_id, 
+                ar.client_id, 
+                c.client_name,
+                ar.title, 
+                ar.description, 
+                ar.file_url, 
+                ar.file_type, 
+                ar.inline_content,
+                ar.status, 
+                ar.created_by_id, 
+                ar.published_url,
+                ar.is_archived,
+                ar.created_at, 
+                ar.updated_at,
+                (
+                  SELECT COUNT(*) FROM approval_request_contacts arc 
+                  WHERE arc.request_id = ar.request_id AND arc.has_approved = 1
+                ) as approvals_count,
+                (
+                  SELECT COUNT(*) FROM approval_request_contacts arc 
+                  WHERE arc.request_id = ar.request_id
+                ) as total_contacts
+              FROM 
+                client_approval_requests ar
+              JOIN
+                clients c ON ar.client_id = c.client_id
+              WHERE ar.request_id IN (?)
+            `;
+
+            const [recoveryRows] = await pool.query(recoveryQuery, [directRequestIds]);
+
+            // Re-fetch versions if needed
+            const requestIds = (recoveryRows as any[]).map(row => row.request_id);
+            let versionsMap: { [key: number]: any[] } = {};
+
+            if (requestIds.length > 0) {
+              const versionsQuery = `
+                SELECT 
+                  version_id, 
+                  request_id, 
+                  version_number, 
+                  file_url,
+                  inline_content,
+                  comments, 
+                  created_at
+                FROM 
+                  approval_request_versions
+                WHERE 
+                  request_id IN (?)
+                ORDER BY 
+                  version_number DESC
+              `;
+
+              const [versionRows] = await pool.query(versionsQuery, [requestIds]);
+
+              // Group versions by request_id
+              (versionRows as any[]).forEach(version => {
+                if (!versionsMap[version.request_id]) {
+                  versionsMap[version.request_id] = [];
+                }
+                versionsMap[version.request_id].push(version);
+              });
+            }
+
+            // Add versions to each request
+            const recoveryResults = (recoveryRows as any[]).map(row => {
+              return {
+                ...row,
+                versions: versionsMap[row.request_id] || [],
+              };
+            });
+
+            console.log('Recovery successful! Found', recoveryResults.length, 'results');
+            return res.status(200).json(recoveryResults);
+          }
+        }
+      } catch (error) {
+        console.error('Error with direct query approach:', error);
+      }
+    }
+
+    // If we're filtering by user_id, verify the results
+    if (user_id && user_id !== 'all' && (rows as any[]).length > 0) {
+      const uniqueUserIds = new Set((rows as any[]).map(row => row.created_by_id));
+      console.log('Unique user IDs in results:', Array.from(uniqueUserIds));
+    }
 
     // Fetch versions for each request
     const requestIds = (rows as any[]).map(row => row.request_id);
@@ -163,6 +365,8 @@ async function createApprovalRequest(req: NextApiRequest, res: NextApiResponse, 
   // Destructure inlineContent instead of fileUrl/fileType
   const { clientId, title, description, inlineContent, contactIds } = req.body;
 
+  console.log('Creating approval request with user_id:', userInfo.user_id);
+
   // Validate required fields - check inlineContent instead of fileUrl
   if (!clientId || !title || !inlineContent || !contactIds || !contactIds.length) {
     // Updated error message
@@ -200,6 +404,14 @@ async function createApprovalRequest(req: NextApiRequest, res: NextApiResponse, 
       inlineContent, // Use inlineContent here
       userInfo.user_id, // Use the actual user ID from validation/session
     ];
+
+    console.log('Inserting request with values:', {
+      clientId,
+      title,
+      hasDescription: !!description,
+      inlineContentLength: inlineContent ? inlineContent.length : 0,
+      userId: userInfo.user_id,
+    });
 
     const [requestResult]: any = await connection.query(createRequestQuery, requestValues);
     const requestId = requestResult.insertId;

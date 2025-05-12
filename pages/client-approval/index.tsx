@@ -60,7 +60,11 @@ interface ApprovalRequest {
 
 export default function ClientApprovalPage() {
   const router = useRouter();
-  const { isValidUser, isLoading } = useValidateUserToken();
+  const { isValidUser, isLoading, user } = useValidateUserToken();
+  const { admin: isAdminMode } = router.query;
+
+  // Check if user is admin
+  const isAdmin = user?.role === 'admin';
 
   // Get error param from URL if present
   const { error: errorParam } = router.query;
@@ -76,10 +80,16 @@ export default function ClientApprovalPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [clientFilter, setClientFilter] = useState<number | string>('all');
   const [clients, setClients] = useState<{ client_id: number; client_name: string }[]>([]);
+  const [userFilter, setUserFilter] = useState<string>('all');
+  const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
 
   // State for toast notification
   const [toastOpen, setToastOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+
+  // Page title reflecting the mode
+  const pageTitle =
+    isAdminMode && isAdmin ? 'Admin: All Approval Requests' : 'Client Approval Requests';
 
   // Set error message and toast based on URL parameter
   useEffect(() => {
@@ -91,13 +101,30 @@ export default function ClientApprovalPage() {
     }
   }, [errorParam]);
 
+  // Redirect non-admin users trying to access admin mode
+  useEffect(() => {
+    if (isAdminMode && !isAdmin && !isLoading && isValidUser) {
+      router.push('/client-approval');
+    }
+  }, [isAdminMode, isAdmin, isLoading, isValidUser, router]);
+
   // Load approval requests on mount
   useEffect(() => {
     if (isValidUser) {
       fetchApprovalRequests();
       fetchClients();
+      if (isAdmin) {
+        fetchUsers();
+      }
     }
-  }, [isValidUser]);
+  }, [isValidUser, isAdmin]);
+
+  // Only refetch when tab changes
+  useEffect(() => {
+    if (isValidUser) {
+      fetchApprovalRequests();
+    }
+  }, [tabValue]);
 
   // Fetch all approval requests
   const fetchApprovalRequests = async () => {
@@ -105,8 +132,68 @@ export default function ClientApprovalPage() {
     setError(null);
 
     try {
-      const response = await axios.get('/api/approval-requests');
-      setRequests(response.data);
+      // Get token from localStorage
+      const token = typeof window !== 'undefined' ? localStorage.getItem('usertoken') : null;
+
+      // Build query parameters
+      let url = '/api/approval-requests';
+      const params = new URLSearchParams();
+
+      // Only add admin=true param if user is admin and in admin mode
+      if (isAdmin && isAdminMode) {
+        params.append('admin', 'true');
+      }
+
+      // Add user_id filter if an admin has selected a specific user
+      if (isAdmin && userFilter !== 'all') {
+        params.append('user_id', userFilter);
+      }
+
+      // Add client filter if selected
+      if (clientFilter !== 'all') {
+        params.append('client_id', clientFilter.toString());
+      }
+
+      // Add status filter if selected
+      if (statusFilter !== 'all') {
+        params.append('status', statusFilter);
+      }
+
+      if (params.toString()) {
+        url += `?${params.toString()}`;
+      }
+
+      console.log('Fetching approval requests with URL:', url);
+      console.log('Current filter state:', { userFilter, clientFilter, statusFilter });
+
+      const response = await axios.get(url, {
+        headers: {
+          'x-auth-token': token,
+        },
+      });
+
+      console.log('API Response status:', response.status);
+      console.log('Received approval requests:', response.data.length, 'items');
+
+      // If we have data, log the first item to see its structure
+      if (response.data && response.data.length > 0) {
+        console.log('First request item:', {
+          id: response.data[0].request_id,
+          title: response.data[0].title,
+          created_by_id: response.data[0].created_by_id,
+          status: response.data[0].status,
+        });
+      } else {
+        console.log('No requests returned from API');
+      }
+
+      // Clear the requests array first to avoid any stale data
+      setRequests([]);
+
+      // Then set the new data
+      setTimeout(() => {
+        setRequests(response.data);
+      }, 0);
     } catch (error) {
       console.error('Error fetching approval requests:', error);
       setError('Failed to load approval requests');
@@ -118,10 +205,36 @@ export default function ClientApprovalPage() {
   // Fetch all clients for filtering
   const fetchClients = async () => {
     try {
-      const response = await axios.get('/api/clients');
+      // Get token from localStorage
+      const token = typeof window !== 'undefined' ? localStorage.getItem('usertoken') : null;
+
+      const response = await axios.get('/api/clients', {
+        headers: {
+          'x-auth-token': token,
+        },
+      });
       setClients(response.data);
     } catch (error) {
       console.error('Error fetching clients:', error);
+    }
+  };
+
+  // Fetch all users for admin filtering
+  const fetchUsers = async () => {
+    if (!isAdmin) return;
+
+    try {
+      // Get token from localStorage
+      const token = typeof window !== 'undefined' ? localStorage.getItem('usertoken') : null;
+
+      const response = await axios.get('/api/users', {
+        headers: {
+          'x-auth-token': token,
+        },
+      });
+      setUsers(response.data);
+    } catch (error) {
+      console.error('Error fetching users:', error);
     }
   };
 
@@ -142,6 +255,9 @@ export default function ClientApprovalPage() {
 
   // Calculate filtered requests based on current filters
   const getFilteredRequests = () => {
+    // Only apply client-side filtering for search term and archive status
+    // Let the server handle user_id, client_id, and status filtering
+
     return requests.filter(request => {
       // Filter by search term (title or client name)
       const matchesSearch =
@@ -149,16 +265,10 @@ export default function ClientApprovalPage() {
         request.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         request.client_name.toLowerCase().includes(searchTerm.toLowerCase());
 
-      // Filter by status
-      const matchesStatus = statusFilter === 'all' || request.status === statusFilter;
-
-      // Filter by client
-      const matchesClient = clientFilter === 'all' || request.client_id === clientFilter;
-
       // Filter by archived status based on tab
       const matchesArchived = tabValue === 0 ? !request.is_archived : request.is_archived;
 
-      return matchesSearch && matchesStatus && matchesClient && matchesArchived;
+      return matchesSearch && matchesArchived;
     });
   };
 
@@ -198,6 +308,275 @@ export default function ClientApprovalPage() {
     }
   };
 
+  // Add a specific handler for when the user filter changes
+  const handleUserFilterChange = (value: string) => {
+    console.log('User filter changed to:', value);
+
+    // Reset other filters for clarity when switching users
+    setSearchTerm('');
+
+    // Set the state and immediately call fetch with the new value
+    setUserFilter(value);
+
+    // Immediately fetch the updated data with the new value - bypass state
+    fetchApprovalRequestsWithFilter(value);
+  };
+
+  // New function that ensures we use the correct filter value
+  const fetchApprovalRequestsWithFilter = (currentUserFilter: string) => {
+    setLoading(true);
+    setError(null);
+
+    // Use the passed value instead of relying on state
+    console.log('Fetching approval requests with explicit user filter:', currentUserFilter);
+
+    try {
+      // Get token from localStorage
+      const token = typeof window !== 'undefined' ? localStorage.getItem('usertoken') : null;
+
+      // Build query parameters
+      let url = '/api/approval-requests';
+      const params = new URLSearchParams();
+
+      // Only add admin=true param if user is admin and in admin mode
+      if (isAdmin && isAdminMode) {
+        params.append('admin', 'true');
+      }
+
+      // Add user_id filter if an admin has selected a specific user
+      // Use the passed value, not the state
+      if (isAdmin && currentUserFilter !== 'all') {
+        params.append('user_id', currentUserFilter);
+      }
+
+      // Add client filter if selected
+      if (clientFilter !== 'all') {
+        params.append('client_id', clientFilter.toString());
+      }
+
+      // Add status filter if selected
+      if (statusFilter !== 'all') {
+        params.append('status', statusFilter);
+      }
+
+      if (params.toString()) {
+        url += `?${params.toString()}`;
+      }
+
+      console.log('Fetching approval requests with URL:', url);
+      console.log('Current filter state:', {
+        userFilter: currentUserFilter,
+        clientFilter,
+        statusFilter,
+      });
+
+      axios
+        .get(url, {
+          headers: {
+            'x-auth-token': token,
+          },
+        })
+        .then(response => {
+          console.log('API Response status:', response.status);
+          console.log('Received approval requests:', response.data.length, 'items');
+
+          // If we have data, log the first item to see its structure
+          if (response.data && response.data.length > 0) {
+            console.log('First request item:', {
+              id: response.data[0].request_id,
+              title: response.data[0].title,
+              created_by_id: response.data[0].created_by_id,
+              status: response.data[0].status,
+            });
+          } else {
+            console.log('No requests returned from API');
+          }
+
+          // Update state with the response data
+          setRequests(response.data);
+          setLoading(false);
+        })
+        .catch(error => {
+          console.error('Error fetching approval requests:', error);
+          setError('Failed to load approval requests');
+          setLoading(false);
+        });
+    } catch (error) {
+      console.error('Error preparing approval requests fetch:', error);
+      setError('Failed to prepare approval requests fetch');
+      setLoading(false);
+    }
+  };
+
+  // Add a handler for when the client filter changes
+  const handleClientFilterChange = (value: string | number) => {
+    console.log('Client filter changed to:', value);
+
+    // Reset search term for clarity
+    setSearchTerm('');
+
+    // Set the state
+    setClientFilter(value);
+
+    // Immediately fetch the updated data with the new value - bypass state
+    fetchApprovalRequestsWithClient(value.toString());
+  };
+
+  // Add a handler for when the status filter changes
+  const handleStatusFilterChange = (value: string) => {
+    console.log('Status filter changed to:', value);
+
+    // Reset search term for clarity
+    setSearchTerm('');
+
+    // Set the state
+    setStatusFilter(value);
+
+    // Immediately fetch the updated data with the new value - bypass state
+    fetchApprovalRequestsWithStatus(value);
+  };
+
+  // Function to fetch with client filter explicit value
+  const fetchApprovalRequestsWithClient = (currentClientFilter: string | number) => {
+    setLoading(true);
+    setError(null);
+
+    const clientFilterStr = currentClientFilter.toString();
+    console.log('Fetching approval requests with explicit client filter:', clientFilterStr);
+
+    try {
+      // Get token from localStorage
+      const token = typeof window !== 'undefined' ? localStorage.getItem('usertoken') : null;
+
+      // Build query parameters
+      let url = '/api/approval-requests';
+      const params = new URLSearchParams();
+
+      // Only add admin=true param if user is admin and in admin mode
+      if (isAdmin && isAdminMode) {
+        params.append('admin', 'true');
+      }
+
+      // Add user_id filter if an admin has selected a specific user
+      if (isAdmin && userFilter !== 'all') {
+        params.append('user_id', userFilter);
+      }
+
+      // Add client filter if selected - use passed value
+      if (clientFilterStr !== 'all') {
+        params.append('client_id', clientFilterStr);
+      }
+
+      // Add status filter if selected
+      if (statusFilter !== 'all') {
+        params.append('status', statusFilter);
+      }
+
+      if (params.toString()) {
+        url += `?${params.toString()}`;
+      }
+
+      console.log('Fetching approval requests with URL:', url);
+      console.log('Current filter state:', {
+        userFilter,
+        clientFilter: clientFilterStr,
+        statusFilter,
+      });
+
+      axios
+        .get(url, {
+          headers: {
+            'x-auth-token': token,
+          },
+        })
+        .then(response => {
+          console.log('API Response status:', response.status);
+          console.log('Received approval requests:', response.data.length, 'items');
+          setRequests(response.data);
+          setLoading(false);
+        })
+        .catch(error => {
+          console.error('Error fetching approval requests:', error);
+          setError('Failed to load approval requests');
+          setLoading(false);
+        });
+    } catch (error) {
+      console.error('Error preparing approval requests fetch:', error);
+      setError('Failed to prepare approval requests fetch');
+      setLoading(false);
+    }
+  };
+
+  // Function to fetch with status filter explicit value
+  const fetchApprovalRequestsWithStatus = (currentStatusFilter: string) => {
+    setLoading(true);
+    setError(null);
+
+    console.log('Fetching approval requests with explicit status filter:', currentStatusFilter);
+
+    try {
+      // Get token from localStorage
+      const token = typeof window !== 'undefined' ? localStorage.getItem('usertoken') : null;
+
+      // Build query parameters
+      let url = '/api/approval-requests';
+      const params = new URLSearchParams();
+
+      // Only add admin=true param if user is admin and in admin mode
+      if (isAdmin && isAdminMode) {
+        params.append('admin', 'true');
+      }
+
+      // Add user_id filter if an admin has selected a specific user
+      if (isAdmin && userFilter !== 'all') {
+        params.append('user_id', userFilter);
+      }
+
+      // Add client filter if selected
+      if (clientFilter !== 'all') {
+        params.append('client_id', clientFilter.toString());
+      }
+
+      // Add status filter if selected - use passed value
+      if (currentStatusFilter !== 'all') {
+        params.append('status', currentStatusFilter);
+      }
+
+      if (params.toString()) {
+        url += `?${params.toString()}`;
+      }
+
+      console.log('Fetching approval requests with URL:', url);
+      console.log('Current filter state:', {
+        userFilter,
+        clientFilter,
+        statusFilter: currentStatusFilter,
+      });
+
+      axios
+        .get(url, {
+          headers: {
+            'x-auth-token': token,
+          },
+        })
+        .then(response => {
+          console.log('API Response status:', response.status);
+          console.log('Received approval requests:', response.data.length, 'items');
+          setRequests(response.data);
+          setLoading(false);
+        })
+        .catch(error => {
+          console.error('Error fetching approval requests:', error);
+          setError('Failed to load approval requests');
+          setLoading(false);
+        });
+    } catch (error) {
+      console.error('Error preparing approval requests fetch:', error);
+      setError('Failed to prepare approval requests fetch');
+      setLoading(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
@@ -222,7 +601,7 @@ export default function ClientApprovalPage() {
           <Grid container justifyContent="space-between" alignItems="center" spacing={2}>
             <Grid item>
               <Typography variant="h4" gutterBottom>
-                Client Approval Requests
+                {pageTitle}
               </Typography>
             </Grid>
             <Grid item>
@@ -264,7 +643,13 @@ export default function ClientApprovalPage() {
                   fullWidth
                   label="Status"
                   value={statusFilter}
-                  onChange={e => setStatusFilter(e.target.value)}
+                  onChange={e => {
+                    // Get the value directly from the event
+                    const value = e.target.value;
+                    console.log('Status filter changed directly from event:', value);
+                    // Call handler with the value from the event
+                    handleStatusFilterChange(value);
+                  }}
                 >
                   <MenuItem value="all">All Statuses</MenuItem>
                   <MenuItem value="pending">Pending</MenuItem>
@@ -278,12 +663,40 @@ export default function ClientApprovalPage() {
                   fullWidth
                   label="Client"
                   value={clientFilter}
-                  onChange={e => setClientFilter(Number(e.target.value) || e.target.value)}
+                  onChange={e => {
+                    // Get the value directly from the event
+                    const value = Number(e.target.value) || e.target.value;
+                    console.log('Client filter changed directly from event:', value);
+                    // Call handler with the value from the event
+                    handleClientFilterChange(value);
+                  }}
                 >
                   <MenuItem value="all">All Clients</MenuItem>
                   {clients.map(client => (
                     <MenuItem key={client.client_id} value={client.client_id}>
                       {client.client_name}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <TextField
+                  select
+                  fullWidth
+                  label="User"
+                  value={userFilter}
+                  onChange={e => {
+                    // Get the value directly from the event
+                    const value = e.target.value;
+                    console.log('User filter changed directly from event:', value);
+                    // Call handler with the value from the event
+                    handleUserFilterChange(value);
+                  }}
+                >
+                  <MenuItem value="all">All Users</MenuItem>
+                  {users.map(user => (
+                    <MenuItem key={user.id} value={user.id}>
+                      {user.name}
                     </MenuItem>
                   ))}
                 </TextField>
@@ -298,6 +711,32 @@ export default function ClientApprovalPage() {
                   Refresh
                 </Button>
               </Grid>
+              {/* Debug button - only visible for admins */}
+              {isAdmin && (
+                <Grid item xs={12}>
+                  <Button
+                    variant="text"
+                    color="secondary"
+                    onClick={() => {
+                      console.log('Current state:', {
+                        requests: requests.length,
+                        filteredRequests: filteredRequests.length,
+                        userFilter,
+                        clientFilter,
+                        statusFilter,
+                        isAdmin,
+                        isAdminMode,
+                      });
+
+                      if (requests.length > 0) {
+                        console.log('Sample request created_by_id:', requests[0].created_by_id);
+                      }
+                    }}
+                  >
+                    Debug Info
+                  </Button>
+                </Grid>
+              )}
             </Grid>
           </Paper>
 
@@ -312,9 +751,16 @@ export default function ClientApprovalPage() {
             </Alert>
           ) : filteredRequests.length === 0 ? (
             <Alert severity="info">
-              {tabValue === 0
-                ? 'No active approval requests found. Create a new request to get started.'
-                : 'No archived approval requests found.'}
+              {userFilter !== 'all' ? (
+                <span>
+                  No approval requests found for the selected user. The user may not have created
+                  any requests or they might all be {tabValue === 0 ? 'archived' : 'active'}.
+                </span>
+              ) : tabValue === 0 ? (
+                'No active approval requests found. Create a new request to get started.'
+              ) : (
+                'No archived approval requests found.'
+              )}
             </Alert>
           ) : (
             <Grid container spacing={3}>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   TextField,
@@ -20,6 +20,7 @@ interface ClientContact {
   contact_id?: number;
   client_id: number;
   name: string;
+  job_title?: string;
   email: string;
   phone?: string;
   is_active: boolean;
@@ -43,19 +44,32 @@ export default function ClientContactForm({
   onSave,
 }: ClientContactFormProps) {
   const isEditMode = Boolean(contact?.contact_id);
+  const initialFormData = contact || {
+    client_id: clientId,
+    name: '',
+    email: '',
+    phone: '',
+    is_active: true,
+  };
 
-  const [formData, setFormData] = useState<Partial<ClientContact>>(
-    contact || {
-      client_id: clientId,
-      name: '',
-      email: '',
-      phone: '',
-      is_active: true,
-    }
-  );
-
+  const [formData, setFormData] = useState<Partial<ClientContact>>(initialFormData);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Reset form when dialog opens with a new contact
+  useEffect(() => {
+    if (open) {
+      setFormData(
+        contact || {
+          client_id: clientId,
+          name: '',
+          email: '',
+          phone: '',
+          is_active: true,
+        }
+      );
+    }
+  }, [open, contact, clientId]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, checked } = e.target;
@@ -73,6 +87,14 @@ export default function ClientContactForm({
     setError(null);
 
     try {
+      // Get token from localStorage
+      const token = typeof window !== 'undefined' ? localStorage.getItem('usertoken') : null;
+
+      // Prepare headers with auth token
+      const headers = {
+        'x-auth-token': token,
+      };
+
       const payload = {
         ...formData,
         client_id: clientId,
@@ -80,15 +102,24 @@ export default function ClientContactForm({
 
       if (isEditMode && contact?.contact_id) {
         // Update existing contact
-        await axios.put(`/api/clients/contacts/${contact.contact_id}`, payload);
+        await axios.put(`/api/clients/contacts/${contact.contact_id}`, payload, { headers });
       } else {
         // Create new contact
-        await axios.post('/api/clients/contacts', payload);
+        await axios.post('/api/clients/contacts', payload, { headers });
+
+        // Reset form data for next time the form is opened
+        setFormData({
+          client_id: clientId,
+          name: '',
+          email: '',
+          phone: '',
+          is_active: true,
+        });
       }
 
       setLoading(false);
       onSave();
-      onClose();
+      onClose(); // Always close the modal after successful submission
     } catch (error: any) {
       console.error('Error saving contact:', error);
       setError(error.response?.data?.error || 'Failed to save contact');
@@ -123,6 +154,16 @@ export default function ClientContactForm({
 
             <Grid item xs={12}>
               <TextField
+                label="Job Title (optional)"
+                name="job_title"
+                value={formData.job_title || ''}
+                onChange={handleChange}
+                fullWidth
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <TextField
                 label="Email"
                 name="email"
                 type="email"
@@ -135,7 +176,7 @@ export default function ClientContactForm({
 
             <Grid item xs={12}>
               <TextField
-                label="Phone Number"
+                label="Phone Number (optional)"
                 name="phone"
                 value={formData.phone || ''}
                 onChange={handleChange}
