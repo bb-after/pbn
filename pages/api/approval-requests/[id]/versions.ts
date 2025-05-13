@@ -56,6 +56,8 @@ async function getVersions(requestId: number, res: NextApiResponse) {
         version_number, 
         file_url, 
         inline_content,
+        content_type,
+        google_doc_id,
         comments, 
         created_by_id, 
         created_at
@@ -83,7 +85,7 @@ async function addVersion(
   res: NextApiResponse,
   userInfo: any
 ) {
-  const { fileUrl, inlineContent, comments } = req.body;
+  const { fileUrl, inlineContent, comments, contentType, googleDocId } = req.body;
 
   // Either fileUrl or inlineContent must be provided (supporting both for backward compatibility)
   if (!fileUrl && !inlineContent) {
@@ -98,13 +100,16 @@ async function addVersion(
     await connection.beginTransaction();
 
     // 1. Check if the request exists
-    const checkQuery = 'SELECT request_id FROM client_approval_requests WHERE request_id = ?';
+    const checkQuery =
+      'SELECT request_id, content_type, google_doc_id FROM client_approval_requests WHERE request_id = ?';
     const [checkResult] = await connection.query(checkQuery, [requestId]);
 
     if ((checkResult as any[]).length === 0) {
       await connection.rollback();
       return res.status(404).json({ error: 'Approval request not found' });
     }
+
+    const existingRequest = (checkResult as any[])[0];
 
     // 2. Get the current highest version number
     const versionQuery = `
@@ -117,12 +122,17 @@ async function addVersion(
     const currentMaxVersion = (versionResult as any[])[0].max_version || 0;
     const newVersionNumber = currentMaxVersion + 1;
 
+    // Determine the content type for the new version
+    // If explicitly provided, use that. Otherwise, inherit from the existing request
+    const versionContentType = contentType || existingRequest.content_type || 'html';
+    const versionGoogleDocId = googleDocId || existingRequest.google_doc_id || null;
+
     // 3. Add the new version
     const insertQuery = `
       INSERT INTO approval_request_versions 
-        (request_id, version_number, file_url, inline_content, comments, created_by_id) 
+        (request_id, version_number, file_url, inline_content, content_type, google_doc_id, comments, created_by_id) 
       VALUES 
-        (?, ?, ?, ?, ?, ?)
+        (?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const insertValues = [
@@ -130,6 +140,8 @@ async function addVersion(
       newVersionNumber,
       fileUrl || null, // Use fileUrl if provided, otherwise null
       inlineContent || null, // Store inline content in versions table
+      versionContentType,
+      versionGoogleDocId,
       comments || null,
       userInfo.id || null,
     ];
@@ -143,13 +155,21 @@ async function addVersion(
       SET 
         file_url = ?,
         inline_content = ?,
+        content_type = ?,
+        google_doc_id = ?,
         status = 'pending',
         updated_at = CURRENT_TIMESTAMP
       WHERE 
         request_id = ?
     `;
 
-    await connection.query(updateQuery, [fileUrl || null, inlineContent || null, requestId]);
+    await connection.query(updateQuery, [
+      fileUrl || null,
+      inlineContent || null,
+      versionContentType,
+      versionGoogleDocId,
+      requestId,
+    ]);
 
     // 5. Reset approval status for all contacts (without resetting view status which is now in a separate table)
     const resetApprovalsQuery = `
@@ -171,6 +191,8 @@ async function addVersion(
         version_number, 
         file_url, 
         inline_content,
+        content_type,
+        google_doc_id,
         comments, 
         created_by_id, 
         created_at

@@ -14,7 +14,8 @@ import { useRouter } from 'next/router';
 import axios from 'axios';
 import NextLink from 'next/link';
 
-export default function VerifyLoginPage() {
+// Define the component as a function
+const VerifyLoginPage = () => {
   const router = useRouter();
   const { token } = router.query;
 
@@ -31,13 +32,24 @@ export default function VerifyLoginPage() {
     setError(null);
     setErrorType(null);
 
-    let response;
     try {
       console.log('Verifying token:', token);
       // Use the debug endpoint that works with both GET and POST methods
       // and provides more detailed error information
-      response = await axios.get(`/api/client-auth/verify-debug?token=${token}`);
+      const response = await axios.get(`/api/client-auth/verify-debug?token=${token}`);
       console.log('Verification successful:', response.data);
+
+      setVerified(true);
+
+      // Check if verification response includes a requestId to redirect to
+      const requestId = router.query.requestId;
+      if (requestId) {
+        // Redirect to the specific approval request
+        router.push(`/client-portal/requests/${requestId}`);
+      } else {
+        // Redirect to the client portal home
+        router.push('/client-portal');
+      }
     } catch (err: any) {
       // Defensive: always set a string error
       let errorMessage = 'Failed to verify login token';
@@ -51,6 +63,7 @@ export default function VerifyLoginPage() {
         errorMessage = err.message;
       }
       setError(errorMessage);
+
       // Defensive: always set an errorType
       if (errorMessage.toLowerCase().includes('expired')) {
         setErrorType('expired');
@@ -63,22 +76,9 @@ export default function VerifyLoginPage() {
       } else {
         setErrorType('general');
       }
+    } finally {
       setVerifying(false);
-      return;
     }
-
-    setVerified(true);
-
-    // Check if verification response includes a requestId to redirect to
-    const requestId = new URLSearchParams(window.location.search).get('requestId');
-    if (requestId) {
-      // Redirect to the specific approval request
-      router.push(`/client-portal/requests/${requestId}`);
-    } else {
-      // Redirect to the client portal home
-      router.push('/client-portal');
-    }
-    setVerifying(false);
   }, [token, router]);
 
   useEffect(() => {
@@ -101,9 +101,23 @@ export default function VerifyLoginPage() {
     try {
       await axios.post('/api/client-auth/request-login', { email });
       setNewTokenRequested(true);
+      setError(null); // Clear any previous errors
+      console.log('New login token requested for:', email);
     } catch (error: any) {
       console.error('Error requesting new token:', error);
-      setError('Failed to request a new login link. Please try again.');
+      let errorMessage = 'Failed to request a new login link. Please try again.';
+
+      // Extract more detailed error message if available
+      if (error.response && error.response.data) {
+        if (typeof error.response.data === 'string') {
+          errorMessage = error.response.data;
+        } else if (typeof error.response.data.error === 'string') {
+          errorMessage = error.response.data.error;
+        }
+      }
+
+      setError(errorMessage);
+      setNewTokenRequested(false);
     } finally {
       setRequestingNewToken(false);
     }
@@ -257,4 +271,7 @@ export default function VerifyLoginPage() {
       </Box>
     </Container>
   );
-}
+};
+
+// Export the component as default
+export default VerifyLoginPage;

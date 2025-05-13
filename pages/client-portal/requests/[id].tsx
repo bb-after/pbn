@@ -123,6 +123,8 @@ interface ApprovalRequest {
   description: string | null;
   file_url: string | null;
   file_type: string | null;
+  content_type?: string;
+  google_doc_id?: string | null;
   status: 'pending' | 'approved' | 'rejected';
   created_by_id: string | null;
   published_url: string | null;
@@ -140,7 +142,10 @@ interface ApprovalRequest {
   versions: Array<{
     version_id: number;
     version_number: number;
-    file_url: string;
+    file_url: string | null;
+    inline_content?: string | null;
+    content_type?: string;
+    google_doc_id?: string | null;
     comments: string | null;
     created_by_id: string | null;
     created_at: string;
@@ -156,6 +161,31 @@ interface ApprovalRequest {
   inline_content?: string | null;
   section_comments?: SectionComment[];
 }
+
+// Function to process Google Doc URLs for embedding
+const getEmbeddableGoogleDocUrl = (url: string): string => {
+  try {
+    // Check if it's a Google Doc URL
+    if (!url.includes('docs.google.com')) return url;
+
+    console.log('Processing Google Doc URL:', url);
+
+    // Parse the URL
+    const urlObj = new URL(url);
+
+    // Add embedding parameters
+    urlObj.searchParams.set('embedded', 'true');
+    urlObj.searchParams.set('rm', 'minimal');
+    urlObj.searchParams.set('chrome', 'false');
+    urlObj.searchParams.set('headers', 'false');
+
+    console.log('Processed URL:', urlObj.toString());
+    return urlObj.toString();
+  } catch (error) {
+    console.error('Error processing Google Doc URL:', error);
+    return url; // Return original URL on error
+  }
+};
 
 export default function ClientRequestDetailPage() {
   const router = useRouter();
@@ -478,11 +508,35 @@ export default function ClientRequestDetailPage() {
       setViewingVersion(true);
       setCurrentVersionId(version.version_id);
 
+      // Check if this content is a Google Doc by checking both content_type and URL
+      const isGoogleDoc = (content?: string | null, contentType?: string | null): boolean => {
+        return (
+          contentType === 'google_doc' ||
+          (!!content && content.includes('docs.google.com') && !content.startsWith('<'))
+        );
+      };
+
+      // Save version content type for rendering
+      const versionContentType =
+        version.content_type ||
+        (version.version_number === request?.versions[0]?.version_number
+          ? request?.content_type
+          : 'html');
+
       // Set content based on version
-      if (version.version_number === request?.versions[0]?.version_number) {
-        setVersionContent(request?.inline_content || '');
-      } else {
-        setVersionContent(version.inline_content || '');
+      const content =
+        version.version_number === request?.versions[0]?.version_number
+          ? request?.inline_content || ''
+          : version.inline_content || '';
+
+      setVersionContent(content);
+
+      // If this is a Google Doc, we don't need to initialize Recogito
+      if (isGoogleDoc(content, versionContentType)) {
+        console.log('Version View: Detected Google Doc, skipping Recogito initialization');
+        setAnnotations([]);
+        setVersionLoading(false);
+        return;
       }
 
       // Filter section comments for this version
@@ -660,11 +714,20 @@ export default function ClientRequestDetailPage() {
 
   // Add this in the React.useEffect for Recogito initialization
   useEffect(() => {
+    // Function to determine if content is a Google Doc
+    const isGoogleDoc = (content?: string | null, contentType?: string | null): boolean => {
+      return (
+        contentType === 'google_doc' ||
+        (!!content && content.includes('docs.google.com') && !content.startsWith('<'))
+      );
+    };
+
     if (
       request?.inline_content &&
       contentRef.current &&
       !recogitoInstance.current &&
-      !viewingVersion
+      !viewingVersion &&
+      !isGoogleDoc(request.inline_content, request.content_type) // Skip for Google Docs
     ) {
       let isMounted = true;
 
@@ -710,19 +773,30 @@ export default function ClientRequestDetailPage() {
 
           if (!isMounted || !contentRef.current) return;
 
+          // For Google Docs, do nothing - they're handled directly in the JSX
+          if (isGoogleDoc(request.inline_content, request.content_type)) {
+            console.log('Client View: Google Doc is being rendered directly in JSX');
+            return;
+          }
+
+          // For regular HTML content, proceed with Recogito initialization
           // Create a new div with a unique ID if one doesn't exist
           let contentDiv = contentRef.current.querySelector('#content-view');
           if (!contentDiv) {
             console.log('Creating content-view div');
             contentDiv = document.createElement('div');
             contentDiv.id = 'content-view';
+          }
 
-            // Create the HTML content
-            const contentWithTitle = DOMPurify.sanitize(
-              `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request.title}</h1>${request.inline_content}`
-            );
+          // Create the HTML content
+          const contentWithTitle = DOMPurify.sanitize(
+            `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request.title}</h1>${request.inline_content}`
+          );
 
-            contentDiv.innerHTML = contentWithTitle;
+          contentDiv.innerHTML = contentWithTitle;
+
+          // Make sure the content-view div is added to the DOM if not already there
+          if (!contentRef.current.querySelector('#content-view')) {
             contentRef.current.appendChild(contentDiv);
           }
 
@@ -1118,40 +1192,76 @@ export default function ClientRequestDetailPage() {
               {!viewingVersion ? (
                 <Grid container spacing={3}>
                   {/* Left column: document and comments */}
-                  <Grid item xs={12} md={8}>
+                  <Grid item xs={12} md={9}>
                     {/* Document card - Updated Rendering Logic */}
                     <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
                       <Typography variant="h6" gutterBottom>
                         {request.status === 'pending' ? 'Content for Review' : 'Reviewed Content'}
                       </Typography>
 
-                      {/* Content viewing section */}
-                      {!viewingVersion && request?.inline_content && (
-                        <Box
-                          mt={2}
-                          ref={contentRef}
-                          sx={{
-                            '& p': { my: 1.5 },
-                            '& ul, & ol': { my: 1.5, pl: 3 },
-                            '& li': { mb: 0.5 },
-                            '& h1, & h2, & h3, & h4, & h5, & h6': {
-                              my: 2,
-                              fontWeight: 'bold',
-                            },
-                            '& a': {
-                              color: 'primary.main',
-                              textDecoration: 'underline',
-                              '&:hover': {
-                                color: 'primary.dark',
+                      {/* GOOGLE DOC DISPLAY - Separate rendering for Google Docs */}
+                      {!viewingVersion &&
+                        request?.inline_content &&
+                        (request?.content_type === 'google_doc' ||
+                          (request?.inline_content.includes('docs.google.com') &&
+                            !request?.inline_content.startsWith('<'))) && (
+                          <Box
+                            mt={2}
+                            sx={{
+                              height: '700px',
+                              border: '1px solid rgba(0, 0, 0, 0.23)',
+                              borderRadius: '4px',
+                              overflow: 'hidden',
+                              backgroundColor: '#ffffff',
+                            }}
+                          >
+                            <iframe
+                              src={getEmbeddableGoogleDocUrl(request.inline_content)}
+                              width="100%"
+                              height="100%"
+                              frameBorder="0"
+                              style={{ border: 'none' }}
+                              allow="autoplay; encrypted-media"
+                              allowFullScreen
+                            ></iframe>
+                          </Box>
+                        )}
+
+                      {/* REGULAR HTML CONTENT DISPLAY - Only render for non-Google Docs */}
+                      {!viewingVersion &&
+                        request?.inline_content &&
+                        !(
+                          request?.content_type === 'google_doc' ||
+                          (request?.inline_content.includes('docs.google.com') &&
+                            !request?.inline_content.startsWith('<'))
+                        ) && (
+                          <Box
+                            mt={2}
+                            ref={contentRef}
+                            sx={{
+                              '& p': { my: 1.5 },
+                              '& ul, & ol': { my: 1.5, pl: 3 },
+                              '& li': { mb: 0.5 },
+                              '& h1, & h2, & h3, & h4, & h5, & h6': {
+                                my: 2,
+                                fontWeight: 'bold',
                               },
-                            },
-                          }}
-                          className="annotatable-container"
-                          data-joyride="highlight"
-                        >
-                          {/* The content-view div will be created dynamically in the effect */}
-                        </Box>
-                      )}
+                              '& a': {
+                                color: 'primary.main',
+                                textDecoration: 'underline',
+                                '&:hover': {
+                                  color: 'primary.dark',
+                                },
+                              },
+                            }}
+                            className="annotatable-container"
+                            data-joyride="highlight"
+                          >
+                            <div id="content-view">
+                              {/* Content will be initialized by Recogito */}
+                            </div>
+                          </Box>
+                        )}
 
                       {/* File download button for file-based requests */}
                       {!viewingVersion && !request?.inline_content && request?.file_url && (
@@ -1276,7 +1386,7 @@ export default function ClientRequestDetailPage() {
                   </Grid>
 
                   {/* Right column: approval actions */}
-                  <Grid item xs={12} md={4}>
+                  <Grid item xs={12} md={3}>
                     <Paper
                       elevation={2}
                       sx={{
@@ -1363,24 +1473,53 @@ export default function ClientRequestDetailPage() {
                             this version.
                           </Typography>
 
-                          {/* Content container with exactly the same structure as staff view */}
-                          <div id="version-content-container">
-                            <div
-                              id="version-content-view"
-                              className="annotatable-content"
-                              style={{
-                                border: '1px solid #e0e0e0',
-                                borderRadius: '4px',
-                                padding: '16px',
-                                textAlign: 'left',
+                          {/* Check if this is a Google Doc */}
+                          {currentVersionId &&
+                          (request?.versions.find(v => v.version_id === currentVersionId)
+                            ?.content_type === 'google_doc' ||
+                            (versionContent &&
+                              versionContent.includes('docs.google.com') &&
+                              !versionContent.startsWith('<'))) ? (
+                            <Box
+                              sx={{
+                                height: '700px',
+                                border: '1px solid',
+                                borderColor: 'rgba(0, 0, 0, 0.23)',
+                                borderRadius: 1,
+                                overflow: 'hidden',
+                                backgroundColor: '#ffffff',
                               }}
-                              dangerouslySetInnerHTML={{
-                                __html: DOMPurify.sanitize(
-                                  `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request.title}</h1>${versionContent}`
-                                ),
-                              }}
-                            />
-                          </div>
+                            >
+                              <iframe
+                                src={getEmbeddableGoogleDocUrl(versionContent || '')}
+                                width="100%"
+                                height="100%"
+                                frameBorder="0"
+                                style={{ border: 'none' }}
+                                allow="autoplay; encrypted-media"
+                                allowFullScreen
+                              ></iframe>
+                            </Box>
+                          ) : (
+                            /* Regular HTML content with annotation support */
+                            <div id="version-content-container">
+                              <div
+                                id="version-content-view"
+                                className="annotatable-content"
+                                style={{
+                                  border: '1px solid #e0e0e0',
+                                  borderRadius: '4px',
+                                  padding: '16px',
+                                  textAlign: 'left',
+                                }}
+                                dangerouslySetInnerHTML={{
+                                  __html: DOMPurify.sanitize(
+                                    `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request.title}</h1>${versionContent}`
+                                  ),
+                                }}
+                              />
+                            </div>
+                          )}
                         </Box>
                       ) : (
                         <Typography variant="body2" color="textSecondary" align="center">
