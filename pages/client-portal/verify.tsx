@@ -47,8 +47,20 @@ const VerifyLoginPage = () => {
         // Redirect to the specific approval request
         router.push(`/client-portal/requests/${requestId}`);
       } else {
-        // Redirect to the client portal home
-        router.push('/client-portal');
+        // Check if there's a saved path to redirect to
+        let redirectPath = '/client-portal';
+
+        if (typeof window !== 'undefined') {
+          const savedPath = localStorage.getItem('redirectAfterLogin');
+          if (savedPath) {
+            redirectPath = savedPath;
+            // Clear the saved path to prevent unwanted redirects in the future
+            localStorage.removeItem('redirectAfterLogin');
+          }
+        }
+
+        // Redirect to the saved path or default to the client portal home
+        router.push(redirectPath);
       }
     } catch (err: any) {
       // Defensive: always set a string error

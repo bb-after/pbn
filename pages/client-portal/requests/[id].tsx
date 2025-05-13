@@ -1192,7 +1192,7 @@ export default function ClientRequestDetailPage() {
               {!viewingVersion ? (
                 <Grid container spacing={3}>
                   {/* Left column: document and comments */}
-                  <Grid item xs={12} md={9}>
+                  <Grid item xs={12} md={12}>
                     {/* Document card - Updated Rendering Logic */}
                     <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
                       <Typography variant="h6" gutterBottom>
