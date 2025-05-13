@@ -29,6 +29,7 @@ interface ClientContact {
   contact_id: number;
   client_id: number;
   name: string;
+  job_title?: string;
   email: string;
   phone?: string;
   is_active: boolean;
@@ -110,7 +111,15 @@ export default function ClientContactList({ clientId, clientName }: ClientContac
     setDeleteError(null);
 
     try {
-      await axios.delete(`/api/clients/contacts/${deleteContact.contact_id}`);
+      // Get token from localStorage
+      const token = typeof window !== 'undefined' ? localStorage.getItem('usertoken') : null;
+
+      // Include auth token in the request headers
+      await axios.delete(`/api/clients/contacts/${deleteContact.contact_id}`, {
+        headers: {
+          'x-auth-token': token,
+        },
+      });
       fetchContacts();
       setDeleteContact(null);
     } catch (error: any) {
@@ -157,6 +166,7 @@ export default function ClientContactList({ clientId, clientName }: ClientContac
             <TableHead>
               <TableRow>
                 <TableCell>Name</TableCell>
+                <TableCell>Job Title</TableCell>
                 <TableCell>Email</TableCell>
                 <TableCell>Phone</TableCell>
                 <TableCell>Status</TableCell>
@@ -167,6 +177,7 @@ export default function ClientContactList({ clientId, clientName }: ClientContac
               {contacts.map(contact => (
                 <TableRow key={contact.contact_id}>
                   <TableCell>{contact.name}</TableCell>
+                  <TableCell>{contact.job_title || '-'}</TableCell>
                   <TableCell>{contact.email}</TableCell>
                   <TableCell>{contact.phone || '-'}</TableCell>
                   <TableCell>

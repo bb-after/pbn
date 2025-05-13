@@ -42,6 +42,7 @@ async function getClientContacts(req: NextApiRequest, res: NextApiResponse) {
         contact_id, 
         client_id, 
         name, 
+        job_title,
         email, 
         phone, 
         is_active, 
@@ -65,7 +66,7 @@ async function getClientContacts(req: NextApiRequest, res: NextApiResponse) {
 
 // Create a new client contact
 async function createClientContact(req: NextApiRequest, res: NextApiResponse) {
-  const { client_id, name, email, phone, is_active = true } = req.body;
+  const { client_id, name, job_title, email, phone, is_active = true } = req.body;
 
   if (!client_id || !name || !email) {
     return res.status(400).json({ error: 'Client ID, name, and email are required' });
@@ -83,17 +84,17 @@ async function createClientContact(req: NextApiRequest, res: NextApiResponse) {
 
     const query = `
       INSERT INTO client_contacts 
-        (client_id, name, email, phone, is_active) 
+        (client_id, name, job_title, email, phone, is_active) 
       VALUES 
-        (?, ?, ?, ?, ?)
+        (?, ?, ?, ?, ?, ?)
     `;
 
-    const values = [client_id, name, email, phone || null, is_active ? 1 : 0];
+    const values = [client_id, name, job_title || null, email, phone || null, is_active ? 1 : 0];
     const [result] = await pool.query(query, values);
 
     // Get the inserted record
     const [insertedRows] = await pool.query(
-      'SELECT contact_id, client_id, name, email, phone, is_active, created_at, updated_at FROM client_contacts WHERE contact_id = ?',
+      'SELECT contact_id, client_id, name, job_title, email, phone, is_active, created_at, updated_at FROM client_contacts WHERE contact_id = ?',
       [(result as any).insertId]
     );
 

@@ -14,6 +14,7 @@ import {
 import IndustryMappingSelector from './IndustryMappingSelector';
 import RegionMappingSelector from './RegionMappingSelector';
 import axios from 'axios';
+import ClientContactList from './ClientContactList';
 
 interface Industry {
   industry_id: number;
@@ -137,18 +138,23 @@ export default function ClientForm({ client, onSave, onCancel }: ClientFormProps
         </Grid>
 
         {isEditMode && (
-          <Grid item xs={12}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={isActive}
-                  onChange={e => setIsActive(e.target.checked)}
-                  color="primary"
-                />
-              }
-              label="Active"
-            />
-          </Grid>
+          <>
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={isActive}
+                    onChange={e => setIsActive(e.target.checked)}
+                    color="primary"
+                  />
+                }
+                label="Active"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <ClientContactList clientId={client!.client_id} clientName={clientName} />
+            </Grid>
+          </>
         )}
 
         <Grid item xs={12}>

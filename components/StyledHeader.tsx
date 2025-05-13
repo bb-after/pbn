@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import {
@@ -23,6 +23,7 @@ interface NavigationItem {
   text: string;
   href: string;
   description?: string;
+  adminOnly?: boolean;
 }
 
 interface NavigationGroup {
@@ -32,8 +33,37 @@ interface NavigationGroup {
 
 const StyledHeader = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  // Check if user is admin
+  useEffect(() => {
+    // Get auth token from cookies
+    const getCookie = (name: string) => {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop()?.split(';').shift();
+      return null;
+    };
+
+    const checkUserRole = async () => {
+      const token = getCookie('auth_token');
+      if (!token) return;
+
+      try {
+        const response = await fetch(`/api/validate-user-token?token=${token}`);
+        const data = await response.json();
+        if (data.valid && data.user && data.user.role === 'admin') {
+          setIsAdmin(true);
+        }
+      } catch (error) {
+        console.error('Error checking user role:', error);
+      }
+    };
+
+    checkUserRole();
+  }, []);
 
   // Anchor elements for dropdowns
   const [pbnAnchorEl, setPbnAnchorEl] = useState<null | HTMLElement>(null);
@@ -168,9 +198,15 @@ const StyledHeader = () => {
           description: 'Navigate content placement for clients',
         },
         {
-          text: 'Client Approval (Beta - do not use)',
+          text: 'Client Approval',
           href: '/client-approval',
-          description: 'Approve client content',
+          description: 'Manage client content approval requests',
+        },
+        {
+          text: 'All Approval Requests',
+          href: '/client-approval?admin=true',
+          description: 'Admin view of all client approval requests',
+          adminOnly: true,
         },
       ],
     },
@@ -212,11 +248,13 @@ const StyledHeader = () => {
             {group.group}
           </Box>
           <List>
-            {group.items.map(item => (
-              <ListItem key={item.text} component={Link} href={item.href}>
-                <ListItemText primary={item.text} secondary={item.description} />
-              </ListItem>
-            ))}
+            {group.items
+              .filter(item => !item.adminOnly || isAdmin)
+              .map(item => (
+                <ListItem key={item.text} component={Link} href={item.href}>
+                  <ListItemText primary={item.text} secondary={item.description} />
+                </ListItem>
+              ))}
           </List>
         </Box>
       ));
@@ -240,34 +278,36 @@ const StyledHeader = () => {
             'aria-labelledby': 'pbn-button',
           }}
         >
-          {navigationItems[0].items.map(item => (
-            <MenuItem
-              key={item.text}
-              onClick={handlePbnClose}
-              component={Link}
-              href={item.href}
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-start',
-                minWidth: '250px',
-              }}
-            >
-              <Box component="span" sx={{ fontWeight: 500 }}>
-                {item.text}
-              </Box>
-              <Box
-                component="span"
+          {navigationItems[0].items
+            .filter(item => !item.adminOnly || isAdmin)
+            .map(item => (
+              <MenuItem
+                key={item.text}
+                onClick={handlePbnClose}
+                component={Link}
+                href={item.href}
                 sx={{
-                  fontSize: '12px',
-                  color: 'text.secondary',
-                  mt: 0.5,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  minWidth: '250px',
                 }}
               >
-                {item.description}
-              </Box>
-            </MenuItem>
-          ))}
+                <Box component="span" sx={{ fontWeight: 500 }}>
+                  {item.text}
+                </Box>
+                <Box
+                  component="span"
+                  sx={{
+                    fontSize: '12px',
+                    color: 'text.secondary',
+                    mt: 0.5,
+                  }}
+                >
+                  {item.description}
+                </Box>
+              </MenuItem>
+            ))}
         </Menu>
 
         <Button
@@ -286,34 +326,36 @@ const StyledHeader = () => {
             'aria-labelledby': 'superstar-button',
           }}
         >
-          {navigationItems[1].items.map(item => (
-            <MenuItem
-              key={item.text}
-              onClick={handleSuperstarClose}
-              component={Link}
-              href={item.href}
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-start',
-                minWidth: '250px',
-              }}
-            >
-              <Box component="span" sx={{ fontWeight: 500 }}>
-                {item.text}
-              </Box>
-              <Box
-                component="span"
+          {navigationItems[1].items
+            .filter(item => !item.adminOnly || isAdmin)
+            .map(item => (
+              <MenuItem
+                key={item.text}
+                onClick={handleSuperstarClose}
+                component={Link}
+                href={item.href}
                 sx={{
-                  fontSize: '12px',
-                  color: 'text.secondary',
-                  mt: 0.5,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  minWidth: '250px',
                 }}
               >
-                {item.description}
-              </Box>
-            </MenuItem>
-          ))}
+                <Box component="span" sx={{ fontWeight: 500 }}>
+                  {item.text}
+                </Box>
+                <Box
+                  component="span"
+                  sx={{
+                    fontSize: '12px',
+                    color: 'text.secondary',
+                    mt: 0.5,
+                  }}
+                >
+                  {item.description}
+                </Box>
+              </MenuItem>
+            ))}
         </Menu>
 
         <Button
@@ -332,34 +374,36 @@ const StyledHeader = () => {
             'aria-labelledby': 'clients-button',
           }}
         >
-          {navigationItems[2].items.map(item => (
-            <MenuItem
-              key={item.text}
-              onClick={handleClientsClose}
-              component={Link}
-              href={item.href}
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-start',
-                minWidth: '250px',
-              }}
-            >
-              <Box component="span" sx={{ fontWeight: 500 }}>
-                {item.text}
-              </Box>
-              <Box
-                component="span"
+          {navigationItems[2].items
+            .filter(item => !item.adminOnly || isAdmin)
+            .map(item => (
+              <MenuItem
+                key={item.text}
+                onClick={handleClientsClose}
+                component={Link}
+                href={item.href}
                 sx={{
-                  fontSize: '12px',
-                  color: 'text.secondary',
-                  mt: 0.5,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  minWidth: '250px',
                 }}
               >
-                {item.description}
-              </Box>
-            </MenuItem>
-          ))}
+                <Box component="span" sx={{ fontWeight: 500 }}>
+                  {item.text}
+                </Box>
+                <Box
+                  component="span"
+                  sx={{
+                    fontSize: '12px',
+                    color: 'text.secondary',
+                    mt: 0.5,
+                  }}
+                >
+                  {item.description}
+                </Box>
+              </MenuItem>
+            ))}
         </Menu>
 
         <Button
@@ -378,34 +422,36 @@ const StyledHeader = () => {
             'aria-labelledby': 'other-tools-button',
           }}
         >
-          {navigationItems[3].items.map(item => (
-            <MenuItem
-              key={item.text}
-              onClick={handleOtherToolsClose}
-              component={Link}
-              href={item.href}
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-start',
-                minWidth: '250px',
-              }}
-            >
-              <Box component="span" sx={{ fontWeight: 500 }}>
-                {item.text}
-              </Box>
-              <Box
-                component="span"
+          {navigationItems[3].items
+            .filter(item => !item.adminOnly || isAdmin)
+            .map(item => (
+              <MenuItem
+                key={item.text}
+                onClick={handleOtherToolsClose}
+                component={Link}
+                href={item.href}
                 sx={{
-                  fontSize: '12px',
-                  color: 'text.secondary',
-                  mt: 0.5,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  minWidth: '250px',
                 }}
               >
-                {item.description}
-              </Box>
-            </MenuItem>
-          ))}
+                <Box component="span" sx={{ fontWeight: 500 }}>
+                  {item.text}
+                </Box>
+                <Box
+                  component="span"
+                  sx={{
+                    fontSize: '12px',
+                    color: 'text.secondary',
+                    mt: 0.5,
+                  }}
+                >
+                  {item.description}
+                </Box>
+              </MenuItem>
+            ))}
         </Menu>
       </Box>
     );
