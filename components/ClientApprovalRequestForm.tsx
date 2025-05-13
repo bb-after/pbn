@@ -20,6 +20,7 @@ import {
 import axios from 'axios';
 import { CloudUpload as UploadIcon } from '@mui/icons-material';
 import dynamic from 'next/dynamic';
+import Script from 'next/script';
 
 // Import Quill CSS
 import 'react-quill/dist/quill.snow.css';
@@ -66,7 +67,12 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
   const [description, setDescription] = useState('');
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [selectedContacts, setSelectedContacts] = useState<ClientContact[]>([]);
-  const [contentHtml, setContentHtml] = useState('');
+
+  // Replace contentHtml with Google Doc state
+  const [googleDocId, setGoogleDocId] = useState<string | null>(null);
+  const [docContent, setDocContent] = useState('');
+  const [docLoading, setDocLoading] = useState(true);
+  const [docError, setDocError] = useState<string | null>(null);
 
   // Data loading state
   const [clients, setClients] = useState<Client[]>([]);
@@ -82,6 +88,11 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
   // Load clients on component mount
   useEffect(() => {
     fetchClients();
+  }, []);
+
+  // Create a new Google Doc when form is loaded
+  useEffect(() => {
+    createNewGoogleDoc();
   }, []);
 
   // Load client contacts when a client is selected
@@ -140,7 +151,65 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
     setSelectedContacts(newSelectedContacts);
   };
 
-  // Handle form submission
+  // Create a new Google Doc when component mounts
+  const createNewGoogleDoc = async () => {
+    setDocLoading(true);
+    try {
+      // Get auth token from localStorage
+      const token = typeof window !== 'undefined' ? localStorage.getItem('usertoken') : null;
+
+      // Log token for debugging (but truncate for security)
+      if (token) {
+        console.log('Using auth token (first 10 chars):', token.substring(0, 10) + '...');
+      } else {
+        console.warn('No auth token found in localStorage');
+      }
+
+      // Make the API call with auth token in the header
+      const response = await axios.post(
+        '/api/google-docs/create',
+        {
+          title: `Content Approval Request - ${new Date().toLocaleDateString()}`,
+        },
+        {
+          headers: {
+            'x-auth-token': token,
+          },
+        }
+      );
+
+      setGoogleDocId(response.data.docId);
+      setDocError(null);
+    } catch (error) {
+      console.error('Error creating Google Doc:', error);
+      setDocError('Failed to create editable document. Please try again.');
+    } finally {
+      setDocLoading(false);
+    }
+  };
+
+  // Function to get Google Doc content when submitting
+  const getGoogleDocContent = async () => {
+    if (!googleDocId) return '';
+
+    try {
+      // Get auth token from localStorage
+      const token = typeof window !== 'undefined' ? localStorage.getItem('usertoken') : null;
+
+      // Make the API call with auth token in the header
+      const response = await axios.get(`/api/google-docs/content?docId=${googleDocId}`, {
+        headers: {
+          'x-auth-token': token,
+        },
+      });
+      return response.data.content;
+    } catch (error) {
+      console.error('Error fetching Google Doc content:', error);
+      throw new Error('Failed to retrieve document content');
+    }
+  };
+
+  // Handle form submission - modified to use Google Doc content
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -155,8 +224,8 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
       return;
     }
 
-    if (!contentHtml || contentHtml === '<p><br></p>') {
-      setError('Please enter content for review');
+    if (!googleDocId) {
+      setError('Document is not ready. Please try again.');
       return;
     }
 
@@ -169,17 +238,36 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
     setError(null);
 
     try {
-      // 2. Create the approval request
+      // Instead of getting HTML content, just use the Google Doc URL
+      const googleDocUrl = `https://docs.google.com/document/d/${googleDocId}/edit?usp=sharing&embedded=true&rm=minimal&chrome=false&headers=false`;
+
+      // Create the approval request with Google Doc URL
       const approvalRequestData = {
         clientId: selectedClient.client_id,
         title,
         description,
-        inlineContent: contentHtml,
+        inlineContent: googleDocUrl, // Store the Google Doc URL instead of HTML content
         contactIds: selectedContacts.map(c => c.contact_id),
+        googleDocId: googleDocId, // Also store the raw doc ID for reference
+        contentType: 'google_doc', // Flag to indicate this is a Google Doc URL
       };
 
-      // Submit the approval request to the backend
-      await axios.post('/api/approval-requests', approvalRequestData);
+      // Get auth token from localStorage
+      const token = typeof window !== 'undefined' ? localStorage.getItem('usertoken') : null;
+
+      // Log token for debugging (but truncate for security)
+      if (token) {
+        console.log('Using auth token (first 10 chars):', token.substring(0, 10) + '...');
+      } else {
+        console.warn('No auth token found in localStorage');
+      }
+
+      // Submit the approval request to the backend with auth token
+      await axios.post('/api/approval-requests', approvalRequestData, {
+        headers: {
+          'x-auth-token': token,
+        },
+      });
 
       // Set success state
       setSuccess(true);
@@ -189,7 +277,10 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
       setDescription('');
       setSelectedClient(null);
       setSelectedContacts([]);
-      setContentHtml('');
+      setGoogleDocId(null);
+
+      // Create a new doc for the next submission
+      createNewGoogleDoc();
 
       // Call success callback if provided
       if (onSubmitSuccess) {
@@ -197,182 +288,240 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
       }
     } catch (error: any) {
       console.error('Error submitting approval request:', error);
-      setError(error.response?.data?.error || 'Failed to submit approval request');
+      const errorMessage = error.response?.data?.error || 'Failed to submit approval request';
+      const statusCode = error.response?.status;
+
+      // Show a more detailed error message including status code if available
+      setError(`${errorMessage} ${statusCode ? `(Status: ${statusCode})` : ''}`);
+
+      // Log more details for debugging
+      if (error.response) {
+        console.error('Error response data:', error.response.data);
+        console.error('Error response status:', error.response.status);
+        console.error('Error response headers:', error.response.headers);
+      } else if (error.request) {
+        console.error('Error request:', error.request);
+      } else {
+        console.error('Error message:', error.message);
+      }
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <Paper elevation={3} sx={{ p: 3 }}>
-      <Typography variant="h5" gutterBottom>
-        Create Content Approval Request
-      </Typography>
+    <>
+      {/* Load Google API Client Library */}
+      <Script src="https://apis.google.com/js/api.js" strategy="beforeInteractive" />
 
-      {success ? (
-        <Box my={3}>
-          <Alert severity="success">Approval request submitted successfully!</Alert>
-          <Box mt={2}>
-            <Button variant="contained" onClick={() => setSuccess(false)}>
-              Create Another Request
-            </Button>
+      <Paper elevation={3} sx={{ p: 3 }}>
+        <Typography variant="h5" gutterBottom>
+          Create Content Approval Request
+        </Typography>
+
+        {success ? (
+          <Box my={3}>
+            <Alert severity="success">Approval request submitted successfully!</Alert>
+            <Box mt={2}>
+              <Button variant="contained" onClick={() => setSuccess(false)}>
+                Create Another Request
+              </Button>
+            </Box>
           </Box>
-        </Box>
-      ) : (
-        <form onSubmit={handleSubmit}>
-          {error && (
-            <Alert severity="error" sx={{ my: 2 }}>
-              {error}
-            </Alert>
-          )}
+        ) : (
+          <form onSubmit={handleSubmit}>
+            {error && (
+              <Alert severity="error" sx={{ my: 2 }}>
+                {error}
+              </Alert>
+            )}
 
-          <Grid container spacing={3}>
-            {/* Client Selection */}
-            <Grid item xs={12}>
-              <Autocomplete
-                id="client-select"
-                options={clients}
-                loading={loadingClients}
-                getOptionLabel={option => option.client_name}
-                value={selectedClient}
-                onChange={(_, newValue) => setSelectedClient(newValue)}
-                renderInput={params => (
-                  <TextField
-                    {...params}
-                    label="Select Client"
-                    required
-                    InputProps={{
-                      ...params.InputProps,
-                      endAdornment: (
-                        <>
-                          {loadingClients ? <CircularProgress color="inherit" size={20} /> : null}
-                          {params.InputProps.endAdornment}
-                        </>
-                      ),
-                    }}
-                  />
-                )}
-              />
-            </Grid>
-
-            {/* Title */}
-            <Grid item xs={12}>
-              <TextField
-                label="Article Title"
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                fullWidth
-                required
-              />
-            </Grid>
-
-            {/* Description */}
-            <Grid item xs={12}>
-              <TextField
-                label="Notes for Client"
-                value={description}
-                onChange={e => setDescription(e.target.value)}
-                multiline
-                rows={4}
-                fullWidth
-                placeholder="Enter any notes or instructions for the client..."
-              />
-            </Grid>
-
-            {/* Add ReactQuill Editor */}
-            <Grid item xs={12}>
-              <Typography
-                variant="subtitle1"
-                gutterBottom
-                component="label"
-                sx={{ display: 'block', mb: 1 }}
-              >
-                Content for Review <span style={{ color: 'red' }}>*</span>
-              </Typography>
-              <Box
-                sx={{
-                  '.ql-editor': { minHeight: '200px' },
-                  border: '1px solid',
-                  borderColor: 'rgba(0, 0, 0, 0.23)', // Match TextField border
-                  borderRadius: 1,
-                }}
-              >
-                <ReactQuill
-                  theme="snow"
-                  value={contentHtml}
-                  onChange={setContentHtml}
-                  modules={quillModules}
-                  formats={quillFormats}
-                  placeholder="Paste or write the content here..."
-                />
-              </Box>
-            </Grid>
-
-            {/* Contact Selection */}
-            <Grid item xs={12}>
-              <FormControl component="fieldset" sx={{ width: '100%' }}>
-                <FormLabel component="legend">Select Contacts for Approval</FormLabel>
-
-                {loadingContacts ? (
-                  <Box display="flex" alignItems="center" sx={{ mt: 2 }}>
-                    <CircularProgress size={20} sx={{ mr: 1 }} />
-                    <Typography variant="body2">Loading contacts...</Typography>
-                  </Box>
-                ) : clientContacts.length === 0 ? (
-                  <Alert severity="info" sx={{ mt: 2 }}>
-                    {selectedClient
-                      ? 'No contacts found for this client. Please add contacts first.'
-                      : 'Select a client to view contacts'}
-                  </Alert>
-                ) : (
-                  <FormGroup>
-                    {clientContacts.map(contact => (
-                      <FormControlLabel
-                        key={contact.contact_id}
-                        control={
-                          <Checkbox
-                            checked={selectedContacts.some(
-                              c => c.contact_id === contact.contact_id
-                            )}
-                            onChange={() => handleContactToggle(contact)}
-                          />
-                        }
-                        label={`${contact.name} (${contact.email})`}
-                      />
-                    ))}
-                  </FormGroup>
-                )}
-
-                <FormHelperText>
-                  These contacts will receive an email to review the content
-                </FormHelperText>
-              </FormControl>
-            </Grid>
-
-            {/* Submit Button */}
-            <Grid item xs={12}>
-              <Divider sx={{ mb: 2 }} />
-              <Box display="flex" justifyContent="flex-end">
-                <Button
-                  type="submit"
-                  variant="contained"
-                  color="primary"
-                  disabled={
-                    submitting ||
-                    !selectedClient ||
-                    selectedContacts.length === 0 ||
-                    !contentHtml ||
-                    contentHtml === '<p><br></p>' ||
-                    !title.trim()
+            <Grid container spacing={3}>
+              {/* Client Selection */}
+              <Grid item xs={12}>
+                <Autocomplete
+                  id="client-select"
+                  options={clients}
+                  loading={loadingClients}
+                  getOptionLabel={(option: Client) => option.client_name}
+                  value={selectedClient}
+                  onChange={(_: React.SyntheticEvent, newValue: Client | null) =>
+                    setSelectedClient(newValue)
                   }
+                  renderInput={(params: any) => (
+                    <TextField
+                      {...params}
+                      label="Select Client"
+                      required
+                      InputProps={{
+                        ...params.InputProps,
+                        endAdornment: (
+                          <>
+                            {loadingClients ? <CircularProgress color="inherit" size={20} /> : null}
+                            {params.InputProps.endAdornment}
+                          </>
+                        ),
+                      }}
+                    />
+                  )}
+                />
+              </Grid>
+
+              {/* Title */}
+              <Grid item xs={12}>
+                <TextField
+                  label="Article Title"
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
+                  fullWidth
+                  required
+                />
+              </Grid>
+
+              {/* Description */}
+              <Grid item xs={12}>
+                <TextField
+                  label="Notes for Client"
+                  value={description}
+                  onChange={e => setDescription(e.target.value)}
+                  multiline
+                  rows={4}
+                  fullWidth
+                  placeholder="Enter any notes or instructions for the client..."
+                />
+              </Grid>
+
+              {/* Replace ReactQuill with Google Doc iframe */}
+              <Grid item xs={12}>
+                <Typography
+                  variant="subtitle1"
+                  gutterBottom
+                  component="label"
+                  sx={{ display: 'block', mb: 1 }}
                 >
-                  {submitting ? <CircularProgress size={24} /> : 'Submit for Approval'}
-                </Button>
-              </Box>
+                  Content for Review <span style={{ color: 'red' }}>*</span>
+                </Typography>
+
+                {docError && (
+                  <Alert severity="error" sx={{ mb: 2 }}>
+                    {docError}
+                  </Alert>
+                )}
+
+                {docLoading ? (
+                  <Box
+                    display="flex"
+                    justifyContent="center"
+                    alignItems="center"
+                    height="300px"
+                    border="1px solid"
+                    borderColor="rgba(0, 0, 0, 0.23)"
+                    borderRadius={1}
+                  >
+                    <CircularProgress />
+                    <Typography variant="body2" sx={{ ml: 2 }}>
+                      Loading document editor...
+                    </Typography>
+                  </Box>
+                ) : googleDocId ? (
+                  <Box
+                    sx={{
+                      height: '500px',
+                      border: '1px solid',
+                      borderColor: 'rgba(0, 0, 0, 0.23)',
+                      borderRadius: 1,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <iframe
+                      src={`https://docs.google.com/document/d/${googleDocId}/edit?usp=sharing&embedded=true&rm=minimal&chrome=false&headers=false`}
+                      width="100%"
+                      height="100%"
+                      frameBorder="0"
+                    ></iframe>
+                  </Box>
+                ) : (
+                  <Box
+                    display="flex"
+                    justifyContent="center"
+                    alignItems="center"
+                    height="300px"
+                    border="1px solid"
+                    borderColor="rgba(0, 0, 0, 0.23)"
+                    borderRadius={1}
+                  >
+                    <Button variant="outlined" color="primary" onClick={createNewGoogleDoc}>
+                      Create New Document
+                    </Button>
+                  </Box>
+                )}
+              </Grid>
+
+              {/* Contact Selection */}
+              <Grid item xs={12}>
+                <FormControl component="fieldset" sx={{ width: '100%' }}>
+                  <FormLabel component="legend">Select Contacts for Approval</FormLabel>
+
+                  {loadingContacts ? (
+                    <Box display="flex" alignItems="center" sx={{ mt: 2 }}>
+                      <CircularProgress size={20} sx={{ mr: 1 }} />
+                      <Typography variant="body2">Loading contacts...</Typography>
+                    </Box>
+                  ) : clientContacts.length === 0 ? (
+                    <Alert severity="info" sx={{ mt: 2 }}>
+                      {selectedClient
+                        ? 'No contacts found for this client. Please add contacts first.'
+                        : 'Select a client to view contacts'}
+                    </Alert>
+                  ) : (
+                    <FormGroup>
+                      {clientContacts.map(contact => (
+                        <FormControlLabel
+                          key={contact.contact_id}
+                          control={
+                            <Checkbox
+                              checked={selectedContacts.some(
+                                c => c.contact_id === contact.contact_id
+                              )}
+                              onChange={() => handleContactToggle(contact)}
+                            />
+                          }
+                          label={`${contact.name} (${contact.email})`}
+                        />
+                      ))}
+                    </FormGroup>
+                  )}
+
+                  <FormHelperText>
+                    These contacts will receive an email to review the content
+                  </FormHelperText>
+                </FormControl>
+              </Grid>
+
+              {/* Submit Button */}
+              <Grid item xs={12}>
+                <Divider sx={{ mb: 2 }} />
+                <Box display="flex" justifyContent="flex-end">
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    color="primary"
+                    disabled={
+                      submitting ||
+                      !selectedClient ||
+                      selectedContacts.length === 0 ||
+                      !googleDocId ||
+                      !title.trim()
+                    }
+                  >
+                    {submitting ? <CircularProgress size={24} /> : 'Submit for Approval'}
+                  </Button>
+                </Box>
+              </Grid>
             </Grid>
-          </Grid>
-        </form>
-      )}
-    </Paper>
+          </form>
+        )}
+      </Paper>
+    </>
   );
 }

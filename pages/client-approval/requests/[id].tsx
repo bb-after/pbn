@@ -130,6 +130,8 @@ interface ApprovalRequest {
   file_url: string | null;
   file_type: string | null;
   inline_content?: string | null;
+  content_type?: string;
+  google_doc_id?: string | null;
   status: 'pending' | 'approved' | 'rejected';
   created_by_id: string | null;
   published_url: string | null;
@@ -142,6 +144,8 @@ interface ApprovalRequest {
     version_number: number;
     file_url: string | null;
     inline_content?: string | null;
+    content_type?: string;
+    google_doc_id?: string | null;
     comments: string | null;
     created_by_id: string | null;
     created_at: string;
@@ -231,6 +235,8 @@ export default function ApprovalRequestDetailPage() {
     version_number: number;
     file_url: string | null;
     inline_content?: string | null;
+    content_type?: string;
+    google_doc_id?: string | null;
     comments: string | null;
     created_by_id: string | null;
     created_at: string;
@@ -791,6 +797,8 @@ export default function ApprovalRequestDetailPage() {
     version_number: number;
     file_url: string | null;
     inline_content?: string | null;
+    content_type?: string;
+    google_doc_id?: string | null;
     comments: string | null;
     created_by_id: string | null;
     created_at: string;
@@ -1071,6 +1079,34 @@ export default function ApprovalRequestDetailPage() {
 
                           {(() => {
                             if (request.inline_content) {
+                              // Check if this is a Google Doc URL
+                              if (request.content_type === 'google_doc') {
+                                return (
+                                  <Box mt={2}>
+                                    <Typography variant="h4" gutterBottom>
+                                      {request.title}
+                                    </Typography>
+                                    <Box
+                                      sx={{
+                                        height: '600px',
+                                        border: '1px solid',
+                                        borderColor: 'rgba(0, 0, 0, 0.23)',
+                                        borderRadius: 1,
+                                        overflow: 'hidden',
+                                      }}
+                                    >
+                                      <iframe
+                                        src={request.inline_content}
+                                        width="100%"
+                                        height="100%"
+                                        frameBorder="0"
+                                      ></iframe>
+                                    </Box>
+                                  </Box>
+                                );
+                              }
+
+                              // Regular HTML content
                               // Prepend the title as H1 to the inline content
                               const contentWithTitle = `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request.title}</h1>${request.inline_content}`;
 
@@ -1652,35 +1688,58 @@ export default function ApprovalRequestDetailPage() {
                     {selectedVersion.inline_content ? (
                       // For versions with stored inline_content
                       <>
-                        {versionAnnotations.length > 0 ? (
-                          <Alert severity="info" sx={{ mb: 2 }}>
-                            Showing {versionAnnotations.length} comments specific to this version.
-                          </Alert>
+                        {/* Check if this is a Google Doc */}
+                        {selectedVersion.content_type === 'google_doc' ? (
+                          <Box
+                            sx={{
+                              height: '600px',
+                              border: '1px solid',
+                              borderColor: 'rgba(0, 0, 0, 0.23)',
+                              borderRadius: 1,
+                              overflow: 'hidden',
+                            }}
+                          >
+                            <iframe
+                              src={selectedVersion.inline_content}
+                              width="100%"
+                              height="100%"
+                              frameBorder="0"
+                            ></iframe>
+                          </Box>
                         ) : (
-                          <Alert severity="info" sx={{ mb: 2 }}>
-                            No comments were found for this specific version.
-                          </Alert>
+                          <>
+                            {versionAnnotations.length > 0 ? (
+                              <Alert severity="info" sx={{ mb: 2 }}>
+                                Showing {versionAnnotations.length} comments specific to this
+                                version.
+                              </Alert>
+                            ) : (
+                              <Alert severity="info" sx={{ mb: 2 }}>
+                                No comments were found for this specific version.
+                              </Alert>
+                            )}
+                            {/* Create a separate container DIV first to ensure it's in the DOM */}
+                            <div id="version-content-container">
+                              <div
+                                id="version-content-view"
+                                className="annotatable-content"
+                                style={{
+                                  border: '1px solid #e0e0e0',
+                                  borderRadius: '4px',
+                                  padding: '16px',
+                                  textAlign: 'left',
+                                }}
+                                dangerouslySetInnerHTML={{
+                                  __html: DOMPurify.sanitize(
+                                    selectedVersion.inline_content
+                                      ? `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request?.title || ''}</h1>${selectedVersion.inline_content}`
+                                      : ''
+                                  ),
+                                }}
+                              />
+                            </div>
+                          </>
                         )}
-                        {/* Create a separate container DIV first to ensure it's in the DOM */}
-                        <div id="version-content-container">
-                          <div
-                            id="version-content-view"
-                            className="annotatable-content"
-                            style={{
-                              border: '1px solid #e0e0e0',
-                              borderRadius: '4px',
-                              padding: '16px',
-                              textAlign: 'left',
-                            }}
-                            dangerouslySetInnerHTML={{
-                              __html: DOMPurify.sanitize(
-                                selectedVersion.inline_content
-                                  ? `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request?.title || ''}</h1>${selectedVersion.inline_content}`
-                                  : ''
-                              ),
-                            }}
-                          />
-                        </div>
                       </>
                     ) : (
                       <Box textAlign="center">
