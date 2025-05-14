@@ -4,7 +4,7 @@ import { JWT } from 'google-auth-library';
 // Define SCOPES for both Drive and Docs APIs
 const SCOPES = [
   'https://www.googleapis.com/auth/documents',
-  'https://www.googleapis.com/auth/drive.file'
+  'https://www.googleapis.com/auth/drive.file',
 ];
 
 // Create the JWT auth object
@@ -16,13 +16,12 @@ const auth = new JWT({
 
 const GOOGLE_DRIVE_PARENT_FOLDER = process.env.GOOGLE_DRIVE_PARENT_FOLDER;
 
-
 // Initialize both Drive and Docs APIs with the same auth object
 const drive = google.drive({ version: 'v3', auth });
 const docs = google.docs({ version: 'v1', auth });
 
 export function extractDocIdFromUrl(docUrl: string): string {
-  const regex = /\/d\/([a-zA-Z0-9-_]+)/;  // This regex extracts the docId from a typical Google Doc URL
+  const regex = /\/d\/([a-zA-Z0-9-_]+)/; // This regex extracts the docId from a typical Google Doc URL
   const match = docUrl.match(regex);
   if (match && match[1]) {
     return match[1];
@@ -30,7 +29,10 @@ export function extractDocIdFromUrl(docUrl: string): string {
     throw new Error('Failed to extract document ID from URL');
   }
 }
-export async function createOrGetFolder(folderName: string, parentFolderId?: string): Promise<string> {
+export async function createOrGetFolder(
+  folderName: string,
+  parentFolderId?: string
+): Promise<string> {
   // Basic sanitization: remove extra spaces and non-alphanumeric characters
   const sanitizedFolderName = folderName.replace(/[^\w\s]/gi, '').trim();
   console.log('!!!!we have a legit folder name', sanitizedFolderName);
@@ -43,21 +45,20 @@ export async function createOrGetFolder(folderName: string, parentFolderId?: str
     const folderMetadata = {
       name: sanitizedFolderName,
       mimeType: 'application/vnd.google-apps.folder',
-      parents: parentFolderId ? [parentFolderId] : undefined
+      parents: parentFolderId ? [parentFolderId] : undefined,
     };
     const folder = await drive.files.create({
       requestBody: folderMetadata,
-      fields: 'id'
+      fields: 'id',
     });
     return folder.data.id!;
   }
 }
 
-
 export async function moveFileToFolder(fileId: string, clientName?: string) {
   try {
     // Use client name or default to "Uncategorized"
-    let folderName = clientName ? clientName : "Uncategorized"; 
+    let folderName = clientName ? clientName : 'Uncategorized';
 
     // Get or create the folder inside the fixed parent folder (this should be done only once)
     const targetFolderId = await createOrGetFolder(folderName, GOOGLE_DRIVE_PARENT_FOLDER);
@@ -66,13 +67,13 @@ export async function moveFileToFolder(fileId: string, clientName?: string) {
     await drive.files.update({
       fileId: fileId,
       addParents: targetFolderId,
-      fields: 'id, parents'
+      fields: 'id, parents',
     });
 
     console.log(`Moved document to folder: ${folderName} (ID: ${targetFolderId})`);
   } catch (error) {
-    console.error("Error moving file:", error);
-    throw new Error("Failed to move file to appropriate folder");
+    console.error('Error moving file:', error);
+    throw new Error('Failed to move file to appropriate folder');
   }
 }
 
@@ -110,6 +111,16 @@ export async function createGoogleDoc(title: string, content: string) {
             },
           },
         ],
+      },
+    });
+
+    // Set permissions to comment-only mode for anyone with the link
+    // This ensures users can only suggest/comment and not directly edit the document
+    await drive.permissions.create({
+      fileId: documentId,
+      requestBody: {
+        role: 'commenter',
+        type: 'anyone',
       },
     });
 

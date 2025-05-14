@@ -27,13 +27,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     cookies: req.cookies?.auth_token ? 'Present' : 'Missing',
   });
 
-  // Temporarily bypass strict validation if needed
-  // Comment this out once you've resolved the authentication issues
-  /*
+  // Require staff authentication
   if (!userInfo.isValid) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
-  */
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: `Method ${req.method} Not Allowed` });
@@ -63,16 +60,45 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw new Error('Failed to create Google Doc - no document ID returned');
     }
 
-    // Step 2: Update sharing permissions to allow anyone with the link to edit
+    // Step 2: Get the user's email if available
+    let userEmail = null;
+    if (userInfo.user_id) {
+      try {
+        // This is a placeholder - you would need to implement a way to get the user's email
+        // from your database based on user_id, which depends on your auth system
+        // const userRecord = await db.collection('users').findOne({ _id: userInfo.user_id });
+        // userEmail = userRecord.email;
+
+        // For now, if you can't get the user's email, the service account will remain the owner
+        console.log(`User ID for potential permissions: ${userInfo.user_id}`);
+      } catch (err) {
+        console.error('Error getting user email:', err);
+      }
+    }
+
+    // Step 3: Update permissions
+    // First set "anyone with the link" to be a commenter (this is for clients)
     await drive.permissions.create({
       fileId: documentId,
       requestBody: {
-        role: 'writer',
+        role: 'commenter',
         type: 'anyone',
       },
     });
 
-    // Step 3: Move the document to the parent folder if specified
+    // If we have the user's email, add them as an owner as well
+    if (userEmail) {
+      await drive.permissions.create({
+        fileId: documentId,
+        requestBody: {
+          role: 'owner',
+          type: 'user',
+          emailAddress: userEmail,
+        },
+      });
+    }
+
+    // Step 4: Move the document to the parent folder if specified
     if (process.env.GOOGLE_DRIVE_PARENT_FOLDER) {
       await drive.files.update({
         fileId: documentId,

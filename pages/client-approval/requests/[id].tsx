@@ -36,6 +36,7 @@ import {
   TableBody,
   TableRow,
   TableCell,
+  Modal,
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
@@ -64,20 +65,6 @@ import DOMPurify from 'dompurify';
 import dynamic from 'next/dynamic';
 import ReactionPicker from 'components/ReactionPicker';
 import { createRoot } from 'react-dom/client';
-import { initVersionRecogito } from 'utils/recogito';
-
-// Import Quill CSS
-import 'react-quill/dist/quill.snow.css';
-
-// Dynamically import ReactQuill
-const ReactQuill = dynamic(() => import('react-quill'), {
-  ssr: false,
-  loading: () => (
-    <Box p={3}>
-      <CircularProgress size={24} />
-    </Box>
-  ),
-});
 
 // Add Recogito types declaration reference (assuming it exists)
 /// <reference path="../../../client-portal/recogito.d.ts" />
@@ -87,8 +74,7 @@ declare module '@recogito/recogito-js';
 
 declare global {
   interface Window {
-    Recogito: any;
-    _versionRecogitoInstance?: any; // Store version modal Recogito instance
+    // Remove Recogito references
   }
 }
 
@@ -179,20 +165,63 @@ interface ContactWithViews {
   views: ContactView[]; // Array of view records
 }
 
-// Add loadScript helper function
-const loadScript = (src: string): Promise<void> => {
-  const existingScript = document.querySelector(`script[src="${src}"]`);
-  if (existingScript) {
-    existingScript.remove();
+// Function to process Google Doc URLs for embedding
+// This function handles Google Doc embedding with appropriate permissions:
+// - For staff view (isStaffView=true): Full editing capabilities for content creators
+// - For client view (isStaffView=false): Comment-only mode, restricting clients
+//   to making suggestions rather than direct edits
+const getEmbeddableGoogleDocUrl = (url: string, isStaffView: boolean = true): string => {
+  try {
+    // Check if it's a Google Doc URL
+    if (!url.includes('docs.google.com')) return url;
+
+    // Extract the document ID from the URL
+    const docIdMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    const docId = docIdMatch ? docIdMatch[1] : '';
+
+    if (docId) {
+      // For staff view allow editing, for client view use comment-only mode
+      if (isStaffView) {
+        // Staff view - full editing capabilities with full Google Docs UI
+        // Create a clean URL without any restrictive parameters
+        return `https://docs.google.com/document/d/${docId}/edit?usp=sharing&embedded=true`;
+      } else {
+        // Client view - comment-only mode (force view mode with commenting enabled)
+        // This is the critical part - mode=comment in Google Docs means users can only comment, not edit
+        return `https://docs.google.com/document/d/${docId}/edit?usp=sharing&embedded=true&rm=minimal&mode=comment`;
+      }
+    }
+
+    // If no document ID found, try to modify the original URL
+    try {
+      const urlObj = new URL(url);
+
+      // Set parameters based on view type
+      if (isStaffView) {
+        // For staff, remove any parameters that might restrict editing
+        if (urlObj.searchParams.has('mode')) urlObj.searchParams.delete('mode');
+        urlObj.searchParams.set('embedded', 'true');
+      } else {
+        // For clients, enforce comment-only mode
+        urlObj.searchParams.set('mode', 'comment');
+        urlObj.searchParams.set('embedded', 'true');
+        urlObj.searchParams.set('rm', 'minimal');
+      }
+
+      // Remove parameters that might interfere with proper display
+      if (urlObj.searchParams.has('chrome')) urlObj.searchParams.delete('chrome');
+      if (urlObj.searchParams.has('headers')) urlObj.searchParams.delete('headers');
+
+      return urlObj.toString();
+    } catch (error) {
+      console.error('Error modifying URL:', error);
+      // If we can't modify the URL, return original
+      return url;
+    }
+  } catch (error) {
+    console.error('Error processing Google Doc URL:', error);
+    return url; // Return original URL on error
   }
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = src;
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = error => reject(new Error(`Failed to load script: ${src}\n${error}`));
-    document.body.appendChild(script);
-  });
 };
 
 export default function ApprovalRequestDetailPage() {
@@ -241,20 +270,17 @@ export default function ApprovalRequestDetailPage() {
     created_by_id: string | null;
     created_at: string;
   } | null>(null);
-  const [versionAnnotations, setVersionAnnotations] = useState<any[]>([]);
   // --- End State for Version Content Modal ---
 
   // --- Add State for New Version Dialog ---
   const [newVersionDialogOpen, setNewVersionDialogOpen] = useState(false);
-  const [newVersionContent, setNewVersionContent] = useState('');
+  const [newVersionGoogleDocUrl, setNewVersionGoogleDocUrl] = useState('');
   const [newVersionComment, setNewVersionComment] = useState('');
   const [isSubmittingVersion, setIsSubmittingVersion] = useState(false);
   // --- End State for New Version Dialog ---
 
   // Add Recogito Refs & State
   const contentRef = useRef<HTMLDivElement>(null);
-  const recogitoInstance = useRef<any>(null);
-  const [annotations, setAnnotations] = useState<any[]>([]);
 
   // Set up axios interceptor for handling 404 errors
   useEffect(() => {
@@ -290,6 +316,16 @@ export default function ApprovalRequestDetailPage() {
 
     try {
       const response = await axios.get(`/api/approval-requests/${id}`);
+
+      // Debug logging
+      console.log('API Response for Request:', response.data);
+      if (response.data.content_type === 'google_doc') {
+        console.log('Google Doc Details:');
+        console.log('content_type:', response.data.content_type);
+        console.log('inline_content:', response.data.inline_content);
+        console.log('google_doc_id:', response.data.google_doc_id);
+      }
+
       setRequest(response.data);
     } catch (error) {
       console.error('Error fetching approval request details:', error);
@@ -468,317 +504,6 @@ export default function ApprovalRequestDetailPage() {
     }
   };
 
-  // Add Recogito helper function
-  const convertDbCommentToAnnotation = (comment: SectionComment): any => ({
-    '@context': 'http://www.w3.org/ns/anno.jsonld',
-    type: 'Annotation',
-    id: `#section-comment-${comment.section_comment_id}`,
-    body: [
-      {
-        type: 'TextualBody',
-        purpose: 'commenting',
-        value: comment.comment_text,
-        creator: {
-          id: comment.user_id ? `staff:${comment.user_id}` : `contact:${comment.contact_id}`,
-          name: comment.user_name || comment.contact_name || 'Unknown',
-        },
-        created: comment.created_at_iso || comment.created_at,
-      },
-      ...(comment.replies && comment.replies.length > 0
-        ? comment.replies.map((reply: any) => ({
-            type: 'TextualBody',
-            purpose: 'replying',
-            value: reply.reply_text,
-            creator: {
-              id: reply.user_id ? `staff:${reply.user_id}` : `contact:${reply.client_contact_id}`,
-              name: reply.author_name || reply.user_name || reply.client_name || 'Unknown',
-            },
-            created: reply.created_at_iso || reply.created_at,
-          }))
-        : []),
-    ],
-    target: {
-      selector: [
-        { type: 'TextQuoteSelector', exact: comment.selected_text || '' },
-        { type: 'TextPositionSelector', start: comment.start_offset, end: comment.end_offset },
-      ],
-    },
-    // Add the HTML body with reaction containers
-    htmlBody: `
-      <div class="section-comment">
-        <div class="comment-header">
-          <span class="commenter-name">${comment.contact_name || comment.user_name || 'Unknown'}</span>
-          <span class="comment-date">${new Date(comment.created_at_iso || comment.created_at).toLocaleString()}</span>
-        </div>
-        <div class="comment-text">${comment.comment_text}</div>
-        <div id="reaction-container-section-${comment.section_comment_id}" class="reaction-container"></div>
-        ${
-          comment.replies && comment.replies.length > 0
-            ? `<div class="replies">
-              ${comment.replies
-                .map(
-                  reply => `
-                <div class="reply">
-                  <div class="reply-header">
-                    <span class="reply-author">${reply.author_name || reply.user_name || reply.client_name || 'Unknown'}</span>
-                    <span class="reply-date">${new Date(reply.created_at_iso || reply.created_at).toLocaleString()}</span>
-                  </div>
-                  <div class="reply-text">${reply.reply_text}</div>
-                  <div id="reaction-container-reply-${reply.reply_id}" class="reaction-container"></div>
-                </div>
-              `
-                )
-                .join('')}
-            </div>`
-            : ''
-        }
-        <div class="add-reply-container">
-          <textarea class="add-reply-input" placeholder="Add a reply..."></textarea>
-          <button class="add-reply-button">Reply</button>
-        </div>
-      </div>
-    `,
-  });
-
-  // --- Recogito Initialization Effect ---
-  useEffect(() => {
-    let isMounted = true;
-
-    // Create basic CSS for annotations without reaction-specific styling
-    const style = document.createElement('style');
-    style.textContent = `
-      .r6o-annotation {
-        border-bottom: 2px solid yellow;
-        background-color: rgba(255, 255, 0, 0.2);
-      }
-    `;
-    document.head.appendChild(style);
-
-    if (request?.inline_content && contentRef.current && !recogitoInstance.current) {
-      const initRecogito = async () => {
-        try {
-          // Load the Recogito script via script tag
-          await loadScript('/vendor/recogito.min.js');
-
-          console.log('Staff View: Recogito script loaded');
-
-          // Try accessing the constructor from the module object on window
-          const Recogito = (window as any).Recogito?.Recogito || (window as any).Recogito?.default;
-
-          if (!isMounted || !Recogito) {
-            console.error(
-              'Staff View: Recogito constructor not found within window.Recogito module object.'
-            );
-            return;
-          }
-
-          // Add event listener for keydown to handle escape key issues
-          const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape' && recogitoInstance.current) {
-              // Prevent default behavior to avoid the underlying TypeError
-              e.preventDefault();
-              e.stopPropagation();
-
-              // If there's an active annotation, try to cancel it safely
-              try {
-                const activeSelection = document.querySelector('.r6o-editor-inner');
-                if (activeSelection) {
-                  const cancelButton = document.querySelector('.r6o-btn.r6o-btn-cancel');
-                  if (cancelButton && cancelButton instanceof HTMLElement) {
-                    cancelButton.click();
-                  }
-                }
-              } catch (err) {
-                console.error('Error handling escape key:', err);
-              }
-            }
-          };
-
-          // Register the event handler
-          document.addEventListener('keydown', handleKeyDown, true);
-
-          // Store the handler reference for cleanup
-          const keydownHandler = handleKeyDown;
-
-          if (contentRef.current && !recogitoInstance.current) {
-            const innerDiv = contentRef.current.querySelector('div');
-            if (innerDiv) {
-              console.log('Staff View: Initializing on inner div...');
-              recogitoInstance.current = new Recogito({
-                content: innerDiv,
-                readOnly: false, // Allow staff to add comments
-                widgets: [{ widget: 'COMMENT', options: { placeholder: 'Add staff feedback...' } }],
-              });
-
-              // Add handler for staff to create annotations
-              recogitoInstance.current.on('createAnnotation', async (annotation: any) => {
-                console.log('Staff created annotation:', annotation);
-                try {
-                  const headers: Record<string, string> = {};
-                  if (token) {
-                    headers['x-auth-token'] = token;
-                  }
-
-                  // Extract data from the annotation
-                  const body = annotation.body?.[0];
-                  const textQuote = annotation.target.selector.find(
-                    (s: any) => s.type === 'TextQuoteSelector'
-                  );
-                  const textPosition = annotation.target.selector.find(
-                    (s: any) => s.type === 'TextPositionSelector'
-                  );
-
-                  if (body && textPosition) {
-                    const response = await axios.post(
-                      `/api/approval-requests/${id}/section-comments`,
-                      {
-                        // Pass user_id instead of staff_id
-                        user_id: user?.id,
-                        startOffset: textPosition.start,
-                        endOffset: textPosition.end,
-                        selectedText: textQuote?.exact || '',
-                        commentText: body.value,
-                        // Use the current version ID (latest version)
-                        versionId: request?.versions?.[0]?.version_id,
-                      },
-                      { headers }
-                    );
-
-                    console.log('Staff annotation saved successfully:', response.data);
-
-                    // Add the new comment to the current list
-                    if (request?.section_comments) {
-                      const newComment = response.data.comment;
-                      const updatedRequest = {
-                        ...request,
-                        section_comments: [...request.section_comments, newComment],
-                      };
-                      setRequest(updatedRequest);
-                    }
-
-                    // Refresh request data
-                    fetchRequestDetails();
-                  }
-                } catch (error) {
-                  console.error('Error saving staff annotation:', error);
-                  setError('Failed to save comment. Please try again.');
-                }
-              });
-
-              // Add handler for staff to update annotations (add replies)
-              recogitoInstance.current.on(
-                'updateAnnotation',
-                async (annotation: any, previous: any) => {
-                  console.log('Staff updated annotation:', annotation);
-                  try {
-                    // Log token for debugging
-                    console.log('Current token value:', token);
-
-                    // Prepare headers properly
-                    const headers: Record<string, string> = {};
-                    if (token) {
-                      headers['Authorization'] = `Bearer ${token}`;
-                      // Keep the x-auth-token as backup
-                      headers['x-auth-token'] = token;
-                    }
-
-                    // Extract annotation ID from the format '#section-comment-123'
-                    const idMatch = annotation.id.match(/#section-comment-(\d+)/);
-                    if (!idMatch || !idMatch[1]) {
-                      console.error('Could not extract comment ID from annotation:', annotation.id);
-                      return;
-                    }
-
-                    const commentId = parseInt(idMatch[1]);
-
-                    // Get all the bodies, which include the original comment and any replies
-                    const bodies = annotation.body || [];
-
-                    // The last body should be the newly added reply
-                    const newReply = bodies[bodies.length - 1];
-
-                    if (!newReply || !newReply.value) {
-                      console.error('No valid reply found in updated annotation');
-                      return;
-                    }
-
-                    // Send the reply to the server
-                    const response = await axios.post(
-                      `/api/approval-requests/${id}/section-comments/${commentId}/replies`,
-                      {
-                        user_id: user?.id,
-                        replyText: newReply.value,
-                      },
-                      { headers }
-                    );
-
-                    console.log('Staff reply saved successfully:', response.data);
-
-                    // Refresh the request data to get all comments and replies
-                    fetchRequestDetails();
-                  } catch (error) {
-                    console.error('Error saving reply:', error);
-                    setError('Failed to save reply. Please try again.');
-                  }
-                }
-              );
-
-              if (request.section_comments && request.section_comments.length > 0) {
-                console.log('Staff View: Loading annotations:', request.section_comments);
-                try {
-                  const loadedAnnotations = request.section_comments.map(
-                    convertDbCommentToAnnotation
-                  );
-                  recogitoInstance.current.setAnnotations(loadedAnnotations);
-                  setAnnotations(loadedAnnotations);
-                } catch (error) {
-                  console.error('Staff View: Error converting/loading annotations:', error);
-                }
-              }
-
-              console.log('Staff View: Recogito Initialized.');
-            } else {
-              console.error('Staff View: Could not find inner div.');
-            }
-          } else {
-            console.log('Staff View: Init aborted post-import.');
-          }
-        } catch (error) {
-          console.error('Staff View: Failed to import/init Recogito:', error);
-        }
-      };
-
-      initRecogito();
-    }
-
-    return () => {
-      isMounted = false;
-      // Remove the keydown event handler if it was registered
-      const keydownHandler = document
-        .querySelector('[data-keydown-handler]')
-        ?.getAttribute('data-handler-ref') as unknown as EventListener;
-      if (keydownHandler) {
-        document.removeEventListener('keydown', keydownHandler, true);
-      }
-      if (recogitoInstance.current) {
-        console.log('Staff View: Destroying Recogito instance...');
-        recogitoInstance.current.destroy();
-        recogitoInstance.current = null;
-      }
-    };
-  }, [request?.inline_content, request?.section_comments, user, token]);
-
-  // Clean up Recogito when component unmounts
-  useEffect(() => {
-    return () => {
-      if (recogitoInstance.current) {
-        console.log('Staff View: Destroying Recogito...');
-        recogitoInstance.current.destroy();
-        recogitoInstance.current = null;
-      }
-    };
-  }, []);
-
   // --- Add Modal Handlers ---
   const handleOpenViewLog = (contact: ContactWithViews) => {
     setSelectedContactViews(contact);
@@ -805,77 +530,17 @@ export default function ApprovalRequestDetailPage() {
   }) => {
     setSelectedVersion(version);
     setVersionContentModalOpen(true);
-
-    // If section comments are available, filter them for this specific version
-    if (request?.section_comments) {
-      const versionSpecificComments = request.section_comments.filter(
-        comment => comment.version_id === version.version_id
-      );
-      console.log(
-        `Found ${versionSpecificComments.length} comments for version ${version.version_number}`
-      );
-
-      // Pre-convert annotations for this version
-      const versionAnnotations = versionSpecificComments.map(convertDbCommentToAnnotation);
-      setVersionAnnotations(versionAnnotations);
-    } else {
-      setVersionAnnotations([]);
-    }
   };
 
   const handleCloseVersionContent = () => {
-    // Clean up Recogito instance if it exists
-    if (window._versionRecogitoInstance) {
-      window._versionRecogitoInstance.destroy();
-      window._versionRecogitoInstance = null;
-    }
     setVersionContentModalOpen(false);
     setSelectedVersion(null);
   };
-
-  // Function to initialize Recogito in the Version Content dialog
-  const initVersionContentRecogito = useCallback(() => {
-    if (!versionContentModalOpen || !selectedVersion) return;
-
-    console.log('Starting version content Recogito initialization...');
-
-    // Use the shared utility function
-    setTimeout(async () => {
-      window._versionRecogitoInstance = await initVersionRecogito({
-        contentElementId: 'version-content-view',
-        annotations: versionAnnotations,
-        readOnly: true,
-        currentInstance: window._versionRecogitoInstance,
-      });
-    }, 300);
-  }, [versionContentModalOpen, selectedVersion, versionAnnotations]);
-
-  // Effect to initialize Recogito when the modal opens
-  useEffect(() => {
-    if (versionContentModalOpen && selectedVersion) {
-      initVersionContentRecogito();
-    }
-
-    return () => {
-      // Clean up on modal close
-      if (window._versionRecogitoInstance) {
-        try {
-          window._versionRecogitoInstance.destroy();
-        } catch (e) {
-          console.error('Error cleaning up Recogito:', e);
-        }
-        window._versionRecogitoInstance = undefined;
-      }
-    };
-  }, [versionContentModalOpen, selectedVersion, initVersionContentRecogito]);
   // --- End Version Modal Handlers ---
 
   // --- Add New Version Dialog Handlers ---
   const handleOpenNewVersionDialog = () => {
-    // Pre-populate with current inline content if available
-    if (request?.inline_content) {
-      setNewVersionContent(request.inline_content);
-    }
+    setNewVersionGoogleDocUrl('');
     setNewVersionComment('');
     setNewVersionDialogOpen(true);
   };
@@ -884,13 +549,19 @@ export default function ApprovalRequestDetailPage() {
     setNewVersionDialogOpen(false);
   };
 
-  const handleNewVersionContentChange = (content: string) => {
-    setNewVersionContent(content);
+  const handleNewVersionGoogleDocUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewVersionGoogleDocUrl(e.target.value);
   };
 
   const handleSubmitNewVersion = async () => {
-    if (!newVersionContent.trim()) {
-      setError('Content is required');
+    if (!newVersionGoogleDocUrl.trim()) {
+      setError('Google Doc URL is required');
+      return;
+    }
+
+    // Validate if it's a valid Google Doc URL
+    if (!newVersionGoogleDocUrl.includes('docs.google.com')) {
+      setError('Please enter a valid Google Doc URL');
       return;
     }
 
@@ -903,18 +574,30 @@ export default function ApprovalRequestDetailPage() {
         headers['x-auth-token'] = token;
       }
 
-      // Instead of fileUrl, send inlineContent
+      // Extract Google Doc ID from URL
+      const docIdMatch = newVersionGoogleDocUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+      const googleDocId = docIdMatch ? docIdMatch[1] : null;
+
+      if (!googleDocId) {
+        setError('Could not extract Google Doc ID from URL');
+        setIsSubmittingVersion(false);
+        return;
+      }
+
+      // Send the new version with the Google Doc URL and ID
       const response = await axios.post(
         `/api/approval-requests/${id}/versions`,
         {
-          inlineContent: newVersionContent,
+          googleDocId: googleDocId,
+          inlineContent: newVersionGoogleDocUrl,
+          contentType: 'google_doc',
           comments: newVersionComment.trim() || null,
         },
         { headers }
       );
 
       setNewVersionDialogOpen(false);
-      setNewVersionContent('');
+      setNewVersionGoogleDocUrl('');
       setNewVersionComment('');
       fetchRequestDetails();
     } catch (error: any) {
@@ -961,7 +644,6 @@ export default function ApprovalRequestDetailPage() {
     <>
       <Head>
         <title>Request Details - {request?.title || id}</title>
-        <link rel="stylesheet" href="/vendor/recogito.min.css" />
       </Head>
 
       <LayoutContainer>
@@ -1066,355 +748,344 @@ export default function ApprovalRequestDetailPage() {
 
                 <Box mb={4}>
                   {tabValue === 0 && (
-                    <Grid container spacing={3}>
-                      <Grid item xs={12} md={7}>
-                        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-                          {/* Add status banner for approved content */}
-                          {request.status === 'approved' && (
-                            <Alert severity="success" sx={{ mb: 2 }} icon={<CheckIcon />}>
-                              This content has been approved. Annotations shown are from the review
-                              process.
-                            </Alert>
-                          )}
-
-                          {(() => {
-                            if (request.inline_content) {
-                              // Check if this is a Google Doc URL
-                              if (request.content_type === 'google_doc') {
-                                return (
-                                  <Box mt={2}>
-                                    <Typography variant="h4" gutterBottom>
-                                      {request.title}
-                                    </Typography>
-                                    <Box
-                                      sx={{
-                                        height: '600px',
-                                        border: '1px solid',
-                                        borderColor: 'rgba(0, 0, 0, 0.23)',
-                                        borderRadius: 1,
-                                        overflow: 'hidden',
-                                      }}
-                                    >
-                                      <iframe
-                                        src={request.inline_content}
-                                        width="100%"
-                                        height="100%"
-                                        frameBorder="0"
-                                      ></iframe>
+                    <>
+                      {/* Contact Status + Actions in a top bar */}
+                      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+                        <Grid container spacing={3}>
+                          {/* Contact Status */}
+                          <Grid item xs={12} md={8}>
+                            <Typography variant="h6" gutterBottom>
+                              Contact Status
+                            </Typography>
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                              {request.contacts.map(contact => (
+                                <Chip
+                                  key={contact.contact_id}
+                                  label={contact.name}
+                                  icon={<PersonIcon />}
+                                  color={contact.has_approved ? 'success' : 'default'}
+                                  variant="outlined"
+                                  sx={{ mb: 1 }}
+                                  deleteIcon={
+                                    <Box sx={{ display: 'flex' }}>
+                                      {contact.has_viewed ? (
+                                        <VisibilityIcon fontSize="small" color="info" />
+                                      ) : (
+                                        <VisibilityOffIcon fontSize="small" color="disabled" />
+                                      )}
+                                      <EmailIcon
+                                        fontSize="small"
+                                        color="primary"
+                                        sx={{ ml: 0.5 }}
+                                      />
                                     </Box>
+                                  }
+                                  onDelete={() => {
+                                    // This is just to show the icons, not actually delete
+                                  }}
+                                  onClick={() => handleOpenViewLog(contact)}
+                                />
+                              ))}
+                            </Box>
+                            <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                              {request.contacts.map(contact => (
+                                <Button
+                                  key={contact.contact_id}
+                                  size="small"
+                                  startIcon={<EmailIcon />}
+                                  variant="outlined"
+                                  onClick={() => handleResendNotification(contact.contact_id)}
+                                  disabled={resendingContactId === contact.contact_id}
+                                >
+                                  {resendingContactId === contact.contact_id ? (
+                                    <CircularProgress size={20} />
+                                  ) : (
+                                    'Notify ' + contact.name
+                                  )}
+                                </Button>
+                              ))}
+                            </Box>
+                          </Grid>
+
+                          {/* Actions */}
+                          <Grid item xs={12} md={4}>
+                            <Typography variant="h6" gutterBottom>
+                              Actions
+                            </Typography>
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                              <Button
+                                variant="outlined"
+                                color="warning"
+                                onClick={handleArchiveRequest}
+                                startIcon={<DeleteIcon />}
+                              >
+                                Archive Request
+                              </Button>
+                            </Box>
+                          </Grid>
+                        </Grid>
+                      </Paper>
+
+                      {/* Main Content - Full Width */}
+                      <Grid container spacing={3}>
+                        <Grid item xs={12}>
+                          <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+                            {/* Add status banner for approved content */}
+                            {request.status === 'approved' && (
+                              <Alert severity="success" sx={{ mb: 2 }} icon={<CheckIcon />}>
+                                This content has been approved. Annotations shown are from the
+                                review process.
+                              </Alert>
+                            )}
+
+                            {(() => {
+                              if (request.inline_content) {
+                                // Check if this is a Google Doc URL
+                                if (
+                                  request.content_type === 'google_doc' ||
+                                  (request.inline_content.includes('docs.google.com') &&
+                                    !request.inline_content.startsWith('<'))
+                                ) {
+                                  console.log('Google Doc detected in staff view');
+
+                                  // Get the direct document URL - for staff view we pass true
+                                  const docUrl = request.google_doc_id
+                                    ? getEmbeddableGoogleDocUrl(
+                                        `https://docs.google.com/document/d/${request.google_doc_id}`,
+                                        true
+                                      )
+                                    : getEmbeddableGoogleDocUrl(request.inline_content, true);
+
+                                  return (
+                                    <Box mt={2}>
+                                      <Typography variant="h4" gutterBottom>
+                                        {request.title}
+                                      </Typography>
+
+                                      {/* Single iframe that follows the same format as client view */}
+                                      <Box
+                                        sx={{
+                                          height: '700px', // Taller for better usability
+                                          border: '1px solid',
+                                          borderColor: 'rgba(0, 0, 0, 0.23)',
+                                          borderRadius: 1,
+                                          overflow: 'hidden',
+                                        }}
+                                      >
+                                        <iframe
+                                          src={docUrl}
+                                          width="100%"
+                                          height="100%"
+                                          frameBorder="0"
+                                          style={{ border: 'none' }}
+                                          allow="autoplay; encrypted-media"
+                                        ></iframe>
+                                      </Box>
+                                    </Box>
+                                  );
+                                }
+
+                                // Regular HTML content
+                                // Prepend the title as H1 to the inline content
+                                const contentWithTitle = `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request.title}</h1>${request.inline_content}`;
+
+                                return (
+                                  <Box
+                                    mt={2}
+                                    sx={{
+                                      '& p': { my: 1.5 },
+                                      '& ul, & ol': { my: 1.5, pl: 3 },
+                                      '& li': { mb: 0.5 },
+                                      '& h1, & h2, & h3, & h4, & h5, & h6': {
+                                        my: 2,
+                                        fontWeight: 'bold',
+                                      },
+                                      '& a': {
+                                        color: 'primary.main',
+                                        textDecoration: 'underline',
+                                        '&:hover': { color: 'primary.dark' },
+                                      },
+                                      '.r6o-annotation': {
+                                        borderBottom: '2px solid yellow',
+                                        backgroundColor: 'rgba(255, 255, 0, 0.2)',
+                                      },
+                                    }}
+                                    ref={contentRef}
+                                  >
+                                    <div dangerouslySetInnerHTML={{ __html: contentWithTitle }} />
                                   </Box>
                                 );
+                              } else if (request.file_url) {
+                                return (
+                                  <Alert severity="info" sx={{ mt: 2 }}>
+                                    This request contains a file attachment instead of inline
+                                    content.
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      href={request.file_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      startIcon={<DownloadIcon />}
+                                      sx={{ ml: 2 }}
+                                    >
+                                      Download File
+                                    </Button>
+                                  </Alert>
+                                );
+                              } else {
+                                return (
+                                  <Alert severity="warning" sx={{ mt: 2 }}>
+                                    Content is not available for this request.
+                                  </Alert>
+                                );
                               }
+                            })()}
+                          </Paper>
 
-                              // Regular HTML content
-                              // Prepend the title as H1 to the inline content
-                              const contentWithTitle = `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request.title}</h1>${request.inline_content}`;
-
-                              return (
-                                <Box
-                                  mt={2}
-                                  sx={{
-                                    '& p': { my: 1.5 },
-                                    '& ul, & ol': { my: 1.5, pl: 3 },
-                                    '& li': { mb: 0.5 },
-                                    '& h1, & h2, & h3, & h4, & h5, & h6': {
-                                      my: 2,
-                                      fontWeight: 'bold',
-                                    },
-                                    '& a': {
-                                      color: 'primary.main',
-                                      textDecoration: 'underline',
-                                      '&:hover': { color: 'primary.dark' },
-                                    },
-                                    '.r6o-annotation': {
-                                      borderBottom: '2px solid yellow',
-                                      backgroundColor: 'rgba(255, 255, 0, 0.2)',
-                                    },
-                                  }}
-                                  ref={contentRef}
-                                >
-                                  <div dangerouslySetInnerHTML={{ __html: contentWithTitle }} />
-                                </Box>
-                              );
-                            } else if (request.file_url) {
-                              return (
-                                <Alert severity="info" sx={{ mt: 2 }}>
-                                  This request contains a file attachment instead of inline content.
-                                  <Button
-                                    size="small"
-                                    variant="outlined"
-                                    href={request.file_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    startIcon={<DownloadIcon />}
-                                    sx={{ ml: 2 }}
-                                  >
-                                    Download File
-                                  </Button>
-                                </Alert>
-                              );
-                            } else {
-                              return (
-                                <Alert severity="warning" sx={{ mt: 2 }}>
-                                  Content is not available for this request.
-                                </Alert>
-                              );
-                            }
-                          })()}
-                        </Paper>
-
-                        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-                          <Typography variant="h6" gutterBottom>
-                            Published URL
-                          </Typography>
-
-                          <Box mt={2}>
-                            <Grid container spacing={2} alignItems="flex-end">
-                              <Grid item xs={request.published_url ? 9 : 12}>
-                                <TextField
-                                  fullWidth
-                                  label="Published URL"
-                                  placeholder="https://example.com/published-content"
-                                  value={publishedUrl}
-                                  onChange={e => setPublishedUrl(e.target.value)}
-                                  InputProps={{
-                                    startAdornment: <LinkIcon color="action" sx={{ mr: 1 }} />,
-                                  }}
-                                />
-                              </Grid>
-                              {request.published_url && (
-                                <Grid item xs={3}>
-                                  <Button
-                                    fullWidth
-                                    href={request.published_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                  >
-                                    Visit
-                                  </Button>
-                                </Grid>
-                              )}
-                            </Grid>
-                            <Box display="flex" justifyContent="flex-end" mt={2}>
-                              <Button
-                                variant="contained"
-                                onClick={handleUpdatePublishedUrl}
-                                disabled={updatingUrl}
-                              >
-                                {updatingUrl ? <CircularProgress size={24} /> : 'Update URL'}
-                              </Button>
-                            </Box>
-                          </Box>
-                        </Paper>
-
-                        <Paper elevation={2} sx={{ p: 3 }}>
-                          <Typography variant="h6" gutterBottom>
-                            Comments
-                          </Typography>
-
-                          <Box mt={2} mb={3}>
-                            <TextField
-                              fullWidth
-                              multiline
-                              rows={3}
-                              label="Add a comment"
-                              placeholder="Enter your comment here..."
-                              value={newComment}
-                              onChange={e => setNewComment(e.target.value)}
-                            />
-                            <Box display="flex" justifyContent="flex-end" mt={2}>
-                              <Button
-                                variant="contained"
-                                onClick={handleSubmitComment}
-                                disabled={submittingComment || !newComment.trim()}
-                              >
-                                {submittingComment ? (
-                                  <CircularProgress size={24} />
-                                ) : (
-                                  'Post Comment'
-                                )}
-                              </Button>
-                            </Box>
-                          </Box>
-
-                          <Divider sx={{ my: 2 }} />
-
-                          {request.comments && request.comments.length > 0 ? (
-                            <Box sx={{ maxHeight: '400px', overflow: 'auto' }}>
-                              <List>
-                                {request.comments.map(comment => (
-                                  <React.Fragment key={comment.comment_id}>
-                                    <ListItem alignItems="flex-start">
-                                      <ListItemAvatar>
-                                        <Avatar>
-                                          {comment.contact_name
-                                            ? comment.contact_name.charAt(0).toUpperCase()
-                                            : 'S'}
-                                        </Avatar>
-                                      </ListItemAvatar>
-                                      <ListItemText
-                                        primary={
-                                          <Box display="flex" justifyContent="space-between">
-                                            <Typography variant="subtitle2">
-                                              {comment.commenter_name || 'Unknown'}
-                                            </Typography>
-                                            <Typography variant="caption" color="textSecondary">
-                                              {new Date(comment.created_at).toLocaleString(
-                                                undefined,
-                                                {
-                                                  year: 'numeric',
-                                                  month: 'short',
-                                                  day: 'numeric',
-                                                  hour: '2-digit',
-                                                  minute: '2-digit',
-                                                  timeZoneName: 'short',
-                                                }
-                                              )}
-                                            </Typography>
-                                          </Box>
-                                        }
-                                        secondary={
-                                          <Typography
-                                            component="span"
-                                            variant="body2"
-                                            color="textPrimary"
-                                            sx={{ mt: 1, display: 'block' }}
-                                          >
-                                            {comment.comment}
-                                            <ReactionPicker
-                                              targetType="comment"
-                                              targetId={comment.comment_id}
-                                              requestId={Number(id)}
-                                              userId={user?.id}
-                                              token={token || undefined}
-                                            />
-                                          </Typography>
-                                        }
-                                      />
-                                    </ListItem>
-                                    <Divider variant="inset" component="li" />
-                                  </React.Fragment>
-                                ))}
-                              </List>
-                            </Box>
-                          ) : (
-                            <Typography variant="body2" color="textSecondary" align="center">
-                              No comments yet
+                          <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+                            <Typography variant="h6" gutterBottom>
+                              Published URL
                             </Typography>
-                          )}
-                        </Paper>
-                      </Grid>
 
-                      <Grid item xs={12} md={5}>
-                        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-                          <Typography variant="h6" gutterBottom>
-                            Contact Status
-                          </Typography>
-
-                          <List>
-                            {request.contacts.map(contact => (
-                              <ListItem
-                                key={contact.contact_id}
-                                secondaryAction={
-                                  <Box display="flex" alignItems="center">
-                                    <Tooltip
-                                      title={
-                                        contact.views && contact.views.length > 0
-                                          ? `Viewed ${contact.views.length} times. Click to see history. (Last: ${new Date(contact.views[0].viewed_at).toLocaleString()})`
-                                          : 'Not viewed'
-                                      }
+                            <Box mt={2}>
+                              <Grid container spacing={2} alignItems="flex-end">
+                                <Grid item xs={request.published_url ? 9 : 12}>
+                                  <TextField
+                                    fullWidth
+                                    label="Published URL"
+                                    placeholder="https://example.com/published-content"
+                                    value={publishedUrl}
+                                    onChange={e => setPublishedUrl(e.target.value)}
+                                    InputProps={{
+                                      startAdornment: <LinkIcon color="action" sx={{ mr: 1 }} />,
+                                    }}
+                                  />
+                                </Grid>
+                                {request.published_url && (
+                                  <Grid item xs={3}>
+                                    <Button
+                                      fullWidth
+                                      href={request.published_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
                                     >
-                                      <span>
-                                        <IconButton
-                                          size="small"
-                                          onClick={() => handleOpenViewLog(contact)}
-                                          disabled={!contact.views || contact.views.length === 0}
-                                        >
-                                          {contact.views && contact.views.length > 0 ? (
-                                            <VisibilityIcon color="info" />
-                                          ) : (
-                                            <VisibilityOffIcon color="disabled" />
-                                          )}
-                                        </IconButton>
-                                      </span>
-                                    </Tooltip>
-                                    <Tooltip
-                                      title={contact.has_approved ? 'Approved' : 'Not approved'}
-                                    >
-                                      <span>
-                                        <IconButton size="small" disabled>
-                                          {contact.has_approved ? (
-                                            <CheckIcon color="success" />
-                                          ) : (
-                                            <CloseIcon color="disabled" />
-                                          )}
-                                        </IconButton>
-                                      </span>
-                                    </Tooltip>
-                                    <Tooltip title="Resend Notification">
-                                      <IconButton
-                                        size="small"
-                                        color="primary"
-                                        onClick={() => handleResendNotification(contact.contact_id)}
-                                        disabled={resendingContactId === contact.contact_id}
-                                        sx={{ ml: 1 }}
-                                      >
-                                        {resendingContactId === contact.contact_id ? (
-                                          <CircularProgress size={20} />
-                                        ) : (
-                                          <EmailIcon fontSize="small" />
-                                        )}
-                                      </IconButton>
-                                    </Tooltip>
-                                    <Tooltip title="Remove Contact">
-                                      <IconButton
-                                        size="small"
-                                        color="error"
-                                        onClick={() =>
-                                          handleOpenRemoveDialog({
-                                            id: contact.contact_id,
-                                            name: contact.name,
-                                          })
-                                        }
-                                        disabled={removingContactId === contact.contact_id}
-                                        sx={{ ml: 0.5 }}
-                                      >
-                                        {removingContactId === contact.contact_id ? (
-                                          <CircularProgress size={20} />
-                                        ) : (
-                                          <DeleteIcon fontSize="small" />
-                                        )}
-                                      </IconButton>
-                                    </Tooltip>
-                                  </Box>
-                                }
-                              >
-                                <ListItemIcon>
-                                  <PersonIcon />
-                                </ListItemIcon>
-                                <ListItemText primary={contact.name} secondary={contact.email} />
-                              </ListItem>
-                            ))}
-                          </List>
-                        </Paper>
+                                      Visit
+                                    </Button>
+                                  </Grid>
+                                )}
+                              </Grid>
+                              <Box display="flex" justifyContent="flex-end" mt={2}>
+                                <Button
+                                  variant="contained"
+                                  onClick={handleUpdatePublishedUrl}
+                                  disabled={updatingUrl}
+                                >
+                                  {updatingUrl ? <CircularProgress size={24} /> : 'Update URL'}
+                                </Button>
+                              </Box>
+                            </Box>
+                          </Paper>
 
-                        <Paper elevation={2} sx={{ p: 3 }}>
-                          <Typography variant="h6" gutterBottom>
-                            Actions
-                          </Typography>
+                          <Paper elevation={2} sx={{ p: 3 }}>
+                            <Typography variant="h6" gutterBottom>
+                              Comments
+                            </Typography>
 
-                          <Button
-                            fullWidth
-                            variant="outlined"
-                            color="warning"
-                            onClick={handleArchiveRequest}
-                            sx={{ mt: 2 }}
-                          >
-                            Archive Request
-                          </Button>
-                        </Paper>
+                            <Box mt={2} mb={3}>
+                              <TextField
+                                fullWidth
+                                multiline
+                                rows={3}
+                                label="Add a comment"
+                                placeholder="Enter your comment here..."
+                                value={newComment}
+                                onChange={e => setNewComment(e.target.value)}
+                              />
+                              <Box display="flex" justifyContent="flex-end" mt={2}>
+                                <Button
+                                  variant="contained"
+                                  onClick={handleSubmitComment}
+                                  disabled={submittingComment || !newComment.trim()}
+                                >
+                                  {submittingComment ? (
+                                    <CircularProgress size={24} />
+                                  ) : (
+                                    'Post Comment'
+                                  )}
+                                </Button>
+                              </Box>
+                            </Box>
+
+                            <Divider sx={{ my: 2 }} />
+
+                            {request.comments && request.comments.length > 0 ? (
+                              <Box sx={{ maxHeight: '400px', overflow: 'auto' }}>
+                                <List>
+                                  {request.comments.map(comment => (
+                                    <React.Fragment key={comment.comment_id}>
+                                      <ListItem alignItems="flex-start">
+                                        <ListItemAvatar>
+                                          <Avatar>
+                                            {comment.contact_name
+                                              ? comment.contact_name.charAt(0).toUpperCase()
+                                              : 'S'}
+                                          </Avatar>
+                                        </ListItemAvatar>
+                                        <ListItemText
+                                          primary={
+                                            <Box display="flex" justifyContent="space-between">
+                                              <Typography variant="subtitle2">
+                                                {comment.commenter_name || 'Unknown'}
+                                              </Typography>
+                                              <Typography variant="caption" color="textSecondary">
+                                                {new Date(comment.created_at).toLocaleString(
+                                                  undefined,
+                                                  {
+                                                    year: 'numeric',
+                                                    month: 'short',
+                                                    day: 'numeric',
+                                                    hour: '2-digit',
+                                                    minute: '2-digit',
+                                                    timeZoneName: 'short',
+                                                  }
+                                                )}
+                                              </Typography>
+                                            </Box>
+                                          }
+                                          secondary={
+                                            <Typography
+                                              component="span"
+                                              variant="body2"
+                                              color="textPrimary"
+                                              sx={{ mt: 1, display: 'block' }}
+                                            >
+                                              {comment.comment}
+                                              <ReactionPicker
+                                                targetType="comment"
+                                                targetId={comment.comment_id}
+                                                requestId={Number(id)}
+                                                userId={user?.id}
+                                                token={token || undefined}
+                                              />
+                                            </Typography>
+                                          }
+                                        />
+                                      </ListItem>
+                                      <Divider variant="inset" component="li" />
+                                    </React.Fragment>
+                                  ))}
+                                </List>
+                              </Box>
+                            ) : (
+                              <Typography variant="body2" color="textSecondary" align="center">
+                                No comments yet
+                              </Typography>
+                            )}
+                          </Paper>
+                        </Grid>
                       </Grid>
-                    </Grid>
+                    </>
                   )}
 
                   {tabValue === 1 && (
@@ -1682,76 +1353,51 @@ export default function ApprovalRequestDetailPage() {
                       Download File
                     </Button>
                   </Box>
+                ) : /* For inline content, show based on type */
+                selectedVersion.content_type === 'google_doc' ||
+                  (selectedVersion.inline_content &&
+                    selectedVersion.inline_content.includes('docs.google.com') &&
+                    !selectedVersion.inline_content.startsWith('<')) ? (
+                  <Box>
+                    {/* Single iframe approach */}
+                    <Box
+                      sx={{
+                        height: '400px',
+                        border: '1px solid',
+                        borderColor: 'rgba(0, 0, 0, 0.23)',
+                        borderRadius: 1,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <iframe
+                        src={
+                          selectedVersion.google_doc_id
+                            ? getEmbeddableGoogleDocUrl(
+                                `https://docs.google.com/document/d/${selectedVersion.google_doc_id}`,
+                                true
+                              )
+                            : getEmbeddableGoogleDocUrl(selectedVersion.inline_content || '', true)
+                        }
+                        width="100%"
+                        height="100%"
+                        frameBorder="0"
+                        style={{ border: 'none' }}
+                        allow="autoplay; encrypted-media"
+                      ></iframe>
+                    </Box>
+                  </Box>
                 ) : (
-                  /* For inline content, show historical content if available */
+                  // For regular HTML content
                   <Box py={3}>
-                    {selectedVersion.inline_content ? (
-                      // For versions with stored inline_content
-                      <>
-                        {/* Check if this is a Google Doc */}
-                        {selectedVersion.content_type === 'google_doc' ? (
-                          <Box
-                            sx={{
-                              height: '600px',
-                              border: '1px solid',
-                              borderColor: 'rgba(0, 0, 0, 0.23)',
-                              borderRadius: 1,
-                              overflow: 'hidden',
-                            }}
-                          >
-                            <iframe
-                              src={selectedVersion.inline_content}
-                              width="100%"
-                              height="100%"
-                              frameBorder="0"
-                            ></iframe>
-                          </Box>
-                        ) : (
-                          <>
-                            {versionAnnotations.length > 0 ? (
-                              <Alert severity="info" sx={{ mb: 2 }}>
-                                Showing {versionAnnotations.length} comments specific to this
-                                version.
-                              </Alert>
-                            ) : (
-                              <Alert severity="info" sx={{ mb: 2 }}>
-                                No comments were found for this specific version.
-                              </Alert>
-                            )}
-                            {/* Create a separate container DIV first to ensure it's in the DOM */}
-                            <div id="version-content-container">
-                              <div
-                                id="version-content-view"
-                                className="annotatable-content"
-                                style={{
-                                  border: '1px solid #e0e0e0',
-                                  borderRadius: '4px',
-                                  padding: '16px',
-                                  textAlign: 'left',
-                                }}
-                                dangerouslySetInnerHTML={{
-                                  __html: DOMPurify.sanitize(
-                                    selectedVersion.inline_content
-                                      ? `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request?.title || ''}</h1>${selectedVersion.inline_content}`
-                                      : ''
-                                  ),
-                                }}
-                              />
-                            </div>
-                          </>
-                        )}
-                      </>
-                    ) : (
-                      <Box textAlign="center">
-                        <Typography color="text.secondary" paragraph>
-                          Historical inline content is not preserved for older versions. Future
-                          updates will store snapshots of each content revision.
-                        </Typography>
-                        <Typography variant="body2" color="primary">
-                          The database has been updated to store inline content for future versions.
-                        </Typography>
-                      </Box>
-                    )}
+                    <div
+                      dangerouslySetInnerHTML={{
+                        __html: DOMPurify.sanitize(
+                          selectedVersion.inline_content
+                            ? `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request?.title || ''}</h1>${selectedVersion.inline_content}`
+                            : 'No content available'
+                        ),
+                      }}
+                    />
                   </Box>
                 )}
               </>
@@ -1767,49 +1413,34 @@ export default function ApprovalRequestDetailPage() {
         </Dialog>
         {/* --- End Version Content Modal --- */}
 
-        {/* --- New Version Dialog with Rich Text Editor --- */}
+        {/* --- New Version Dialog with Google Doc URL --- */}
         <Dialog
           open={newVersionDialogOpen}
           onClose={handleCloseNewVersionDialog}
-          maxWidth="lg"
+          maxWidth="md"
           fullWidth
         >
           <DialogTitle>Create New Version</DialogTitle>
           <DialogContent dividers>
             <DialogContentText sx={{ mb: 2 }}>
               Creating a new version will reset approval status for all contacts and send them a
-              notification.
+              notification. Please provide a Google Doc URL for the new version.
             </DialogContentText>
 
             <Typography variant="subtitle1" gutterBottom>
-              Content
+              Google Doc URL
             </Typography>
-            <Box
-              sx={{
-                mb: 3,
-                '& .quill': {
-                  height: '300px',
-                  mb: 1,
-                  '& .ql-editor': {
-                    minHeight: '250px',
-                  },
-                },
-              }}
-            >
-              <ReactQuill
-                value={newVersionContent}
-                onChange={handleNewVersionContentChange}
-                modules={{
-                  toolbar: [
-                    [{ header: [1, 2, 3, false] }],
-                    ['bold', 'italic', 'underline'],
-                    [{ list: 'ordered' }, { list: 'bullet' }],
-                    ['link'],
-                    ['clean'],
-                  ],
+            <Box mb={3}>
+              <TextField
+                fullWidth
+                label="Google Doc URL"
+                placeholder="https://docs.google.com/document/d/..."
+                value={newVersionGoogleDocUrl}
+                onChange={handleNewVersionGoogleDocUrlChange}
+                helperText="Please share the Google Doc with appropriate permissions"
+                InputProps={{
+                  startAdornment: <LinkIcon color="action" sx={{ mr: 1 }} />,
                 }}
-                formats={['header', 'bold', 'italic', 'underline', 'list', 'bullet', 'link']}
-                placeholder="Enter content for review..."
               />
             </Box>
 
@@ -1832,7 +1463,7 @@ export default function ApprovalRequestDetailPage() {
               variant="contained"
               color="primary"
               onClick={handleSubmitNewVersion}
-              disabled={isSubmittingVersion || !newVersionContent.trim()}
+              disabled={isSubmittingVersion || !newVersionGoogleDocUrl.trim()}
             >
               {isSubmittingVersion ? <CircularProgress size={24} /> : 'Submit New Version'}
             </Button>
