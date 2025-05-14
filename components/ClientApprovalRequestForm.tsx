@@ -41,6 +41,7 @@ interface ClientContact {
   client_id: number;
   name: string;
   email: string;
+  job_title?: string;
   is_active: boolean;
 }
 
@@ -71,8 +72,9 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
   // Replace contentHtml with Google Doc state
   const [googleDocId, setGoogleDocId] = useState<string | null>(null);
   const [docContent, setDocContent] = useState('');
-  const [docLoading, setDocLoading] = useState(true);
+  const [docLoading, setDocLoading] = useState(false);
   const [docError, setDocError] = useState<string | null>(null);
+  const [showOverlay, setShowOverlay] = useState(false);
 
   // Data loading state
   const [clients, setClients] = useState<Client[]>([]);
@@ -90,11 +92,6 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
     fetchClients();
   }, []);
 
-  // Create a new Google Doc when form is loaded
-  useEffect(() => {
-    createNewGoogleDoc();
-  }, []);
-
   // Load client contacts when a client is selected
   useEffect(() => {
     if (selectedClient) {
@@ -104,6 +101,14 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
       setSelectedContacts([]);
     }
   }, [selectedClient]);
+
+  // Create a Google Doc when both client and title are provided
+  useEffect(() => {
+    // Reset doc if client or title changes significantly
+    if (googleDocId && (!selectedClient || !title.trim())) {
+      setGoogleDocId(null);
+    }
+  }, [selectedClient, title, googleDocId]);
 
   // Fetch clients
   const fetchClients = async () => {
@@ -151,8 +156,16 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
     setSelectedContacts(newSelectedContacts);
   };
 
-  // Create a new Google Doc when component mounts
-  const createNewGoogleDoc = async () => {
+  // Function to trigger Google Doc creation
+  const handleCreateGoogleDoc = () => {
+    // Only proceed if we have both client and title, and we're not already loading
+    if (selectedClient && title.trim() && !docLoading) {
+      createNewGoogleDoc(selectedClient.client_name, title.trim());
+    }
+  };
+
+  // Create a new Google Doc with client name and title
+  const createNewGoogleDoc = async (clientName: string, articleTitle: string) => {
     setDocLoading(true);
     try {
       // Get auth token from localStorage
@@ -169,7 +182,7 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
       const response = await axios.post(
         '/api/google-docs/create',
         {
-          title: `Content Approval Request - ${new Date().toLocaleDateString()}`,
+          title: `${clientName} - ${articleTitle}`,
         },
         {
           headers: {
@@ -239,7 +252,7 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
 
     try {
       // Instead of getting HTML content, just use the Google Doc URL
-      const googleDocUrl = `https://docs.google.com/document/d/${googleDocId}/edit?usp=sharing&embedded=true&rm=minimal&chrome=false&headers=false`;
+      const googleDocUrl = `https://docs.google.com/document/d/${googleDocId}/edit?usp=sharing&embedded=true&rm=minimal`;
 
       // Create the approval request with Google Doc URL
       const approvalRequestData = {
@@ -280,7 +293,7 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
       setGoogleDocId(null);
 
       // Create a new doc for the next submission
-      createNewGoogleDoc();
+      handleCreateGoogleDoc();
 
       // Call success callback if provided
       if (onSubmitSuccess) {
@@ -400,6 +413,17 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
                   sx={{ display: 'block', mb: 1 }}
                 >
                   Content for Review <span style={{ color: 'red' }}>*</span>
+                  {googleDocId && (
+                    <Button
+                      variant="text"
+                      size="small"
+                      color="primary"
+                      onClick={() => setShowOverlay(true)}
+                      sx={{ ml: 1, fontSize: '0.8rem', textTransform: 'none', p: 0 }}
+                    >
+                      Having trouble editing?
+                    </Button>
+                  )}
                 </Typography>
 
                 {docError && (
@@ -420,29 +444,92 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
                   >
                     <CircularProgress />
                     <Typography variant="body2" sx={{ ml: 2 }}>
-                      Loading document editor...
+                      Creating document editor...
                     </Typography>
                   </Box>
                 ) : googleDocId ? (
-                  <Box
-                    sx={{
-                      height: '500px',
-                      border: '1px solid',
-                      borderColor: 'rgba(0, 0, 0, 0.23)',
-                      borderRadius: 1,
-                      overflow: 'hidden',
-                    }}
-                  >
-                    <iframe
-                      src={`https://docs.google.com/document/d/${googleDocId}/edit?usp=sharing&embedded=true&rm=minimal&chrome=false&headers=false`}
-                      width="100%"
-                      height="100%"
-                      frameBorder="0"
-                    ></iframe>
+                  <Box>
+                    <Box
+                      sx={{
+                        height: '500px',
+                        border: '1px solid',
+                        borderColor: 'rgba(0, 0, 0, 0.23)',
+                        borderRadius: 1,
+                        overflow: 'hidden',
+                        position: 'relative',
+                      }}
+                    >
+                      <iframe
+                        src={`https://docs.google.com/document/d/${googleDocId}/edit?usp=sharing&embedded=true&rm=minimal`}
+                        width="100%"
+                        height="100%"
+                        frameBorder="0"
+                      ></iframe>
+
+                      {/* Overlay button for direct access */}
+                      {showOverlay && (
+                        <Box
+                          sx={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            height: '100%',
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            background: 'rgba(255, 255, 255, 0.9)',
+                            zIndex: 1,
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              textAlign: 'center',
+                              p: 2,
+                              maxWidth: '80%',
+                              position: 'relative',
+                            }}
+                          >
+                            <Button
+                              sx={{ position: 'absolute', right: -10, top: -10 }}
+                              size="small"
+                              onClick={() => setShowOverlay(false)}
+                            >
+                              ✕
+                            </Button>
+                            <Typography variant="body1" gutterBottom>
+                              If you&apos;re having trouble accessing the document due to Google
+                              account permissions:
+                            </Typography>
+                            <Button
+                              variant="contained"
+                              color="primary"
+                              href={`https://docs.google.com/document/d/${googleDocId}/edit?usp=sharing&rm=minimal`}
+                              target="_blank"
+                              sx={{ mt: 2 }}
+                            >
+                              Open Document in New Tab
+                            </Button>
+                            <Typography variant="body2" sx={{ mt: 2 }}>
+                              Please make edits in the new tab, then return here to continue.
+                            </Typography>
+                            <Button
+                              variant="text"
+                              color="secondary"
+                              onClick={() => setShowOverlay(false)}
+                              sx={{ mt: 1 }}
+                            >
+                              Try embedded view anyway
+                            </Button>
+                          </Box>
+                        </Box>
+                      )}
+                    </Box>
                   </Box>
-                ) : (
+                ) : selectedClient && title.trim() ? (
                   <Box
                     display="flex"
+                    flexDirection="column"
                     justifyContent="center"
                     alignItems="center"
                     height="300px"
@@ -450,9 +537,36 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
                     borderColor="rgba(0, 0, 0, 0.23)"
                     borderRadius={1}
                   >
-                    <Button variant="outlined" color="primary" onClick={createNewGoogleDoc}>
-                      Create New Document
+                    <Typography variant="body1" gutterBottom>
+                      Ready to create document for:{' '}
+                      <strong>
+                        {selectedClient.client_name} - {title}
+                      </strong>
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      onClick={handleCreateGoogleDoc}
+                      startIcon={<UploadIcon />}
+                      sx={{ mt: 2 }}
+                    >
+                      Create Document
                     </Button>
+                  </Box>
+                ) : (
+                  <Box
+                    display="flex"
+                    flexDirection="column"
+                    justifyContent="center"
+                    alignItems="center"
+                    height="300px"
+                    border="1px solid"
+                    borderColor="rgba(0, 0, 0, 0.23)"
+                    borderRadius={1}
+                  >
+                    <Typography variant="body1" gutterBottom color="text.secondary">
+                      Please select a client and enter a title to create your document.
+                    </Typography>
                   </Box>
                 )}
               </Grid>
@@ -486,7 +600,19 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
                               onChange={() => handleContactToggle(contact)}
                             />
                           }
-                          label={`${contact.name} (${contact.email})`}
+                          label={
+                            <React.Fragment>
+                              {contact.name}
+                              {contact.job_title && (
+                                <span>
+                                  {' '}
+                                  (<i>{contact.job_title}</i>)
+                                </span>
+                              )}
+                              {' - '}
+                              {contact.email}
+                            </React.Fragment>
+                          }
                         />
                       ))}
                     </FormGroup>

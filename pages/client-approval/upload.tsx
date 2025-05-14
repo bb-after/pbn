@@ -1,10 +1,11 @@
 import React from 'react';
-import { Container, Typography, Box, Paper } from '@mui/material';
+import { Container, Typography, Box, Paper, Button } from '@mui/material';
 import LayoutContainer from '../../components/LayoutContainer';
 import StyledHeader from '../../components/StyledHeader';
 import ClientApprovalRequestForm from '../../components/ClientApprovalRequestForm';
 import { useRouter } from 'next/router';
 import useValidateUserToken from 'hooks/useValidateUserToken';
+import Link from 'next/link';
 
 export default function UploadApprovalRequestPage() {
   const router = useRouter();
@@ -37,7 +38,7 @@ export default function UploadApprovalRequestPage() {
     <LayoutContainer>
       <StyledHeader />
       <Container maxWidth="lg">
-        <Box my={4}>
+        <Box my={3}>
           <Typography variant="h4" gutterBottom>
             Content Approval Request
           </Typography>

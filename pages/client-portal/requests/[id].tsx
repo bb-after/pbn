@@ -163,24 +163,63 @@ interface ApprovalRequest {
 }
 
 // Function to process Google Doc URLs for embedding
+// IMPORTANT: Client portal users should ONLY have comment/suggestion capabilities,
+// never direct edit access to Google Docs. This function ensures all Google Doc URLs
+// use comment-only mode (mode=comment parameter).
 const getEmbeddableGoogleDocUrl = (url: string): string => {
   try {
     // Check if it's a Google Doc URL
     if (!url.includes('docs.google.com')) return url;
 
-    console.log('Processing Google Doc URL:', url);
+    console.log(
+      '%c GOOGLE DOCS URL PROCESSING ',
+      'background: #ff0000; color: #ffffff; font-size: 16px'
+    );
+    console.log('%c INPUT URL:', 'color: blue; font-weight: bold', url);
 
-    // Parse the URL
-    const urlObj = new URL(url);
+    // Extract document ID from the URL
+    const docIdMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    const docId = docIdMatch ? docIdMatch[1] : '';
 
-    // Add embedding parameters
-    urlObj.searchParams.set('embedded', 'true');
-    urlObj.searchParams.set('rm', 'minimal');
-    urlObj.searchParams.set('chrome', 'false');
-    urlObj.searchParams.set('headers', 'false');
+    let finalUrl = url;
 
-    console.log('Processed URL:', urlObj.toString());
-    return urlObj.toString();
+    if (docId) {
+      // We've found a Google Doc ID, so let's create a clean URL with comment-only mode
+      // Always force comment-only mode regardless of what other parameters might be present in the original URL
+      finalUrl = `https://docs.google.com/document/d/${docId}/edit?mode=comment&embedded=true&rm=minimal&usp=sharing`;
+      console.log('DOC ID FOUND:', docId);
+      console.log('CREATED NEW URL:', finalUrl);
+      return finalUrl;
+    }
+
+    // If we couldn't extract a document ID, try to modify the existing URL
+    // This is a fallback option in case the URL format changes in the future
+    try {
+      const urlObj = new URL(url);
+
+      // Always force comment-only mode
+      urlObj.searchParams.set('mode', 'comment');
+      urlObj.searchParams.set('embedded', 'true');
+      urlObj.searchParams.set('rm', 'minimal');
+
+      // Remove any parameters that might interfere with comment mode
+      if (urlObj.searchParams.has('chrome')) urlObj.searchParams.delete('chrome');
+      if (urlObj.searchParams.has('headers')) urlObj.searchParams.delete('headers');
+
+      finalUrl = urlObj.toString();
+      console.log('MODIFIED EXISTING URL:', finalUrl);
+      return finalUrl;
+    } catch (error) {
+      console.error('Error modifying URL:', error);
+      // If URL manipulation fails, add the comment mode parameter directly
+      if (url.includes('?')) {
+        finalUrl = `${url}&mode=comment&rm=minimal`;
+      } else {
+        finalUrl = `${url}?mode=comment&rm=minimal`;
+      }
+      console.log('FALLBACK URL:', finalUrl);
+      return finalUrl;
+    }
   } catch (error) {
     console.error('Error processing Google Doc URL:', error);
     return url; // Return original URL on error
@@ -533,12 +572,16 @@ export default function ClientRequestDetailPage() {
 
       // If this is a Google Doc, we don't need to initialize Recogito
       if (isGoogleDoc(content, versionContentType)) {
-        console.log('Version View: Detected Google Doc, skipping Recogito initialization');
+        console.log(
+          'Version View: Detected Google Doc, skipping Recogito initialization completely'
+        );
+        // Clear annotations and exit early - don't attempt to initialize Recogito
         setAnnotations([]);
         setVersionLoading(false);
         return;
       }
 
+      // Only proceed with Recogito for non-Google Doc content
       // Filter section comments for this version
       if (request?.section_comments) {
         const versionSpecificComments = request.section_comments.filter(
@@ -773,9 +816,18 @@ export default function ClientRequestDetailPage() {
 
           if (!isMounted || !contentRef.current) return;
 
+          // Check if this is a Google Doc
+          const isGoogleDoc =
+            request.content_type === 'google_doc' ||
+            (request.inline_content &&
+              request.inline_content.includes('docs.google.com') &&
+              !request.inline_content.startsWith('<'));
+
           // For Google Docs, do nothing - they're handled directly in the JSX
-          if (isGoogleDoc(request.inline_content, request.content_type)) {
-            console.log('Client View: Google Doc is being rendered directly in JSX');
+          if (isGoogleDoc) {
+            console.log(
+              'Client View: Google Doc detected, skipping Recogito initialization completely'
+            );
             return;
           }
 
@@ -993,12 +1045,13 @@ export default function ClientRequestDetailPage() {
   const steps = [
     {
       target: '[data-joyride="highlight"]',
-      content: 'Highlight text in the document to leave feedback directly on specific sections.',
+      content: 'Leave comments directly on specific sections of the document by highlighting text.',
       disableBeacon: true,
     },
     {
       target: '[data-joyride="comment-box"]',
-      content: 'You can also leave general feedback in the comments box below.',
+      content:
+        'You can also leave general feedback about the entire document in the comments box below.',
     },
     {
       target: '[data-joyride="approve-button"]',
@@ -1006,7 +1059,7 @@ export default function ClientRequestDetailPage() {
     },
     {
       target: '[data-joyride="back-arrow"]',
-      content: 'Use this arrow to return to your list of content requests.',
+      content: 'Use this arrow to return to your list of all content requests.',
     },
   ];
 
@@ -1115,7 +1168,7 @@ export default function ClientRequestDetailPage() {
               {/* Request header */}
               <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
                 <Grid container spacing={3}>
-                  <Grid item xs={12} md={8}>
+                  <Grid item xs={12} md={7}>
                     <Box display="flex" alignItems="center" mb={2}>
                       <Typography variant="h5">{request.title}</Typography>
                       <Box ml={2}>{getStatusBadge(request.status)}</Box>
@@ -1128,62 +1181,139 @@ export default function ClientRequestDetailPage() {
                     )}
                   </Grid>
 
-                  <Grid item xs={12} md={4}>
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Typography variant="subtitle2" gutterBottom>
-                          Request Info
-                        </Typography>
-                        <Box display="flex" justifyContent="space-between" mb={1}>
-                          <Typography variant="body2" color="textSecondary">
-                            Submitted:
+                  <Grid item xs={12} md={5}>
+                    <Box
+                      sx={{
+                        position: 'sticky',
+                        top: '20px',
+                        zIndex: 2,
+                      }}
+                    >
+                      {/* Request info card */}
+                      <Card variant="outlined" sx={{ mb: 2 }}>
+                        <CardContent>
+                          <Typography variant="subtitle2" gutterBottom>
+                            Request Info
                           </Typography>
-                          <Typography variant="body2">
-                            {new Date(request.created_at).toLocaleDateString()}
-                          </Typography>
-                        </Box>
-                        <Box display="flex" justifyContent="space-between" mb={1}>
-                          <Typography variant="body2" color="textSecondary">
-                            Version:
-                          </Typography>
-                          <Typography variant="body2">
-                            {request.versions && request.versions.length > 0
-                              ? request.versions[0].version_number
-                              : 1}
-                          </Typography>
-                        </Box>
-                        {request.versions && request.versions.length > 1 && (
-                          <Box mt={2}>
-                            <Button
-                              variant="outlined"
-                              fullWidth
-                              startIcon={<HistoryIcon />}
-                              onClick={() => setVersionHistoryOpen(true)}
-                              size="small"
-                            >
-                              View Version History
-                            </Button>
+                          <Box display="flex" justifyContent="space-between" mb={1}>
+                            <Typography variant="body2" color="textSecondary">
+                              Submitted:
+                            </Typography>
+                            <Typography variant="body2">
+                              {new Date(request.created_at).toLocaleDateString()}
+                            </Typography>
                           </Box>
-                        )}
-                      </CardContent>
-                    </Card>
+                          <Box display="flex" justifyContent="space-between" mb={1}>
+                            <Typography variant="body2" color="textSecondary">
+                              Version:
+                            </Typography>
+                            <Typography variant="body2">
+                              {request.versions && request.versions.length > 0
+                                ? request.versions[0].version_number
+                                : 1}
+                            </Typography>
+                          </Box>
+                          {request.versions && request.versions.length > 1 && (
+                            <Box mt={2}>
+                              <Button
+                                variant="outlined"
+                                fullWidth
+                                startIcon={<HistoryIcon />}
+                                onClick={() => setVersionHistoryOpen(true)}
+                                size="small"
+                              >
+                                View Version History
+                              </Button>
+                            </Box>
+                          )}
+                        </CardContent>
+                      </Card>
 
-                    {/* Published URL (if available) */}
-                    {request.published_url && (
-                      <Box mt={2}>
-                        <Button
-                          variant="contained"
-                          color="primary"
-                          fullWidth
-                          startIcon={<LinkIcon />}
-                          href={request.published_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                      {/* Decision box */}
+                      <Paper
+                        elevation={3}
+                        sx={{
+                          p: 3,
+                          mb: 2,
+                          borderLeft: 4,
+                          borderColor: 'success.main',
+                          position: 'relative',
+                          overflow: 'hidden',
+                          '&::before': {
+                            content: '""',
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            height: '4px',
+                            backgroundColor: 'success.main',
+                          },
+                        }}
+                      >
+                        <Typography
+                          variant="h6"
+                          gutterBottom
+                          sx={{ fontWeight: 'bold', color: 'success.dark' }}
                         >
-                          View Published Content
-                        </Button>
-                      </Box>
-                    )}
+                          Your Decision
+                        </Typography>
+
+                        {request.status === 'approved' ? (
+                          <Alert severity="success" sx={{ mt: 2 }}>
+                            You have approved this content.
+                          </Alert>
+                        ) : request.status === 'rejected' ? (
+                          <Alert severity="error" sx={{ mt: 2 }}>
+                            You have rejected this content.
+                          </Alert>
+                        ) : hasApproved() ? (
+                          <Alert severity="success" sx={{ mt: 2 }}>
+                            You have approved this content. Waiting for other stakeholders to
+                            review.
+                          </Alert>
+                        ) : (
+                          <>
+                            <Typography variant="body2" paragraph sx={{ mt: 2 }}>
+                              <strong>Please review the content below</strong> and provide your
+                              decision. Once approved, the content will be prepared for publishing.
+                            </Typography>
+
+                            <Grid container spacing={2} sx={{ mt: 1 }}>
+                              <Grid item xs={12}>
+                                <Button
+                                  fullWidth
+                                  variant="contained"
+                                  color="success"
+                                  startIcon={<CheckCircleIcon />}
+                                  onClick={() => setApprovalDialogOpen(true)}
+                                  size="large"
+                                  data-joyride="approve-button"
+                                >
+                                  Approve
+                                </Button>
+                              </Grid>
+                            </Grid>
+                          </>
+                        )}
+                      </Paper>
+
+                      {/* Published URL (if available) */}
+                      {request.published_url && (
+                        <Box mt={2}>
+                          <Button
+                            variant="contained"
+                            color="primary"
+                            fullWidth
+                            startIcon={<LinkIcon />}
+                            href={request.published_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            View Published Content
+                          </Button>
+                        </Box>
+                      )}
+                    </Box>
                   </Grid>
                 </Grid>
               </Paper>
@@ -1191,8 +1321,8 @@ export default function ClientRequestDetailPage() {
               {/* Main content grid */}
               {!viewingVersion ? (
                 <Grid container spacing={3}>
-                  {/* Left column: document and comments */}
-                  <Grid item xs={12} md={12}>
+                  {/* Main content column */}
+                  <Grid item xs={12}>
                     {/* Document card - Updated Rendering Logic */}
                     <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
                       <Typography variant="h6" gutterBottom>
@@ -1216,7 +1346,52 @@ export default function ClientRequestDetailPage() {
                             }}
                           >
                             <iframe
-                              src={getEmbeddableGoogleDocUrl(request.inline_content)}
+                              src={(() => {
+                                // Extract document ID from the URL
+                                const docIdMatch =
+                                  request.inline_content.match(/\/d\/([a-zA-Z0-9_-]+)/);
+                                const docId = docIdMatch ? docIdMatch[1] : '';
+
+                                if (docId) {
+                                  console.log('USING GOOGLE DOCS SUGGEST MODE WITH ID:', docId);
+
+                                  // Use the correct parameter: mode=suggest to force suggestion mode
+                                  return `https://docs.google.com/document/d/${docId}/edit?mode=suggest&embedded=true&rm=minimal`;
+                                } else {
+                                  // Fallback to URL manipulation if no ID found
+                                  try {
+                                    const urlObj = new URL(request.inline_content);
+
+                                    // Use the correct "suggest" mode parameter
+                                    urlObj.searchParams.set('mode', 'suggest');
+                                    urlObj.searchParams.delete('forcedMode'); // Remove any existing forcedMode
+                                    urlObj.searchParams.set('embedded', 'true');
+                                    urlObj.searchParams.set('rm', 'minimal');
+
+                                    // Remove any parameters that might interfere
+                                    if (urlObj.searchParams.has('chrome'))
+                                      urlObj.searchParams.delete('chrome');
+                                    if (urlObj.searchParams.has('headers'))
+                                      urlObj.searchParams.delete('headers');
+
+                                    console.log('USING SUGGEST MODE URL:', urlObj.toString());
+                                    return urlObj.toString();
+                                  } catch (error) {
+                                    console.error('URL parsing error:', error);
+                                    // Force suggest mode by appending parameters directly
+                                    const url = request.inline_content;
+                                    console.log(
+                                      'USING SUGGEST MODE PARAMETERS:',
+                                      url.includes('?')
+                                        ? `${url}&mode=suggest&rm=minimal`
+                                        : `${url}?mode=suggest&rm=minimal`
+                                    );
+                                    return url.includes('?')
+                                      ? `${url}&mode=suggest&rm=minimal`
+                                      : `${url}?mode=suggest&rm=minimal`;
+                                  }
+                                }
+                              })()}
                               width="100%"
                               height="100%"
                               frameBorder="0"
@@ -1292,7 +1467,7 @@ export default function ClientRequestDetailPage() {
                     </Paper>
 
                     {/* Comments section */}
-                    <Paper elevation={2} sx={{ p: 3 }}>
+                    <Paper elevation={2} sx={{ p: 3 }} data-joyride="comment-box">
                       <Typography variant="h6" gutterBottom>
                         Comments
                       </Typography>
@@ -1384,61 +1559,6 @@ export default function ClientRequestDetailPage() {
                       )}
                     </Paper>
                   </Grid>
-
-                  {/* Right column: approval actions */}
-                  <Grid item xs={12} md={3}>
-                    <Paper
-                      elevation={2}
-                      sx={{
-                        p: 3,
-                        position: { md: 'sticky' },
-                        top: { md: '20px' },
-                        alignSelf: { md: 'flex-start' },
-                        zIndex: 1,
-                      }}
-                    >
-                      <Typography variant="h6" gutterBottom>
-                        Your Decision
-                      </Typography>
-
-                      {request.status === 'approved' ? (
-                        <Alert severity="success" sx={{ mt: 2 }}>
-                          You have approved this content.
-                        </Alert>
-                      ) : request.status === 'rejected' ? (
-                        <Alert severity="error" sx={{ mt: 2 }}>
-                          You have rejected this content.
-                        </Alert>
-                      ) : hasApproved() ? (
-                        <Alert severity="success" sx={{ mt: 2 }}>
-                          You have approved this content. Waiting for other stakeholders to review.
-                        </Alert>
-                      ) : (
-                        <>
-                          <Typography variant="body2" paragraph sx={{ mt: 2 }}>
-                            Please review the content and provide your decision. Once approved, the
-                            content will be prepared for publishing.
-                          </Typography>
-
-                          <Grid container spacing={2} sx={{ mt: 1 }}>
-                            <Grid item xs={12}>
-                              <Button
-                                fullWidth
-                                variant="contained"
-                                color="success"
-                                startIcon={<CheckCircleIcon />}
-                                onClick={() => setApprovalDialogOpen(true)}
-                                size="large"
-                                data-joyride="approve-button"
-                              >
-                                Approve
-                              </Button>
-                            </Grid>
-                          </Grid>
-                        </>
-                      )}
-                    </Paper>
-                  </Grid>
                 </Grid>
               ) : (
                 // Version history content view
@@ -1491,7 +1611,59 @@ export default function ClientRequestDetailPage() {
                               }}
                             >
                               <iframe
-                                src={getEmbeddableGoogleDocUrl(versionContent || '')}
+                                src={(() => {
+                                  // Extract document ID from the URL
+                                  const docIdMatch = versionContent?.match(/\/d\/([a-zA-Z0-9_-]+)/);
+                                  const docId = docIdMatch ? docIdMatch[1] : '';
+
+                                  if (docId) {
+                                    console.log(
+                                      'VERSION VIEW: USING GOOGLE DOCS SUGGEST MODE WITH ID:',
+                                      docId
+                                    );
+
+                                    // Use the correct parameter: mode=suggest to force suggestion mode
+                                    return `https://docs.google.com/document/d/${docId}/edit?mode=suggest&embedded=true&rm=minimal`;
+                                  } else if (versionContent) {
+                                    // Fallback to URL manipulation if no ID found
+                                    try {
+                                      const urlObj = new URL(versionContent);
+
+                                      // Use the correct "suggest" mode parameter
+                                      urlObj.searchParams.set('mode', 'suggest');
+                                      urlObj.searchParams.delete('forcedMode'); // Remove any existing forcedMode
+                                      urlObj.searchParams.set('embedded', 'true');
+                                      urlObj.searchParams.set('rm', 'minimal');
+
+                                      // Remove any parameters that might interfere
+                                      if (urlObj.searchParams.has('chrome'))
+                                        urlObj.searchParams.delete('chrome');
+                                      if (urlObj.searchParams.has('headers'))
+                                        urlObj.searchParams.delete('headers');
+
+                                      console.log(
+                                        'VERSION VIEW: USING SUGGEST MODE URL:',
+                                        urlObj.toString()
+                                      );
+                                      return urlObj.toString();
+                                    } catch (error) {
+                                      console.error('VERSION VIEW: URL parsing error:', error);
+                                      // Force suggest mode by appending parameters directly
+                                      const url = versionContent;
+                                      console.log(
+                                        'VERSION VIEW: USING SUGGEST MODE PARAMETERS:',
+                                        url.includes('?')
+                                          ? `${url}&mode=suggest&rm=minimal`
+                                          : `${url}?mode=suggest&rm=minimal`
+                                      );
+                                      return url.includes('?')
+                                        ? `${url}&mode=suggest&rm=minimal`
+                                        : `${url}?mode=suggest&rm=minimal`;
+                                    }
+                                  } else {
+                                    return '';
+                                  }
+                                })()}
                                 width="100%"
                                 height="100%"
                                 frameBorder="0"
@@ -1501,24 +1673,10 @@ export default function ClientRequestDetailPage() {
                               ></iframe>
                             </Box>
                           ) : (
-                            /* Regular HTML content with annotation support */
-                            <div id="version-content-container">
-                              <div
-                                id="version-content-view"
-                                className="annotatable-content"
-                                style={{
-                                  border: '1px solid #e0e0e0',
-                                  borderRadius: '4px',
-                                  padding: '16px',
-                                  textAlign: 'left',
-                                }}
-                                dangerouslySetInnerHTML={{
-                                  __html: DOMPurify.sanitize(
-                                    `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request.title}</h1>${versionContent}`
-                                  ),
-                                }}
-                              />
-                            </div>
+                            <Typography variant="body2" color="textSecondary" align="center">
+                              Historical inline content is not preserved for older versions. The
+                              database has been updated to store inline content for future versions.
+                            </Typography>
                           )}
                         </Box>
                       ) : (
@@ -1623,7 +1781,7 @@ export default function ClientRequestDetailPage() {
                               Download File
                             </Button>
                           ) : (
-                            // For inline content versions
+                            // For inline content versions - ensure Google Doc links use comment mode
                             <Button
                               variant="outlined"
                               size="small"
