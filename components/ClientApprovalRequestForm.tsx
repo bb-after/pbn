@@ -75,6 +75,7 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
   const [docLoading, setDocLoading] = useState(false);
   const [docError, setDocError] = useState<string | null>(null);
   const [showOverlay, setShowOverlay] = useState(false);
+  const [isMinimalMode, setIsMinimalMode] = useState(true);
 
   // Data loading state
   const [clients, setClients] = useState<Client[]>([]);
@@ -328,10 +329,6 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
       <Script src="https://apis.google.com/js/api.js" strategy="beforeInteractive" />
 
       <Paper elevation={3} sx={{ p: 3 }}>
-        <Typography variant="h5" gutterBottom>
-          Create Content Approval Request
-        </Typography>
-
         {success ? (
           <Box my={3}>
             <Alert severity="success">Approval request submitted successfully!</Alert>
@@ -414,15 +411,29 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
                 >
                   Content for Review <span style={{ color: 'red' }}>*</span>
                   {googleDocId && (
-                    <Button
-                      variant="text"
-                      size="small"
-                      color="primary"
-                      onClick={() => setShowOverlay(true)}
-                      sx={{ ml: 1, fontSize: '0.8rem', textTransform: 'none', p: 0 }}
-                    >
-                      Having trouble editing?
-                    </Button>
+                    <>
+                      <Button
+                        variant="text"
+                        size="small"
+                        color="primary"
+                        onClick={() => setShowOverlay(true)}
+                        sx={{ ml: 1, fontSize: '0.8rem', textTransform: 'none', p: 0 }}
+                      >
+                        Having trouble editing?
+                      </Button>
+                      <Button
+                        variant="text"
+                        size="small"
+                        color="secondary"
+                        onClick={() => {
+                          // Toggle between minimal and standard view
+                          setIsMinimalMode(!isMinimalMode);
+                        }}
+                        sx={{ ml: 1, fontSize: '0.8rem', textTransform: 'none', p: 0 }}
+                      >
+                        {isMinimalMode ? 'Use Standard Editor' : 'Use Minimal Editor'}
+                      </Button>
+                    </>
                   )}
                 </Typography>
 
@@ -460,7 +471,7 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
                       }}
                     >
                       <iframe
-                        src={`https://docs.google.com/document/d/${googleDocId}/edit?usp=sharing&embedded=true&rm=minimal`}
+                        src={`https://docs.google.com/document/d/${googleDocId}/edit?usp=sharing&embedded=true${isMinimalMode ? '&rm=minimal' : ''}`}
                         width="100%"
                         height="100%"
                         frameBorder="0"
@@ -504,7 +515,7 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
                             <Button
                               variant="contained"
                               color="primary"
-                              href={`https://docs.google.com/document/d/${googleDocId}/edit?usp=sharing&rm=minimal`}
+                              href={`https://docs.google.com/document/d/${googleDocId}/edit?usp=sharing${isMinimalMode ? '&rm=minimal' : ''}`}
                               target="_blank"
                               sx={{ mt: 2 }}
                             >

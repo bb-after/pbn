@@ -170,7 +170,11 @@ interface ContactWithViews {
 // - For staff view (isStaffView=true): Full editing capabilities for content creators
 // - For client view (isStaffView=false): Comment-only mode, restricting clients
 //   to making suggestions rather than direct edits
-const getEmbeddableGoogleDocUrl = (url: string, isStaffView: boolean = true): string => {
+const getEmbeddableGoogleDocUrl = (
+  url: string,
+  isStaffView: boolean = true,
+  useMinimalMode: boolean = true
+): string => {
   try {
     // Check if it's a Google Doc URL
     if (!url.includes('docs.google.com')) return url;
@@ -184,7 +188,7 @@ const getEmbeddableGoogleDocUrl = (url: string, isStaffView: boolean = true): st
       if (isStaffView) {
         // Staff view - full editing capabilities with full Google Docs UI
         // Create a clean URL without any restrictive parameters
-        return `https://docs.google.com/document/d/${docId}/edit?usp=sharing&embedded=true`;
+        return `https://docs.google.com/document/d/${docId}/edit?usp=sharing&embedded=true${useMinimalMode ? '&rm=minimal' : ''}`;
       } else {
         // Client view - comment-only mode (force view mode with commenting enabled)
         // This is the critical part - mode=comment in Google Docs means users can only comment, not edit
@@ -201,6 +205,12 @@ const getEmbeddableGoogleDocUrl = (url: string, isStaffView: boolean = true): st
         // For staff, remove any parameters that might restrict editing
         if (urlObj.searchParams.has('mode')) urlObj.searchParams.delete('mode');
         urlObj.searchParams.set('embedded', 'true');
+        // Apply minimal mode based on state
+        if (useMinimalMode) {
+          urlObj.searchParams.set('rm', 'minimal');
+        } else if (urlObj.searchParams.has('rm')) {
+          urlObj.searchParams.delete('rm');
+        }
       } else {
         // For clients, enforce comment-only mode
         urlObj.searchParams.set('mode', 'comment');
@@ -234,6 +244,9 @@ export default function ApprovalRequestDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
+
+  // Add isMinimalMode state
+  const [isMinimalMode, setIsMinimalMode] = useState(true);
 
   // State for tabs
   const [tabValue, setTabValue] = useState(0);
@@ -852,15 +865,37 @@ export default function ApprovalRequestDetailPage() {
                                   const docUrl = request.google_doc_id
                                     ? getEmbeddableGoogleDocUrl(
                                         `https://docs.google.com/document/d/${request.google_doc_id}`,
-                                        true
+                                        true,
+                                        isMinimalMode
                                       )
-                                    : getEmbeddableGoogleDocUrl(request.inline_content, true);
+                                    : getEmbeddableGoogleDocUrl(
+                                        request.inline_content,
+                                        true,
+                                        isMinimalMode
+                                      );
 
                                   return (
                                     <Box mt={2}>
                                       <Typography variant="h4" gutterBottom>
                                         {request.title}
                                       </Typography>
+
+                                      {/* Add toggle button for editor mode */}
+                                      <Box display="flex" justifyContent="flex-end" mb={1}>
+                                        <Button
+                                          variant="outlined"
+                                          size="small"
+                                          color="secondary"
+                                          onClick={() => setIsMinimalMode(!isMinimalMode)}
+                                          startIcon={
+                                            isMinimalMode ? <ArticleIcon /> : <CloseIcon />
+                                          }
+                                        >
+                                          {isMinimalMode
+                                            ? 'Use Standard Editor'
+                                            : 'Use Minimal Editor'}
+                                        </Button>
+                                      </Box>
 
                                       {/* Single iframe that follows the same format as client view */}
                                       <Box
@@ -1359,6 +1394,19 @@ export default function ApprovalRequestDetailPage() {
                     selectedVersion.inline_content.includes('docs.google.com') &&
                     !selectedVersion.inline_content.startsWith('<')) ? (
                   <Box>
+                    {/* Add toggle button for editor mode */}
+                    <Box display="flex" justifyContent="flex-end" mb={1}>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        color="secondary"
+                        onClick={() => setIsMinimalMode(!isMinimalMode)}
+                        startIcon={isMinimalMode ? <ArticleIcon /> : <CloseIcon />}
+                      >
+                        {isMinimalMode ? 'Use Standard Editor' : 'Use Minimal Editor'}
+                      </Button>
+                    </Box>
+
                     {/* Single iframe approach */}
                     <Box
                       sx={{
@@ -1374,9 +1422,14 @@ export default function ApprovalRequestDetailPage() {
                           selectedVersion.google_doc_id
                             ? getEmbeddableGoogleDocUrl(
                                 `https://docs.google.com/document/d/${selectedVersion.google_doc_id}`,
-                                true
+                                true,
+                                isMinimalMode
                               )
-                            : getEmbeddableGoogleDocUrl(selectedVersion.inline_content || '', true)
+                            : getEmbeddableGoogleDocUrl(
+                                selectedVersion.inline_content || '',
+                                true,
+                                isMinimalMode
+                              )
                         }
                         width="100%"
                         height="100%"
