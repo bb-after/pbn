@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Status Labs – Digital Presence</title>
+
+    <!-- Google Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --accent: #59d3ba; /* teal‑mint from the original creatives */
+            --dark: #002b45;   /* navy headline colour */
+            --bg: #f7f8f8;     /* very light warm grey */
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: "Inter", system-ui, sans-serif;
+            color: var(--dark);
+            background: var(--bg);
+            line-height: 1.55;
+        }
+
+        h1, h2, h3 {
+            margin: 0 0 .75rem 0;
+            font-weight: 700;
+        }
+        h1 { font-size: clamp(2.2rem, 5vw + .5rem, 3.5rem); }
+        h2 { font-size: clamp(1.6rem, 3vw + .5rem, 2.25rem); }
+        h3 { font-size: 1.25rem; }
+        p { margin: 0 0 1.25rem 0; }
+
+        .accent { color: var(--accent); }
+
+        section {
+            max-width: 1180px;
+            margin: 0 auto;
+            padding: 4rem 1rem;
+            text-align: center;
+        }
+
+        /* ---------- HERO ---------- */
+        #hero {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            align-items: center;
+        }
+        #hero img.hero-graphic {
+            width: 100%;
+            max-width: 320px;
+            margin-inline: auto;
+        }
+        #hero .copy {
+            text-align: left;
+        }
+        #hero .btn {
+            margin-top: 2rem;
+        }
+
+        /* ---------- BUTTON ---------- */
+        .btn {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            padding: .9rem 2.2rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background .2s ease;
+            display: inline-block;
+        }
+        .btn:hover { background: #48c2aa; }
+
+        /* ---------- THREE‑STEP APPROACH ---------- */
+        #approach .steps {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 2.5rem;
+            margin: 3rem 0 0 0;
+        }
+        .step {
+            max-width: 240px;
+        }
+        .step .circle {
+            width: 80px;
+            height: 80px;
+            display: grid;
+            place-content: center;
+            margin: 0 auto 1rem auto;
+            border-radius: 50%;
+            background: rgba(89, 211, 186, .25);
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--dark);
+        }
+
+        /* ---------- SERVICES ---------- */
+        #services .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+        .service {
+            background: #fff;
+            border-radius: 12px;
+            padding: 2rem 1.5rem 1.6rem;
+            text-align: left;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, .04);
+        }
+        .service .icon {
+            font-size: 1.75rem;
+            margin-bottom: 1rem;
+            color: var(--accent);
+        }
+
+        /* ---------- DIFFERENCE ---------- */
+        #difference .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+        #difference img.team {
+            width: 100%;
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(0,0,0,.06);
+        }
+
+        /* ---------- CONTACT ---------- */
+        #contact {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: .6rem;
+            margin-top: 2.5rem;
+            font-size: 1.05rem;
+        }
+        #contact a { color: var(--dark); text-decoration: none; }
+        #contact a:hover { text-decoration: underline; }
+
+        /* ---------- RESPONSIVE ---------- */
+        @media (max-width: 768px) {
+            #hero { grid-template-columns: 1fr; text-align: center; }
+            #hero .copy { text-align: center; }
+        }
+    </style>
+</head>
+<body>
+    <!-- ========================= HERO ========================= -->
+    <section id="hero">
+        <div class="copy">
+            <h2>Status Labs</h2>
+            <h1>CONTROL YOUR DIGITAL <span class="accent">NARRATIVE</span></h1>
+            <p>In today's digital world, your online presence is your first impression. <br />Make it exceptional.</p>
+            <a href="#" class="btn">Contact Us</a>
+        </div>
+        
+        <!-- Placeholder graphic – replace src with your own image path -->
+        <img src="/images/hand-globe.png" alt="Hand holding a digital globe" class="hero-graphic" />
+    </section>
+
+    <!-- ========================= APPROACH ========================= -->
+    <section id="approach">
+        <h2>Our Approach</h2>
+        <p>Our fully customized methodology transforms your digital presence through tailored strategies—never off‑the‑shelf solutions.</p>
+        <div class="steps">
+            <div class="step">
+                <div class="circle">1</div>
+                <h3>Assess</h3>
+                <p>Understand your unique challenges</p>
+            </div>
+            <div class="step">
+                <div class="circle">2</div>
+                <h3>Strategize</h3>
+                <p>Craft personalized solutions</p>
+            </div>
+            <div class="step">
+                <div class="circle">3</div>
+                <h3>Implement</h3>
+                <p>Execute tailored action plans</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========================= SERVICES ========================= -->
+    <section id="services">
+        <h2>Services</h2>
+        <div class="grid">
+            <div class="service">
+                <div class="icon">🛡️</div>
+                <h3>Comprehensive Reputation Management</h3>
+                <p>Protect and enhance your online image</p>
+            </div>
+            <div class="service">
+                <div class="icon">❌</div>
+                <h3>Strategic Content Removals</h3>
+                <p>Remove harmful materials affecting your reputation</p>
+            </div>
+            <div class="service">
+                <div class="icon">⚠️</div>
+                <h3>Crisis Management &amp; Response</h3>
+                <p>Mitigate and respond to online reputation threats</p>
+            </div>
+            <div class="service">
+                <div class="icon">📚</div>
+                <h3>Wikipedia Consulting</h3>
+                <p>Expert guidance on establishing notability and managing entries</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========================= DIFFERENCE & CTA ========================= -->
+    <section id="difference">
+        <h2>The Status Labs Difference</h2>
+        <div class="grid">
+            <div>
+                <h3>Unparalleled Expertise</h3>
+                <p>Since 2010, we've been at the forefront of digital reputation management.</p>
+            </div>
+            <div>
+                <h3>Fully Customized Approach</h3>
+                <p>We reject one‑size‑fits‑all solutions. Each client receives a bespoke strategy designed for their specific situation.</p>
+            </div>
+            <div>
+                <h3>Proven Results</h3>
+                <p>Our performance‑based methodology delivers measurable progress.</p>
+            </div>
+            <!-- Optional team photo -->
+            <div style="grid-column: span 3;">
+                <img src="/images/team-photo.png" alt="Status Labs team working together" class="team" />
+            </div>
+        </div>
+        <h2 style="margin-top:4rem;">Transform Your Digital Presence</h2>
+        <a href="#" class="btn">Get a Free Quote</a>
+
+        <div id="contact">
+            <strong>Darius Fisher</strong>
+            <div>📞 <a href="tel:+15128173475">(512) 817‑3475</a></div>
+            <div>✉️ <a href="mailto:darius@statuslabs.com">darius@statuslabs.com</a></div>
+        </div>
+    </section>
+</body>
+</html>
