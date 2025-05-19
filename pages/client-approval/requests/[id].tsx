@@ -37,6 +37,10 @@ import {
   TableRow,
   TableCell,
   Modal,
+  FormGroup,
+  FormControlLabel,
+  ListItemButton,
+  Checkbox,
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
@@ -294,6 +298,12 @@ export default function ApprovalRequestDetailPage() {
 
   // Add Recogito Refs & State
   const contentRef = useRef<HTMLDivElement>(null);
+
+  // Add state for approval dialog
+  const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
+  const [notifyClientsOnApproval, setNotifyClientsOnApproval] = useState(true);
+  const [clientsToNotify, setClientsToNotify] = useState<number[]>([]);
+  const [isSubmittingApproval, setIsSubmittingApproval] = useState(false);
 
   // Set up axios interceptor for handling 404 errors
   useEffect(() => {
@@ -622,6 +632,64 @@ export default function ApprovalRequestDetailPage() {
   };
   // --- End New Version Dialog Handlers ---
 
+  // Add this near the other handler functions
+  const handleOpenApprovalDialog = () => {
+    // Pre-select all clients for notification
+    if (request) {
+      setClientsToNotify(request.contacts.map(contact => contact.contact_id));
+    }
+    setApprovalDialogOpen(true);
+  };
+
+  const handleCloseApprovalDialog = () => {
+    setApprovalDialogOpen(false);
+  };
+
+  const handleToggleClientNotification = (contactId: number) => {
+    setClientsToNotify(prev => {
+      if (prev.includes(contactId)) {
+        return prev.filter(id => id !== contactId);
+      } else {
+        return [...prev, contactId];
+      }
+    });
+  };
+
+  const handleManualApproval = async () => {
+    if (!request) return;
+
+    setIsSubmittingApproval(true);
+    setError(null);
+
+    try {
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['x-auth-token'] = token;
+      }
+
+      // First, update the request status to approved
+      await axios.put(`/api/approval-requests/${id}`, { status: 'approved' }, { headers });
+
+      // Then, if notifications are enabled, notify selected clients
+      if (notifyClientsOnApproval && clientsToNotify.length > 0) {
+        await axios.post(
+          `/api/approval-requests/${id}/notify-approval`,
+          { contactIds: clientsToNotify },
+          { headers }
+        );
+      }
+
+      // Close dialog and refresh data
+      handleCloseApprovalDialog();
+      fetchRequestDetails();
+    } catch (err: any) {
+      console.error('Error approving request:', err);
+      setError(err.response?.data?.error || 'Failed to approve request');
+    } finally {
+      setIsSubmittingApproval(false);
+    }
+  };
+
   if (isLoading || (loading && !request)) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
@@ -754,8 +822,8 @@ export default function ApprovalRequestDetailPage() {
                     aria-label="approval request tabs"
                   >
                     <Tab label="Details & Comments" />
-                    <Tab label="Version History" />
-                    <Tab label="Contacts" />
+                    {/* <Tab label="Version History" /> */}
+                    {/* <Tab label="Contacts" /> */}
                   </Tabs>
                 </Box>
 
@@ -780,42 +848,27 @@ export default function ApprovalRequestDetailPage() {
                                   variant="outlined"
                                   sx={{ mb: 1 }}
                                   deleteIcon={
-                                    <Box sx={{ display: 'flex' }}>
-                                      {contact.has_viewed ? (
-                                        <VisibilityIcon fontSize="small" color="info" />
-                                      ) : (
-                                        <VisibilityOffIcon fontSize="small" color="disabled" />
-                                      )}
-                                      <EmailIcon
-                                        fontSize="small"
-                                        color="primary"
-                                        sx={{ ml: 0.5 }}
-                                      />
-                                    </Box>
+                                    <Tooltip
+                                      title={
+                                        contact.has_viewed
+                                          ? `Last viewed on ${new Date(contact.views[0].viewed_at).toLocaleString()}`
+                                          : 'Not viewed yet'
+                                      }
+                                    >
+                                      <Box sx={{ display: 'flex' }}>
+                                        {contact.has_viewed ? (
+                                          <VisibilityIcon fontSize="small" color="info" />
+                                        ) : (
+                                          <VisibilityOffIcon fontSize="small" color="disabled" />
+                                        )}
+                                      </Box>
+                                    </Tooltip>
                                   }
                                   onDelete={() => {
                                     // This is just to show the icons, not actually delete
                                   }}
                                   onClick={() => handleOpenViewLog(contact)}
                                 />
-                              ))}
-                            </Box>
-                            <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                              {request.contacts.map(contact => (
-                                <Button
-                                  key={contact.contact_id}
-                                  size="small"
-                                  startIcon={<EmailIcon />}
-                                  variant="outlined"
-                                  onClick={() => handleResendNotification(contact.contact_id)}
-                                  disabled={resendingContactId === contact.contact_id}
-                                >
-                                  {resendingContactId === contact.contact_id ? (
-                                    <CircularProgress size={20} />
-                                  ) : (
-                                    'Notify ' + contact.name
-                                  )}
-                                </Button>
                               ))}
                             </Box>
                           </Grid>
@@ -826,6 +879,17 @@ export default function ApprovalRequestDetailPage() {
                               Actions
                             </Typography>
                             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                              {/* Only show approve button if status is not already approved */}
+                              {request.status !== 'approved' && (
+                                <Button
+                                  variant="contained"
+                                  color="success"
+                                  onClick={handleOpenApprovalDialog}
+                                  startIcon={<CheckIcon />}
+                                >
+                                  Approve Content
+                                </Button>
+                              )}
                               <Button
                                 variant="outlined"
                                 color="warning"
@@ -876,12 +940,24 @@ export default function ApprovalRequestDetailPage() {
 
                                   return (
                                     <Box mt={2}>
-                                      <Typography variant="h4" gutterBottom>
-                                        {request.title}
-                                      </Typography>
+                                      <Box
+                                        display="flex"
+                                        justifyContent="space-between"
+                                        alignItems="center"
+                                        mb={2}
+                                      >
+                                        <Typography
+                                          variant="h4"
+                                          sx={{
+                                            maxWidth: '75%',
+                                            overflow: 'hidden',
+                                            // textOverflow: 'ellipsis',
+                                            // whiteSpace: 'nowrap',
+                                          }}
+                                        >
+                                          {request.title}
+                                        </Typography>
 
-                                      {/* Add toggle button for editor mode */}
-                                      <Box display="flex" justifyContent="flex-end" mb={1}>
                                         <Button
                                           variant="outlined"
                                           size="small"
@@ -1309,10 +1385,83 @@ export default function ApprovalRequestDetailPage() {
 
         {/* --- View Log Modal --- */}
         <Dialog open={viewLogModalOpen} onClose={handleCloseViewLog} maxWidth="sm" fullWidth>
-          <DialogTitle>View History for {selectedContactViews?.name || 'Contact'}</DialogTitle>
-          <DialogContent dividers sx={{ p: 0 }}>
+          <DialogTitle>
+            <Box display="flex" alignItems="center">
+              <Avatar sx={{ mr: 2 }}>
+                {selectedContactViews?.name.charAt(0).toUpperCase() || '?'}
+              </Avatar>
+              <Box>
+                {selectedContactViews?.name || 'Contact'}
+                <Typography variant="body2" color="text.secondary">
+                  {selectedContactViews?.email}
+                </Typography>
+              </Box>
+            </Box>
+          </DialogTitle>
+          <DialogContent dividers>
+            <Box mb={3}>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Approval Status
+                    </Typography>
+                    <Box display="flex" alignItems="center" mt={1}>
+                      {selectedContactViews?.has_approved ? (
+                        <>
+                          <CheckIcon color="success" sx={{ mr: 1 }} />
+                          <Typography>
+                            Approved on{' '}
+                            {selectedContactViews.approved_at
+                              ? new Date(selectedContactViews.approved_at).toLocaleDateString()
+                              : 'Unknown date'}
+                          </Typography>
+                        </>
+                      ) : (
+                        <>
+                          <CloseIcon color="disabled" sx={{ mr: 1 }} />
+                          <Typography>Not approved yet</Typography>
+                        </>
+                      )}
+                    </Box>
+                  </Paper>
+                </Grid>
+                <Grid item xs={6}>
+                  <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      View Status
+                    </Typography>
+                    <Box display="flex" alignItems="center" mt={1}>
+                      {selectedContactViews?.has_viewed ? (
+                        <>
+                          <VisibilityIcon color="info" sx={{ mr: 1 }} />
+                          <Typography>
+                            Last viewed on{' '}
+                            {selectedContactViews.views && selectedContactViews.views.length > 0
+                              ? new Date(
+                                  selectedContactViews.views[0].viewed_at
+                                ).toLocaleDateString()
+                              : 'Unknown date'}
+                          </Typography>
+                        </>
+                      ) : (
+                        <>
+                          <VisibilityOffIcon color="disabled" sx={{ mr: 1 }} />
+                          <Typography>Not viewed yet</Typography>
+                        </>
+                      )}
+                    </Box>
+                  </Paper>
+                </Grid>
+              </Grid>
+            </Box>
+            <br />
+            <br />
+            <Typography variant="h6" gutterBottom>
+              View History
+            </Typography>
             {selectedContactViews && selectedContactViews.views.length > 0 ? (
-              <TableContainer component={Paper} elevation={0} square>
+              <TableContainer component={Paper} elevation={0} square variant="outlined">
                 <Table size="small" aria-label="view history table">
                   <TableHead sx={{ bgcolor: 'grey.100' }}>
                     <TableRow>
@@ -1332,12 +1481,32 @@ export default function ApprovalRequestDetailPage() {
                 </Table>
               </TableContainer>
             ) : (
-              <DialogContentText sx={{ p: 2, textAlign: 'center' }}>
+              <Alert severity="info" sx={{ mb: 2 }}>
                 No views recorded for this contact.
-              </DialogContentText>
+              </Alert>
             )}
           </DialogContent>
           <DialogActions>
+            {selectedContactViews && (
+              <Button
+                startIcon={
+                  resendingContactId === selectedContactViews.contact_id ? (
+                    <CircularProgress size={20} />
+                  ) : (
+                    <EmailIcon />
+                  )
+                }
+                color="primary"
+                variant="contained"
+                onClick={() =>
+                  selectedContactViews && handleResendNotification(selectedContactViews.contact_id)
+                }
+                disabled={resendingContactId === selectedContactViews?.contact_id}
+                sx={{ mr: 'auto' }}
+              >
+                Send Notification
+              </Button>
+            )}
             <Button onClick={handleCloseViewLog}>Close</Button>
           </DialogActions>
         </Dialog>
@@ -1395,7 +1564,19 @@ export default function ApprovalRequestDetailPage() {
                     !selectedVersion.inline_content.startsWith('<')) ? (
                   <Box>
                     {/* Add toggle button for editor mode */}
-                    <Box display="flex" justifyContent="flex-end" mb={1}>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                      <Typography
+                        variant="h5"
+                        sx={{
+                          maxWidth: '75%',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        Version {selectedVersion?.version_number || ''} Content
+                      </Typography>
+
                       <Button
                         variant="outlined"
                         size="small"
@@ -1523,6 +1704,80 @@ export default function ApprovalRequestDetailPage() {
           </DialogActions>
         </Dialog>
         {/* --- End New Version Dialog --- */}
+
+        {/* --- Approval Confirmation Dialog --- */}
+        <Dialog
+          open={approvalDialogOpen}
+          onClose={handleCloseApprovalDialog}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Approve Content</DialogTitle>
+          <DialogContent dividers>
+            <DialogContentText paragraph>
+              You are about to manually approve this content. This will mark the request as approved
+              regardless of client responses.
+            </DialogContentText>
+
+            <FormGroup>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={notifyClientsOnApproval}
+                    onChange={e => setNotifyClientsOnApproval(e.target.checked)}
+                  />
+                }
+                label="Notify clients about approval"
+              />
+            </FormGroup>
+
+            {notifyClientsOnApproval &&
+              request &&
+              request.contacts &&
+              request.contacts.length > 0 && (
+                <Box mt={2}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Select clients to notify:
+                  </Typography>
+                  <List dense>
+                    {request.contacts.map(contact => (
+                      <ListItem key={contact.contact_id} disablePadding>
+                        <ListItemButton
+                          dense
+                          onClick={() => handleToggleClientNotification(contact.contact_id)}
+                        >
+                          <ListItemIcon>
+                            <Checkbox
+                              edge="start"
+                              checked={clientsToNotify.includes(contact.contact_id)}
+                              tabIndex={-1}
+                              disableRipple
+                            />
+                          </ListItemIcon>
+                          <ListItemText primary={contact.name} secondary={contact.email} />
+                        </ListItemButton>
+                      </ListItem>
+                    ))}
+                  </List>
+                </Box>
+              )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseApprovalDialog} color="inherit">
+              Cancel
+            </Button>
+            <Button
+              onClick={handleManualApproval}
+              color="success"
+              variant="contained"
+              disabled={isSubmittingApproval}
+              startIcon={isSubmittingApproval ? <CircularProgress size={20} /> : <CheckIcon />}
+            >
+              Approve
+            </Button>
+          </DialogActions>
+        </Dialog>
+        {/* --- End Approval Confirmation Dialog --- */}
       </LayoutContainer>
     </>
   );

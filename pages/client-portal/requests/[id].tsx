@@ -41,6 +41,7 @@ import {
   Comment as CommentIcon,
   History as HistoryIcon,
   Article as ArticleIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/router';
 import useClientAuth from '../../../hooks/useClientAuth';
@@ -50,7 +51,6 @@ import Head from 'next/head';
 import ReactionPicker from 'components/ReactionPicker';
 import { createRoot } from 'react-dom/client';
 import { initVersionRecogito } from 'utils/recogito';
-import Joyride, { CallBackProps, STATUS } from 'react-joyride';
 
 /// <reference path="./recogito.d.ts" />
 
@@ -270,8 +270,11 @@ export default function ClientRequestDetailPage() {
   const versionContentRef = useRef<HTMLDivElement>(null);
   const versionRecogitoInstance = useRef<any>(null);
 
-  // State for showing the guide
-  const [showGuide, setShowGuide] = useState(false);
+  // Add the isLoggedInToGoogle state near the beginning of the component
+  const [isLoggedInToGoogle, setIsLoggedInToGoogle] = useState(false);
+
+  // Add isMinimalMode state
+  const [isMinimalMode, setIsMinimalMode] = useState(true);
 
   // Get client token from localStorage
   useEffect(() => {
@@ -1026,42 +1029,25 @@ export default function ClientRequestDetailPage() {
     fetchRequestDetails,
   ]);
 
-  // Show the guide only for first-time users
+  // Add useEffect to try to detect Google login status (basic detection)
   useEffect(() => {
-    // Only show if not already completed
-    if (typeof window !== 'undefined' && !localStorage.getItem('reviewerGuideComplete')) {
-      setShowGuide(true);
-    }
+    // This is a basic detection method - won't work for all cases
+    // but gives us something to show in the UI
+    const checkGoogleLoginStatus = () => {
+      // Check if there are any Google cookies
+      const hasGoogleCookies = document.cookie
+        .split(';')
+        .some(
+          cookie =>
+            cookie.trim().startsWith('GAPS=') ||
+            cookie.trim().startsWith('LSID=') ||
+            cookie.trim().startsWith('SID=')
+        );
+      setIsLoggedInToGoogle(hasGoogleCookies);
+    };
+
+    checkGoogleLoginStatus();
   }, []);
-
-  const handleJoyrideCallback = (data: CallBackProps) => {
-    const { status } = data;
-    if (status === 'finished' || status === 'skipped') {
-      setShowGuide(false);
-      localStorage.setItem('reviewerGuideComplete', 'true');
-    }
-  };
-
-  const steps = [
-    {
-      target: '[data-joyride="highlight"]',
-      content: 'Leave comments directly on specific sections of the document by highlighting text.',
-      disableBeacon: true,
-    },
-    {
-      target: '[data-joyride="comment-box"]',
-      content:
-        'You can also leave general feedback about the entire document in the comments box below.',
-    },
-    {
-      target: '[data-joyride="approve-button"]',
-      content: 'If everything looks good, approve the content here.',
-    },
-    {
-      target: '[data-joyride="back-arrow"]',
-      content: 'Use this arrow to return to your list of all content requests.',
-    },
-  ];
 
   if (isLoading || (loading && !request)) {
     return (
@@ -1287,7 +1273,6 @@ export default function ClientRequestDetailPage() {
                                   startIcon={<CheckCircleIcon />}
                                   onClick={() => setApprovalDialogOpen(true)}
                                   size="large"
-                                  data-joyride="approve-button"
                                 >
                                   Approve
                                 </Button>
@@ -1335,70 +1320,156 @@ export default function ClientRequestDetailPage() {
                         (request?.content_type === 'google_doc' ||
                           (request?.inline_content.includes('docs.google.com') &&
                             !request?.inline_content.startsWith('<'))) && (
-                          <Box
-                            mt={2}
-                            sx={{
-                              height: '700px',
-                              border: '1px solid rgba(0, 0, 0, 0.23)',
-                              borderRadius: '4px',
-                              overflow: 'hidden',
-                              backgroundColor: '#ffffff',
-                            }}
-                          >
-                            <iframe
-                              src={(() => {
-                                // Extract document ID from the URL
-                                const docIdMatch =
-                                  request.inline_content.match(/\/d\/([a-zA-Z0-9_-]+)/);
-                                const docId = docIdMatch ? docIdMatch[1] : '';
+                          <Box mt={2}>
+                            <Typography variant="h4" gutterBottom>
+                              {request.title}
+                            </Typography>
 
-                                if (docId) {
-                                  console.log('USING GOOGLE DOCS SUGGEST MODE WITH ID:', docId);
+                            {/* Add client identity banner */}
+                            <Paper
+                              elevation={0}
+                              sx={{
+                                p: 2,
+                                mb: 2,
+                                bgcolor: '#f8f9fa',
+                                border: '1px solid #e0e0e0',
+                                borderRadius: 1,
+                              }}
+                            >
+                              <Box display="flex" alignItems="center" mb={1}>
+                                <Avatar
+                                  sx={{
+                                    bgcolor: 'primary.main',
+                                    mr: 2,
+                                    width: 32,
+                                    height: 32,
+                                    fontSize: '0.9rem',
+                                  }}
+                                >
+                                  {clientInfo ? clientInfo.name.charAt(0).toUpperCase() : 'C'}
+                                </Avatar>
+                                <Box>
+                                  <Typography variant="subtitle2">
+                                    You are viewing as:{' '}
+                                    <strong>{clientInfo ? clientInfo.name : 'Client'}</strong>
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {clientInfo ? clientInfo.email : ''}
+                                    {!isLoggedInToGoogle && (
+                                      <span style={{ marginLeft: 8, color: '#d32f2f' }}>
+                                        (Note: You appear as &quot;Anonymous&quot; in document edits
+                                        because you&apos;re not logged into Google)
+                                      </span>
+                                    )}
+                                  </Typography>
+                                </Box>
+                              </Box>
 
-                                  // Use the correct parameter: mode=suggest to force suggestion mode
-                                  return `https://docs.google.com/document/d/${docId}/edit?mode=suggest&embedded=true&rm=minimal`;
-                                } else {
-                                  // Fallback to URL manipulation if no ID found
-                                  try {
-                                    const urlObj = new URL(request.inline_content);
+                              <Box mt={1}>
+                                <Typography
+                                  variant="caption"
+                                  sx={{ display: 'block', fontWeight: 'medium' }}
+                                >
+                                  <strong>How to provide feedback:</strong>
+                                </Typography>
+                                <Typography variant="caption" sx={{ display: 'block' }}>
+                                  • To make edits, select text and type your changes (they&apos;ll
+                                  appear as suggestions)
+                                </Typography>
+                                <Typography variant="caption" sx={{ display: 'block' }}>
+                                  • Right-click on a suggestion to accept or reject it
+                                </Typography>
+                                {!isLoggedInToGoogle && (
+                                  <Typography
+                                    variant="caption"
+                                    sx={{ display: 'block', color: '#d32f2f', mt: 1 }}
+                                  >
+                                    <strong>Note:</strong> You&apos;re not logged into Google, so
+                                    you&apos;ll appear as &quot;Anonymous&quot; in suggestions
+                                  </Typography>
+                                )}
+                              </Box>
+                            </Paper>
 
-                                    // Use the correct "suggest" mode parameter
-                                    urlObj.searchParams.set('mode', 'suggest');
-                                    urlObj.searchParams.delete('forcedMode'); // Remove any existing forcedMode
-                                    urlObj.searchParams.set('embedded', 'true');
-                                    urlObj.searchParams.set('rm', 'minimal');
+                            {/* Add a way to toggle minimal mode for clients */}
+                            {/* <Box display="flex" justifyContent="flex-end" mb={1}>
+                              <Button
+                                variant="text"
+                                size="small"
+                                color="secondary"
+                                onClick={() => setIsMinimalMode(!isMinimalMode)}
+                                startIcon={isMinimalMode ? <ArticleIcon /> : <CloseIcon />}
+                              >
+                                {isMinimalMode ? 'Show Full Editor' : 'Use Minimal Editor'}
+                              </Button>
+                            </Box> */}
 
-                                    // Remove any parameters that might interfere
-                                    if (urlObj.searchParams.has('chrome'))
-                                      urlObj.searchParams.delete('chrome');
-                                    if (urlObj.searchParams.has('headers'))
-                                      urlObj.searchParams.delete('headers');
+                            <Box
+                              sx={{
+                                height: '700px',
+                                border: '1px solid',
+                                borderColor: 'rgba(0, 0, 0, 0.23)',
+                                borderRadius: 1,
+                                overflow: 'hidden',
+                              }}
+                            >
+                              <iframe
+                                src={getEmbeddableGoogleDocUrl(
+                                  (() => {
+                                    // Extract document ID from the URL
+                                    const docIdMatch =
+                                      request.inline_content.match(/\/d\/([a-zA-Z0-9_-]+)/);
+                                    const docId = docIdMatch ? docIdMatch[1] : '';
 
-                                    console.log('USING SUGGEST MODE URL:', urlObj.toString());
-                                    return urlObj.toString();
-                                  } catch (error) {
-                                    console.error('URL parsing error:', error);
-                                    // Force suggest mode by appending parameters directly
-                                    const url = request.inline_content;
-                                    console.log(
-                                      'USING SUGGEST MODE PARAMETERS:',
-                                      url.includes('?')
-                                        ? `${url}&mode=suggest&rm=minimal`
-                                        : `${url}?mode=suggest&rm=minimal`
-                                    );
-                                    return url.includes('?')
-                                      ? `${url}&mode=suggest&rm=minimal`
-                                      : `${url}?mode=suggest&rm=minimal`;
-                                  }
-                                }
-                              })()}
-                              width="100%"
-                              height="100%"
-                              frameBorder="0"
-                              style={{ border: 'none' }}
-                              allow="autoplay; encrypted-media"
-                              allowFullScreen
-                            ></iframe>
+                                    if (docId) {
+                                      console.log('USING GOOGLE DOCS EDIT MODE WITH ID:', docId);
+
+                                      // Use edit mode with suggestions enabled through the UI
+                                      return `https://docs.google.com/document/d/${docId}/edit?embedded=true${isMinimalMode ? '&rm=minimal' : ''}`;
+                                    } else {
+                                      // Fallback to URL manipulation if no ID found
+                                      try {
+                                        const urlObj = new URL(request.inline_content);
+
+                                        // Use the correct "suggest" mode parameter
+                                        urlObj.searchParams.set('mode', 'suggest');
+                                        urlObj.searchParams.delete('forcedMode'); // Remove any existing forcedMode
+                                        urlObj.searchParams.set('embedded', 'true');
+                                        urlObj.searchParams.set('rm', 'minimal');
+
+                                        // Remove any parameters that might interfere
+                                        if (urlObj.searchParams.has('chrome'))
+                                          urlObj.searchParams.delete('chrome');
+                                        if (urlObj.searchParams.has('headers'))
+                                          urlObj.searchParams.delete('headers');
+
+                                        console.log('USING SUGGEST MODE URL:', urlObj.toString());
+                                        return urlObj.toString();
+                                      } catch (error) {
+                                        console.error('URL parsing error:', error);
+                                        // Force suggest mode by appending parameters directly
+                                        const url = request.inline_content;
+                                        console.log(
+                                          'USING SUGGEST MODE PARAMETERS:',
+                                          url.includes('?')
+                                            ? `${url}&mode=suggest&rm=minimal`
+                                            : `${url}?mode=suggest&rm=minimal`
+                                        );
+                                        return url.includes('?')
+                                          ? `${url}&mode=suggest&rm=minimal`
+                                          : `${url}?mode=suggest&rm=minimal`;
+                                      }
+                                    }
+                                  })()
+                                )}
+                                width="100%"
+                                height="100%"
+                                frameBorder="0"
+                                style={{ border: 'none' }}
+                                allow="autoplay; encrypted-media"
+                                allowFullScreen
+                              ></iframe>
+                            </Box>
                           </Box>
                         )}
 
@@ -1430,7 +1501,6 @@ export default function ClientRequestDetailPage() {
                               },
                             }}
                             className="annotatable-container"
-                            data-joyride="highlight"
                           >
                             <div id="content-view">
                               {/* Content will be initialized by Recogito */}
@@ -1467,7 +1537,7 @@ export default function ClientRequestDetailPage() {
                     </Paper>
 
                     {/* Comments section */}
-                    <Paper elevation={2} sx={{ p: 3 }} data-joyride="comment-box">
+                    <Paper elevation={2} sx={{ p: 3 }}>
                       <Typography variant="h6" gutterBottom>
                         Comments
                       </Typography>
@@ -1576,7 +1646,6 @@ export default function ClientRequestDetailPage() {
                           variant="outlined"
                           startIcon={<BackIcon />}
                           onClick={handleCloseVersionView}
-                          data-joyride="back-arrow"
                         >
                           Back to Current Version
                         </Button>
@@ -1618,12 +1687,12 @@ export default function ClientRequestDetailPage() {
 
                                   if (docId) {
                                     console.log(
-                                      'VERSION VIEW: USING GOOGLE DOCS SUGGEST MODE WITH ID:',
+                                      'VERSION VIEW: USING GOOGLE DOCS EDIT MODE WITH ID:',
                                       docId
                                     );
 
-                                    // Use the correct parameter: mode=suggest to force suggestion mode
-                                    return `https://docs.google.com/document/d/${docId}/edit?mode=suggest&embedded=true&rm=minimal`;
+                                    // Use edit mode for versions too
+                                    return `https://docs.google.com/document/d/${docId}/edit?embedded=true${isMinimalMode ? '&rm=minimal' : ''}`;
                                   } else if (versionContent) {
                                     // Fallback to URL manipulation if no ID found
                                     try {
@@ -1808,25 +1877,6 @@ export default function ClientRequestDetailPage() {
           <Button onClick={() => setVersionHistoryOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
-
-      {/* Joyride component */}
-      <Joyride
-        steps={steps}
-        run={showGuide}
-        continuous
-        showSkipButton
-        showProgress
-        callback={handleJoyrideCallback}
-        styles={{
-          options: {
-            primaryColor: '#4CAF50', // Brand primary (green)
-            textColor: '#222',
-            backgroundColor: '#fff',
-            arrowColor: '#4CAF50',
-            zIndex: 10000,
-          },
-        }}
-      />
     </Box>
   );
 }

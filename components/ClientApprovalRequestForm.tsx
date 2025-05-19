@@ -21,6 +21,8 @@ import axios from 'axios';
 import { CloudUpload as UploadIcon } from '@mui/icons-material';
 import dynamic from 'next/dynamic';
 import Script from 'next/script';
+import ClientContactForm from './ClientContactForm';
+import type { ClientContact } from './ClientContactForm';
 
 // Import Quill CSS
 import 'react-quill/dist/quill.snow.css';
@@ -34,15 +36,6 @@ const ReactQuill = dynamic(() => import('react-quill'), {
 interface Client {
   client_id: number;
   client_name: string;
-}
-
-interface ClientContact {
-  contact_id: number;
-  client_id: number;
-  name: string;
-  email: string;
-  job_title?: string;
-  is_active: boolean;
 }
 
 interface ApprovalRequestFormProps {
@@ -75,7 +68,10 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
   const [docLoading, setDocLoading] = useState(false);
   const [docError, setDocError] = useState<string | null>(null);
   const [showOverlay, setShowOverlay] = useState(false);
-  const [isMinimalMode, setIsMinimalMode] = useState(true);
+  const [editorMode, setEditorMode] = useState({
+    isMinimal: true,
+    refreshKey: 0,
+  });
 
   // Data loading state
   const [clients, setClients] = useState<Client[]>([]);
@@ -87,6 +83,9 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // Contact form state
+  const [contactFormOpen, setContactFormOpen] = useState(false);
 
   // Load clients on component mount
   useEffect(() => {
@@ -157,7 +156,7 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
     setSelectedContacts(newSelectedContacts);
   };
 
-  // Function to trigger Google Doc creation
+  // Restore original handleCreateGoogleDoc
   const handleCreateGoogleDoc = () => {
     // Only proceed if we have both client and title, and we're not already loading
     if (selectedClient && title.trim() && !docLoading) {
@@ -323,10 +322,60 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
     }
   };
 
+  // Handle successful contact addition
+  const handleContactAdded = (newContact: ClientContact) => {
+    // Refresh the contacts list
+    if (selectedClient) {
+      fetchClientContacts(selectedClient.client_id);
+
+      // Pre-select the newly added contact
+      setSelectedContacts(prevSelected => {
+        // Check if this contact is already selected (shouldn't be, but just in case)
+        const isAlreadySelected = prevSelected.some(
+          contact => contact.contact_id === newContact.contact_id
+        );
+
+        // Only add if not already selected
+        if (!isAlreadySelected) {
+          return [...prevSelected, newContact];
+        }
+
+        return prevSelected;
+      });
+    }
+  };
+
+  // Replace the handleEditorModeToggle function with an in-place solution
+  const handleEditorModeToggle = () => {
+    // Toggle minimal mode and increment the refresh key to force iframe reload
+    setEditorMode(prev => ({
+      isMinimal: !prev.isMinimal,
+      refreshKey: prev.refreshKey + 1,
+    }));
+
+    // Show a temporary loading overlay
+    setShowOverlay(true);
+
+    // Hide the overlay after a brief delay to give the iframe time to reload
+    setTimeout(() => {
+      setShowOverlay(false);
+    }, 1500);
+  };
+
   return (
     <>
       {/* Load Google API Client Library */}
       <Script src="https://apis.google.com/js/api.js" strategy="beforeInteractive" />
+
+      {/* Contact Form Dialog */}
+      {selectedClient && (
+        <ClientContactForm
+          clientId={selectedClient.client_id}
+          open={contactFormOpen}
+          onClose={() => setContactFormOpen(false)}
+          onSave={handleContactAdded}
+        />
+      )}
 
       <Paper elevation={3} sx={{ p: 3 }}>
         {success ? (
@@ -403,15 +452,21 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
 
               {/* Replace ReactQuill with Google Doc iframe */}
               <Grid item xs={12}>
-                <Typography
-                  variant="subtitle1"
-                  gutterBottom
-                  component="label"
-                  sx={{ display: 'block', mb: 1 }}
+                <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    mb: 1,
+                  }}
                 >
-                  Content for Review <span style={{ color: 'red' }}>*</span>
-                  {googleDocId && (
-                    <>
+                  <Typography
+                    variant="subtitle1"
+                    component="label"
+                    sx={{ display: 'inline-flex', alignItems: 'center' }}
+                  >
+                    Content for Review <span style={{ color: 'red' }}>*</span>
+                    {googleDocId && (
                       <Button
                         variant="text"
                         size="small"
@@ -421,21 +476,21 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
                       >
                         Having trouble editing?
                       </Button>
-                      <Button
-                        variant="text"
-                        size="small"
-                        color="secondary"
-                        onClick={() => {
-                          // Toggle between minimal and standard view
-                          setIsMinimalMode(!isMinimalMode);
-                        }}
-                        sx={{ ml: 1, fontSize: '0.8rem', textTransform: 'none', p: 0 }}
-                      >
-                        {isMinimalMode ? 'Use Standard Editor' : 'Use Minimal Editor'}
-                      </Button>
-                    </>
+                    )}
+                  </Typography>
+
+                  {googleDocId && (
+                    <Button
+                      variant="text"
+                      size="small"
+                      color="secondary"
+                      onClick={handleEditorModeToggle}
+                      sx={{ fontSize: '0.8rem', textTransform: 'none', p: 0 }}
+                    >
+                      {editorMode.isMinimal ? 'Use Standard Editor' : 'Use Minimal Editor'}
+                    </Button>
                   )}
-                </Typography>
+                </Box>
 
                 {docError && (
                   <Alert severity="error" sx={{ mb: 2 }}>
@@ -471,7 +526,8 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
                       }}
                     >
                       <iframe
-                        src={`https://docs.google.com/document/d/${googleDocId}/edit?usp=sharing&embedded=true${isMinimalMode ? '&rm=minimal' : ''}`}
+                        key={`google-doc-iframe-${editorMode.refreshKey}`}
+                        src={`https://docs.google.com/document/d/${googleDocId}/edit?usp=sharing&embedded=true${editorMode.isMinimal ? '&rm=minimal' : ''}`}
                         width="100%"
                         height="100%"
                         frameBorder="0"
@@ -496,42 +552,95 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
                           <Box
                             sx={{
                               textAlign: 'center',
-                              p: 2,
+                              p: 3,
                               maxWidth: '80%',
                               position: 'relative',
+                              bgcolor: 'background.paper',
+                              borderRadius: 2,
+                              boxShadow: 3,
                             }}
                           >
-                            <Button
-                              sx={{ position: 'absolute', right: -10, top: -10 }}
-                              size="small"
-                              onClick={() => setShowOverlay(false)}
-                            >
-                              ✕
-                            </Button>
-                            <Typography variant="body1" gutterBottom>
-                              If you&apos;re having trouble accessing the document due to Google
-                              account permissions:
-                            </Typography>
-                            <Button
-                              variant="contained"
-                              color="primary"
-                              href={`https://docs.google.com/document/d/${googleDocId}/edit?usp=sharing${isMinimalMode ? '&rm=minimal' : ''}`}
-                              target="_blank"
-                              sx={{ mt: 2 }}
-                            >
-                              Open Document in New Tab
-                            </Button>
-                            <Typography variant="body2" sx={{ mt: 2 }}>
-                              Please make edits in the new tab, then return here to continue.
-                            </Typography>
-                            <Button
-                              variant="text"
-                              color="secondary"
-                              onClick={() => setShowOverlay(false)}
-                              sx={{ mt: 1 }}
-                            >
-                              Try embedded view anyway
-                            </Button>
+                            {editorMode.refreshKey > 0 && editorMode.refreshKey % 2 === 1 ? (
+                              // Show loading message when switching modes
+                              <>
+                                <Typography variant="h6" gutterBottom>
+                                  Switching Editor Mode
+                                </Typography>
+                                <Box
+                                  display="flex"
+                                  justifyContent="center"
+                                  alignItems="center"
+                                  my={3}
+                                >
+                                  <CircularProgress size={24} sx={{ mr: 2 }} />
+                                  <Typography>Reloading editor, please wait...</Typography>
+                                </Box>
+                              </>
+                            ) : (
+                              // Show regular account selection overlay
+                              <>
+                                <Button
+                                  sx={{ position: 'absolute', right: -10, top: -10 }}
+                                  size="small"
+                                  onClick={() => setShowOverlay(false)}
+                                >
+                                  ✕
+                                </Button>
+                                <Typography variant="h6" gutterBottom>
+                                  Google Account Access
+                                </Typography>
+                                <Typography variant="body1" gutterBottom sx={{ mb: 3 }}>
+                                  If you&apos;re having trouble accessing the document due to Google
+                                  account permissions:
+                                </Typography>
+
+                                <Grid container spacing={2}>
+                                  <Grid item xs={12}>
+                                    <Button
+                                      variant="contained"
+                                      color="primary"
+                                      href={`https://docs.google.com/document/d/${googleDocId}/edit?usp=sharing${editorMode.isMinimal ? '&rm=minimal' : ''}`}
+                                      target="_blank"
+                                      fullWidth
+                                    >
+                                      Open in New Tab
+                                    </Button>
+                                  </Grid>
+
+                                  <Grid item xs={12}>
+                                    <Button
+                                      variant="outlined"
+                                      color="primary"
+                                      href={`https://accounts.google.com/AccountChooser?continue=${encodeURIComponent(`https://docs.google.com/document/d/${googleDocId}/edit?usp=sharing${editorMode.isMinimal ? '&rm=minimal' : ''}`)}`}
+                                      target="_blank"
+                                      fullWidth
+                                    >
+                                      Choose Google Account First
+                                    </Button>
+                                  </Grid>
+
+                                  <Grid item xs={12}>
+                                    <Alert severity="info" sx={{ mt: 2 }}>
+                                      <Typography variant="body2">
+                                        <strong>TIP:</strong> If editor modes are switching
+                                        accounts, try using the &quot;Choose Google Account&quot;
+                                        button above and explicitly select your work account.
+                                      </Typography>
+                                    </Alert>
+                                  </Grid>
+
+                                  <Grid item xs={12} sx={{ mt: 2 }}>
+                                    <Button
+                                      variant="text"
+                                      color="secondary"
+                                      onClick={() => setShowOverlay(false)}
+                                    >
+                                      Try embedded view anyway
+                                    </Button>
+                                  </Grid>
+                                </Grid>
+                              </>
+                            )}
                           </Box>
                         </Box>
                       )}
@@ -554,6 +663,7 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
                         {selectedClient.client_name} - {title}
                       </strong>
                     </Typography>
+
                     <Button
                       variant="contained"
                       color="primary"
@@ -593,40 +703,69 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
                       <Typography variant="body2">Loading contacts...</Typography>
                     </Box>
                   ) : clientContacts.length === 0 ? (
-                    <Alert severity="info" sx={{ mt: 2 }}>
-                      {selectedClient
-                        ? 'No contacts found for this client. Please add contacts first.'
-                        : 'Select a client to view contacts'}
-                    </Alert>
+                    <Box>
+                      <Alert severity="info" sx={{ mt: 2, mb: 2 }}>
+                        {selectedClient
+                          ? 'No contacts found for this client.'
+                          : 'Select a client to view contacts'}
+                      </Alert>
+                      {selectedClient && (
+                        <Box display="flex" justifyContent="flex-start">
+                          <Button
+                            variant="contained"
+                            color="primary"
+                            size="small"
+                            onClick={() => setContactFormOpen(true)}
+                          >
+                            Add Contact
+                          </Button>
+                        </Box>
+                      )}
+                    </Box>
                   ) : (
-                    <FormGroup>
-                      {clientContacts.map(contact => (
-                        <FormControlLabel
-                          key={contact.contact_id}
-                          control={
-                            <Checkbox
-                              checked={selectedContacts.some(
-                                c => c.contact_id === contact.contact_id
-                              )}
-                              onChange={() => handleContactToggle(contact)}
-                            />
-                          }
-                          label={
-                            <React.Fragment>
-                              {contact.name}
-                              {contact.job_title && (
-                                <span>
-                                  {' '}
-                                  (<i>{contact.job_title}</i>)
-                                </span>
-                              )}
-                              {' - '}
-                              {contact.email}
-                            </React.Fragment>
-                          }
-                        />
-                      ))}
-                    </FormGroup>
+                    <Box>
+                      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                        <Typography variant="body2" color="text.secondary">
+                          Select contacts who should review this content:
+                        </Typography>
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          size="small"
+                          onClick={() => setContactFormOpen(true)}
+                        >
+                          Add Contact
+                        </Button>
+                      </Box>
+                      <FormGroup>
+                        {clientContacts.map(contact => (
+                          <FormControlLabel
+                            key={contact.contact_id}
+                            control={
+                              <Checkbox
+                                checked={selectedContacts.some(
+                                  c => c.contact_id === contact.contact_id
+                                )}
+                                onChange={() => handleContactToggle(contact)}
+                              />
+                            }
+                            label={
+                              <React.Fragment>
+                                {contact.name}
+                                {contact.job_title && (
+                                  <span>
+                                    {' '}
+                                    (<i>{contact.job_title}</i>)
+                                  </span>
+                                )}
+                                {' - '}
+                                {contact.email}
+                              </React.Fragment>
+                            }
+                          />
+                        ))}
+                      </FormGroup>
+                    </Box>
                   )}
 
                   <FormHelperText>

@@ -711,32 +711,6 @@ export default function ClientApprovalPage() {
                   Refresh
                 </Button>
               </Grid>
-              {/* Debug button - only visible for admins */}
-              {isAdmin && (
-                <Grid item xs={12}>
-                  <Button
-                    variant="text"
-                    color="secondary"
-                    onClick={() => {
-                      console.log('Current state:', {
-                        requests: requests.length,
-                        filteredRequests: filteredRequests.length,
-                        userFilter,
-                        clientFilter,
-                        statusFilter,
-                        isAdmin,
-                        isAdminMode,
-                      });
-
-                      if (requests.length > 0) {
-                        console.log('Sample request created_by_id:', requests[0].created_by_id);
-                      }
-                    }}
-                  >
-                    Debug Info
-                  </Button>
-                </Grid>
-              )}
             </Grid>
           </Paper>
 
@@ -766,7 +740,20 @@ export default function ClientApprovalPage() {
             <Grid container spacing={3}>
               {filteredRequests.map(request => (
                 <Grid item xs={12} md={6} lg={4} key={request.request_id}>
-                  <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                  <Card
+                    sx={{
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      cursor: 'pointer',
+                      transition: 'transform 0.2s, box-shadow 0.2s',
+                      '&:hover': {
+                        transform: 'translateY(-4px)',
+                        boxShadow: 6,
+                      },
+                    }}
+                    onClick={() => handleViewRequest(request.request_id)}
+                  >
                     <CardContent sx={{ flexGrow: 1 }}>
                       <Box display="flex" justifyContent="space-between" alignItems="flex-start">
                         <Typography variant="h6" noWrap sx={{ maxWidth: '70%' }}>
@@ -826,7 +813,13 @@ export default function ClientApprovalPage() {
                     <Divider />
 
                     <CardActions>
-                      <Button size="small" onClick={() => handleViewRequest(request.request_id)}>
+                      <Button
+                        size="small"
+                        onClick={e => {
+                          e.stopPropagation(); // Prevent card click from triggering
+                          handleViewRequest(request.request_id);
+                        }}
+                      >
                         View Details
                       </Button>
                       <Box flexGrow={1} />

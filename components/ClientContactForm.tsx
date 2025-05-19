@@ -16,7 +16,7 @@ import {
 } from '@mui/material';
 import axios from 'axios';
 
-interface ClientContact {
+export interface ClientContact {
   contact_id?: number;
   client_id: number;
   name: string;
@@ -31,17 +31,21 @@ interface ClientContact {
 interface ClientContactFormProps {
   clientId: number;
   contact?: ClientContact;
-  open: boolean;
-  onClose: () => void;
-  onSave: () => void;
+  onSave: (contact: ClientContact) => void;
+  onCancel?: () => void;
 }
 
-export default function ClientContactForm({
+export interface ClientContactDialogProps extends ClientContactFormProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+// Main form component without dialog wrapper
+export function ClientContactFormContent({
   clientId,
   contact,
-  open,
-  onClose,
   onSave,
+  onCancel,
 }: ClientContactFormProps) {
   const isEditMode = Boolean(contact?.contact_id);
   const initialFormData = contact || {
@@ -56,20 +60,18 @@ export default function ClientContactForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Reset form when dialog opens with a new contact
+  // Reset form when props change
   useEffect(() => {
-    if (open) {
-      setFormData(
-        contact || {
-          client_id: clientId,
-          name: '',
-          email: '',
-          phone: '',
-          is_active: true,
-        }
-      );
-    }
-  }, [open, contact, clientId]);
+    setFormData(
+      contact || {
+        client_id: clientId,
+        name: '',
+        email: '',
+        phone: '',
+        is_active: true,
+      }
+    );
+  }, [contact, clientId]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, checked } = e.target;
@@ -100,14 +102,20 @@ export default function ClientContactForm({
         client_id: clientId,
       };
 
+      let savedContact;
+
       if (isEditMode && contact?.contact_id) {
         // Update existing contact
-        await axios.put(`/api/clients/contacts/${contact.contact_id}`, payload, { headers });
+        const response = await axios.put(`/api/clients/contacts/${contact.contact_id}`, payload, {
+          headers,
+        });
+        savedContact = response.data;
       } else {
         // Create new contact
-        await axios.post('/api/clients/contacts', payload, { headers });
+        const response = await axios.post('/api/clients/contacts', payload, { headers });
+        savedContact = response.data;
 
-        // Reset form data for next time the form is opened
+        // Reset form data for next time the form is used
         setFormData({
           client_id: clientId,
           name: '',
@@ -118,8 +126,7 @@ export default function ClientContactForm({
       }
 
       setLoading(false);
-      onSave();
-      onClose(); // Always close the modal after successful submission
+      onSave(savedContact);
     } catch (error: any) {
       console.error('Error saving contact:', error);
       setError(error.response?.data?.error || 'Failed to save contact');
@@ -128,91 +135,126 @@ export default function ClientContactForm({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <form onSubmit={handleSubmit}>
-        <DialogTitle>{isEditMode ? 'Edit Contact' : 'Add New Contact'}</DialogTitle>
+    <>
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
 
-        <DialogContent>
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
+      <Grid container spacing={2} sx={{ mt: 1 }}>
+        <Grid item xs={12}>
+          <TextField
+            label="Name"
+            name="name"
+            value={formData.name || ''}
+            onChange={handleChange}
+            fullWidth
+            required
+            autoFocus
+          />
+        </Grid>
 
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12}>
-              <TextField
-                label="Name"
-                name="name"
-                value={formData.name || ''}
-                onChange={handleChange}
-                fullWidth
-                required
-                autoFocus
-              />
-            </Grid>
+        <Grid item xs={12}>
+          <TextField
+            label="Job Title (optional)"
+            name="job_title"
+            value={formData.job_title || ''}
+            onChange={handleChange}
+            fullWidth
+          />
+        </Grid>
 
-            <Grid item xs={12}>
-              <TextField
-                label="Job Title (optional)"
-                name="job_title"
-                value={formData.job_title || ''}
-                onChange={handleChange}
-                fullWidth
-              />
-            </Grid>
+        <Grid item xs={12}>
+          <TextField
+            label="Email"
+            name="email"
+            type="email"
+            value={formData.email || ''}
+            onChange={handleChange}
+            fullWidth
+            required
+          />
+        </Grid>
 
-            <Grid item xs={12}>
-              <TextField
-                label="Email"
-                name="email"
-                type="email"
-                value={formData.email || ''}
-                onChange={handleChange}
-                fullWidth
-                required
-              />
-            </Grid>
+        <Grid item xs={12}>
+          <TextField
+            label="Phone Number (optional)"
+            name="phone"
+            value={formData.phone || ''}
+            onChange={handleChange}
+            fullWidth
+          />
+        </Grid>
 
-            <Grid item xs={12}>
-              <TextField
-                label="Phone Number (optional)"
-                name="phone"
-                value={formData.phone || ''}
-                onChange={handleChange}
-                fullWidth
-              />
-            </Grid>
-
-            {isEditMode && (
-              <Grid item xs={12}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      name="is_active"
-                      checked={formData.is_active}
-                      onChange={handleChange}
-                      color="primary"
-                    />
-                  }
-                  label="Active"
+        {isEditMode && (
+          <Grid item xs={12}>
+            <FormControlLabel
+              control={
+                <Switch
+                  name="is_active"
+                  checked={formData.is_active}
+                  onChange={handleChange}
+                  color="primary"
                 />
-              </Grid>
-            )}
+              }
+              label="Active"
+            />
           </Grid>
-        </DialogContent>
+        )}
+      </Grid>
 
-        <DialogActions>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button
-            type="submit"
-            variant="contained"
-            color="primary"
-            disabled={loading || !formData.name || !formData.email}
-          >
-            {loading ? <CircularProgress size={24} /> : isEditMode ? 'Update' : 'Add'}
-          </Button>
-        </DialogActions>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          mt: 3,
+          flexDirection: 'row',
+          gap: 1,
+        }}
+      >
+        {onCancel && <Button onClick={onCancel}>Cancel</Button>}
+        <Button
+          type="submit"
+          variant="contained"
+          color="primary"
+          disabled={loading || !formData.name || !formData.email}
+          onClick={handleSubmit}
+        >
+          {loading ? <CircularProgress size={24} /> : isEditMode ? 'Update' : 'Add'}
+        </Button>
+      </Box>
+    </>
+  );
+}
+
+// Dialog wrapper component
+export default function ClientContactForm({
+  clientId,
+  contact,
+  open,
+  onClose,
+  onSave,
+}: ClientContactDialogProps) {
+  const isEditMode = Boolean(contact?.contact_id);
+
+  const handleSave = (savedContact: ClientContact) => {
+    onSave(savedContact);
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <form onSubmit={e => e.preventDefault()}>
+        <DialogTitle>{isEditMode ? 'Edit Contact' : 'Add New Contact'}</DialogTitle>
+        <DialogContent>
+          <ClientContactFormContent
+            clientId={clientId}
+            contact={contact}
+            onSave={handleSave}
+            onCancel={onClose}
+          />
+        </DialogContent>
       </form>
     </Dialog>
   );

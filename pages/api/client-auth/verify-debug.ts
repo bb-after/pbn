@@ -58,12 +58,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // 2. Check if token is expired
     if (new Date(tokenData.expires_at) < new Date()) {
-      return res.status(400).json({ error: 'Token has expired', message: 'Token expired' });
+      return res.status(400).json({
+        error: 'Token has expired',
+        message: 'Token expired',
+        email: tokenData.email,
+        tokenData: {
+          contact_id: tokenData.contact_id,
+          name: tokenData.name,
+          email: tokenData.email,
+        },
+      });
     }
 
     // 3. Check if token is already used
     if (tokenData.is_used) {
-      return res.status(400).json({ error: 'Token has already been used', message: 'Token used' });
+      return res.status(400).json({
+        error: 'Token has already been used',
+        message: 'Token used',
+        email: tokenData.email,
+        tokenData: {
+          contact_id: tokenData.contact_id,
+          name: tokenData.name,
+          email: tokenData.email,
+        },
+      });
     }
 
     // 4. Mark token as used
