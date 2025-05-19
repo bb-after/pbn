@@ -13,6 +13,7 @@ import {
 import { useRouter } from 'next/router';
 import axios from 'axios';
 import NextLink from 'next/link';
+import Head from 'next/head';
 
 // Define the component as a function
 const VerifyLoginPage = () => {
@@ -23,9 +24,25 @@ const VerifyLoginPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [errorType, setErrorType] = useState<string | null>(null);
   const [verified, setVerified] = useState(false);
-  const [email, setEmail] = useState<string>('');
+  const [tokenEmail, setTokenEmail] = useState<string | null>(null);
   const [requestingNewToken, setRequestingNewToken] = useState(false);
   const [newTokenRequested, setNewTokenRequested] = useState(false);
+
+  // Add a function to directly retrieve email from token by making another API call
+  const retrieveEmailFromToken = useCallback(async (token: string | string[]) => {
+    try {
+      // Make a direct API call to our backend to check the token
+      const response = await axios.post('/api/client-auth/token-lookup', { token });
+      if (response.data && response.data.email) {
+        console.log('Retrieved email from token-lookup:', response.data.email);
+        setTokenEmail(response.data.email);
+        return true;
+      }
+    } catch (error) {
+      console.error('Error retrieving email from token:', error);
+    }
+    return false;
+  }, []);
 
   const verifyToken = useCallback(async () => {
     setVerifying(true);
@@ -71,6 +88,16 @@ const VerifyLoginPage = () => {
         } else if (typeof err.response.data.error === 'string') {
           errorMessage = err.response.data.error;
         }
+
+        // Try to extract email from error response
+        if (err.response.data.email) {
+          setTokenEmail(err.response.data.email);
+          console.log('Email extracted from token response:', err.response.data.email);
+        } else if (err.response.data.tokenData && err.response.data.tokenData.email) {
+          // If API returns full token data in debug info
+          setTokenEmail(err.response.data.tokenData.email);
+          console.log('Email extracted from token data:', err.response.data.tokenData.email);
+        }
       } else if (err.message) {
         errorMessage = err.message;
       }
@@ -88,6 +115,12 @@ const VerifyLoginPage = () => {
       } else {
         setErrorType('general');
       }
+
+      // If we still don't have an email, try to get it from the token directly
+      if (!tokenEmail && token) {
+        // Make a direct API call to get the email from the token
+        await retrieveEmailFromToken(token);
+      }
     } finally {
       setVerifying(false);
     }
@@ -96,25 +129,62 @@ const VerifyLoginPage = () => {
   useEffect(() => {
     // Verify the token once it's available from the query params
     if (token) {
+      console.log(
+        `Starting verification of token: ${typeof token === 'string' ? token.substring(0, 10) + '...' : 'array'}`
+      );
       verifyToken();
     }
   }, [token, verifyToken]);
 
+  // Add effect to log token email state changes
+  useEffect(() => {
+    if (tokenEmail) {
+      console.log('Token email state updated:', tokenEmail);
+    }
+  }, [tokenEmail]);
+
+  // Add effect to attempt token lookup when error type is set but no email is available
+  useEffect(() => {
+    const attemptEmailLookup = async () => {
+      // Only run if we have a token, an error type that needs email, and no email yet
+      if (token && (errorType === 'expired' || errorType === 'used') && !tokenEmail && !verifying) {
+        console.log('Attempting to look up email for token due to error:', errorType);
+        await retrieveEmailFromToken(token);
+      }
+    };
+
+    attemptEmailLookup();
+  }, [errorType, token, tokenEmail, verifying, retrieveEmailFromToken]);
+
   // Function to request a new login token
   const requestNewToken = async () => {
-    if (!email) {
-      setError('Please enter your email address');
-      return;
+    if (!tokenEmail) {
+      // Try one last attempt to get the email
+      if (token) {
+        try {
+          const emailFound = await retrieveEmailFromToken(token);
+          if (!emailFound) {
+            setError('No email address available. Please return to the login page.');
+            return;
+          }
+        } catch (err) {
+          setError('No email address available. Please return to the login page.');
+          return;
+        }
+      } else {
+        setError('No email address available. Please return to the login page.');
+        return;
+      }
     }
 
     setRequestingNewToken(true);
     setError(null);
 
     try {
-      await axios.post('/api/client-auth/request-login', { email });
+      await axios.post('/api/client-auth/request-login', { email: tokenEmail });
       setNewTokenRequested(true);
       setError(null); // Clear any previous errors
-      console.log('New login token requested for:', email);
+      console.log('New login token requested for:', tokenEmail);
     } catch (error: any) {
       console.error('Error requesting new token:', error);
       let errorMessage = 'Failed to request a new login link. Please try again.';
@@ -149,8 +219,57 @@ const VerifyLoginPage = () => {
     );
   }
 
+  // Helper function to render token error message and action buttons
+  const renderTokenErrorSection = (message: string) => (
+    <Box sx={{ width: '100%', mt: 2, mb: 3 }}>
+      <Typography variant="body1" gutterBottom>
+        {message}
+        {tokenEmail ? (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            We&apos;ll send it to: <strong>{tokenEmail}</strong>
+          </Typography>
+        ) : (
+          <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+            We couldn&apos;t determine your email address. Please return to the login page.
+          </Typography>
+        )}
+      </Typography>
+      {tokenEmail ? (
+        <Button
+          variant="contained"
+          color="primary"
+          fullWidth
+          onClick={requestNewToken}
+          disabled={requestingNewToken}
+          sx={{ mt: 2 }}
+        >
+          {requestingNewToken ? <CircularProgress size={24} /> : 'Send New Login Link'}
+        </Button>
+      ) : (
+        <Button
+          variant="contained"
+          color="primary"
+          fullWidth
+          onClick={() => router.push('/client-portal/login')}
+          sx={{ mt: 2 }}
+        >
+          Return to Login Page
+        </Button>
+      )}
+    </Box>
+  );
+
   return (
     <Container maxWidth="sm">
+      <Head>
+        <title>
+          {newTokenRequested
+            ? 'Login Link Sent'
+            : errorType === 'expired' || errorType === 'used'
+              ? 'Login Link ' + (errorType === 'expired' ? 'Expired' : 'Already Used')
+              : 'Verifying Login'}
+        </title>
+      </Head>
       <Box my={8} display="flex" flexDirection="column" alignItems="center">
         <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
           <Box display="flex" justifyContent="center" mb={4}>
@@ -161,12 +280,62 @@ const VerifyLoginPage = () => {
           </Box>
 
           <Typography variant="h5" align="center" gutterBottom>
-            Verifying Login
+            {newTokenRequested
+              ? 'Login Link Sent'
+              : errorType === 'expired' || errorType === 'used'
+                ? 'Login Link ' + (errorType === 'expired' ? 'Expired' : 'Already Used')
+                : 'Verifying Login'}
           </Typography>
 
           <Box display="flex" flexDirection="column" alignItems="center" my={4}>
             {verifying ? (
               <CircularProgress />
+            ) : newTokenRequested ? (
+              // Dedicated view for when a new login link has been requested
+              <Box width="100%">
+                <Alert severity="success" sx={{ width: '100%', mb: 3 }}>
+                  A new login link has been sent to your email.
+                </Alert>
+
+                <Box
+                  sx={{ p: 3, border: '1px solid #e0e0e0', borderRadius: 1, bgcolor: '#f9f9f9' }}
+                >
+                  <Typography variant="h6" gutterBottom>
+                    Next steps:
+                  </Typography>
+
+                  <Box component="ol" sx={{ pl: 2 }}>
+                    <Box component="li" sx={{ mb: 1 }}>
+                      Check your inbox at <strong>{tokenEmail}</strong>
+                    </Box>
+                    <Box component="li" sx={{ mb: 1 }}>
+                      Click the login link in the email
+                    </Box>
+                    <Box component="li">
+                      You&apos;ll be automatically logged in to the Client Portal
+                    </Box>
+                  </Box>
+
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ mt: 3, fontStyle: 'italic' }}
+                  >
+                    Note: This current link is no longer valid. Please use the new link from your
+                    email.
+                  </Typography>
+                </Box>
+
+                <Box display="flex" justifyContent="center" mt={3}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={() => router.push('/client-portal/login')}
+                  >
+                    Return to Login Page
+                  </Button>
+                </Box>
+              </Box>
             ) : error ? (
               <>
                 <Alert severity="error" sx={{ width: '100%', mb: 2 }}>
@@ -174,92 +343,18 @@ const VerifyLoginPage = () => {
                 </Alert>
 
                 {/* For token expiration */}
-                {errorType === 'expired' && !newTokenRequested && (
-                  <Box sx={{ width: '100%', mt: 2, mb: 3 }}>
-                    <Typography variant="body1" gutterBottom>
-                      Your login link has expired. Would you like to request a new one?
-                    </Typography>
-                    <TextField
-                      fullWidth
-                      label="Email Address"
-                      variant="outlined"
-                      type="email"
-                      value={email}
-                      onChange={e => setEmail(e.target.value)}
-                      size="small"
-                      sx={{ mb: 2 }}
-                    />
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      fullWidth
-                      onClick={requestNewToken}
-                      disabled={requestingNewToken || !email}
-                    >
-                      {requestingNewToken ? <CircularProgress size={24} /> : 'Send New Login Link'}
-                    </Button>
-                  </Box>
-                )}
+                {errorType === 'expired' &&
+                  !newTokenRequested &&
+                  renderTokenErrorSection(
+                    'Your login link has expired. Would you like to request a new one?'
+                  )}
 
                 {/* For already used token */}
-                {errorType === 'used' && !newTokenRequested && (
-                  <Box sx={{ width: '100%', mt: 2, mb: 3 }}>
-                    <Typography variant="body1" gutterBottom>
-                      This login link has already been used. Would you like to request a new one?
-                    </Typography>
-                    <TextField
-                      fullWidth
-                      label="Email Address"
-                      variant="outlined"
-                      type="email"
-                      value={email}
-                      onChange={e => setEmail(e.target.value)}
-                      size="small"
-                      sx={{ mb: 2 }}
-                    />
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      fullWidth
-                      onClick={requestNewToken}
-                      disabled={requestingNewToken || !email}
-                    >
-                      {requestingNewToken ? <CircularProgress size={24} /> : 'Send New Login Link'}
-                    </Button>
-                  </Box>
-                )}
-
-                {/* Success message after requesting a new token */}
-                {newTokenRequested && (
-                  <Alert severity="success" sx={{ width: '100%', mt: 2, mb: 2 }}>
-                    A new login link has been sent to your email.
-                  </Alert>
-                )}
-
-                {/* Technical details for debugging (can be removed in production) */}
-                <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
-                  Token: {token ? token.toString().substring(0, 8) + '...' : 'No token provided'}
-                </Typography>
-                <Box display="flex" flexDirection="column" alignItems="center">
-                  <NextLink
-                    href={`/api/client-auth/token-check?token=${token}`}
-                    passHref
-                    legacyBehavior
-                  >
-                    <Link target="_blank" rel="noopener noreferrer" sx={{ mb: 2 }}>
-                      Check token details
-                    </Link>
-                  </NextLink>
-                  <NextLink
-                    href={`/api/client-auth/verify-debug?token=${token}`}
-                    passHref
-                    legacyBehavior
-                  >
-                    <Link target="_blank" rel="noopener noreferrer" sx={{ mb: 2 }}>
-                      Try manual verification
-                    </Link>
-                  </NextLink>
-                </Box>
+                {errorType === 'used' &&
+                  !newTokenRequested &&
+                  renderTokenErrorSection(
+                    'This login link has already been used. Would you like to request a new one?'
+                  )}
               </>
             ) : (
               <Alert severity="success" sx={{ width: '100%' }}>
@@ -268,7 +363,7 @@ const VerifyLoginPage = () => {
             )}
           </Box>
 
-          {error && !newTokenRequested && (
+          {error && !newTokenRequested && errorType !== 'expired' && errorType !== 'used' && (
             <Box display="flex" justifyContent="center" mt={2}>
               <Button
                 variant="contained"
