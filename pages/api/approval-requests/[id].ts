@@ -2,6 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import mysql from 'mysql2/promise';
 import AWS from 'aws-sdk';
 import { URL } from 'url';
+import { validateUserToken } from '../validate-user-token'; // Ensure this import is present
 
 // Configure AWS (ensure region is set, credentials should be auto-loaded from env)
 AWS.config.update({ region: 'us-east-2' }); // Force us-east-2 based on bucket URL
@@ -290,19 +291,24 @@ async function updateApprovalRequest(
 ) {
   const { status, publishedUrl, contactId, markViewed, isArchived } = req.body;
 
-  // Validate contactId if action is from client portal
+  // Staff authentication
+  let userInfo = null;
+  if (!isClientPortal) {
+    userInfo = await validateUserToken(req);
+    if (!userInfo || !userInfo.isValid) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+  }
+
+  // Only require contactId for client portal actions
   if (isClientPortal && !contactId) {
     return res.status(400).json({ error: 'Contact ID is required for client portal actions' });
   }
-
-  // Validate required fields based on action
-  if (status && !['pending', 'approved', 'rejected'].includes(status)) {
-    return res.status(400).json({ error: 'Invalid status value' });
-  }
-  if (status && !contactId) {
+  // Only require contactId for status updates if it's a client portal action
+  if (status && isClientPortal && !contactId) {
     return res.status(400).json({ error: 'Contact ID is required when updating status' });
   }
-  if (markViewed && !contactId) {
+  if (markViewed && isClientPortal && !contactId) {
     return res.status(400).json({ error: 'Contact ID is required when marking as viewed' });
   }
 
@@ -344,59 +350,90 @@ async function updateApprovalRequest(
     }
 
     // Handle status update (approved/rejected)
-    if (status && contactId) {
-      const updateStatusQuery = `
-        UPDATE client_approval_requests 
-        SET status = ? 
-        WHERE request_id = ? 
-      `;
-      // Only update main status if ALL contacts have approved or if one rejects
-      // This logic might need refinement based on specific business rules
-      // For now, let's assume rejection sets status immediately,
-      // and approval only sets main status if everyone approved (checked separately)
-
-      // Update the specific contact's approval record using UTC_TIMESTAMP()
-      const updateContactQuery = `
-        UPDATE approval_request_contacts 
-        SET has_approved = ?, approved_at = CASE WHEN ? = 'approved' THEN UTC_TIMESTAMP() ELSE NULL END
-        WHERE request_id = ? AND contact_id = ?
-      `;
-
-      const hasApproved = status === 'approved' ? 1 : 0;
-
-      // Pass status for the CASE statement, instead of approvedAt
-      await connection.query(updateContactQuery, [
-        hasApproved,
-        status, // Parameter for the CASE statement
-        requestId,
-        contactId,
-      ]);
-      console.log(
-        `Approval updated (UTC) for request ${requestId}, contact ${contactId}, status: ${status}`
-      );
-      updated = true;
-
-      // Logic to update the main request status (can be complex)
-      if (status === 'rejected') {
-        // If one rejects, reject the whole request
-        await connection.query(updateStatusQuery, ['rejected', requestId]);
-        console.log(`Request ${requestId} status set to rejected.`);
-      } else if (status === 'approved') {
-        // Check if all other contacts have also approved
-        const checkAllApprovedQuery = `
-          SELECT COUNT(*) as total, SUM(has_approved) as approved_count
-          FROM approval_request_contacts
-          WHERE request_id = ?
+    if (status) {
+      if (isClientPortal && contactId) {
+        // Existing logic for client portal contact approval
+        // ... (existing code) ...
+        const updateStatusQuery = `
+          UPDATE client_approval_requests 
+          SET status = ? 
+          WHERE request_id = ? 
         `;
-        const [approvalStatusRows]: any = await connection.query(checkAllApprovedQuery, [
+        // Only update main status if ALL contacts have approved or if one rejects
+        // This logic might need refinement based on specific business rules
+        // For now, let's assume rejection sets status immediately,
+        // and approval only sets main status if everyone approved (checked separately)
+
+        // Update the specific contact's approval record using UTC_TIMESTAMP()
+        const updateContactQuery = `
+          UPDATE approval_request_contacts 
+          SET has_approved = ?, approved_at = CASE WHEN ? = 'approved' THEN UTC_TIMESTAMP() ELSE NULL END
+          WHERE request_id = ? AND contact_id = ?
+        `;
+
+        const hasApproved = status === 'approved' ? 1 : 0;
+
+        // Pass status for the CASE statement, instead of approvedAt
+        await connection.query(updateContactQuery, [
+          hasApproved,
+          status, // Parameter for the CASE statement
           requestId,
+          contactId,
         ]);
-        if (approvalStatusRows[0].total === approvalStatusRows[0].approved_count) {
-          // All contacts have approved, update main status
-          await connection.query(updateStatusQuery, ['approved', requestId]);
-          console.log(`Request ${requestId} status set to approved (all contacts approved).`);
-          // TODO: Potentially trigger publish workflow here?
+        console.log(
+          `Approval updated (UTC) for request ${requestId}, contact ${contactId}, status: ${status}`
+        );
+        updated = true;
+
+        // Logic to update the main request status (can be complex)
+        if (status === 'rejected') {
+          // If one rejects, reject the whole request
+          await connection.query(updateStatusQuery, ['rejected', requestId]);
+          console.log(`Request ${requestId} status set to rejected.`);
+        } else if (status === 'approved') {
+          // Check if all other contacts have also approved
+          const checkAllApprovedQuery = `
+            SELECT COUNT(*) as total, SUM(has_approved) as approved_count
+            FROM approval_request_contacts
+            WHERE request_id = ?
+          `;
+          const [approvalStatusRows]: any = await connection.query(checkAllApprovedQuery, [
+            requestId,
+          ]);
+          if (approvalStatusRows[0].total === approvalStatusRows[0].approved_count) {
+            // All contacts have approved, update main status
+            await connection.query(updateStatusQuery, ['approved', requestId]);
+            console.log(`Request ${requestId} status set to approved (all contacts approved).`);
+            // TODO: Potentially trigger publish workflow here?
+          }
         }
+      } else if (!isClientPortal && userInfo && userInfo.isValid) {
+        // Staff approval: check if user is creator or admin
+        const [rows]: any = await connection.query(
+          'SELECT created_by_id FROM client_approval_requests WHERE request_id = ?',
+          [requestId]
+        );
+        if (!rows.length) {
+          await connection.rollback();
+          return res.status(404).json({ error: 'Approval request not found' });
+        }
+        const isOwner = rows[0].created_by_id == userInfo.user_id;
+        const isAdmin = userInfo.role === 'admin';
+        if (!isOwner && !isAdmin) {
+          await connection.rollback();
+          return res
+            .status(403)
+            .json({ error: 'Forbidden: You do not have permission to approve this request' });
+        }
+        // Staff is authorized, update the main request status directly
+        const updateStatusQuery = `
+          UPDATE client_approval_requests 
+          SET status = ? 
+          WHERE request_id = ? 
+        `;
+        await connection.query(updateStatusQuery, [status, requestId]);
+        console.log(`Staff set request ${requestId} status to ${status}`);
+        updated = true;
       }
     }
 
@@ -420,7 +457,6 @@ async function updateApprovalRequest(
       updated = true;
     }
 
-    // If no action resulted in 'updated' being true, then it was an invalid request
     if (!updated) {
       await connection.rollback();
       return res.status(400).json({ error: 'No valid update operation specified' });
@@ -480,22 +516,5 @@ async function deleteApprovalRequest(requestId: number, res: NextApiResponse) {
     return res.status(500).json({ error: 'Failed to delete approval request' });
   } finally {
     connection.release();
-  }
-}
-
-export async function validateUserToken(req: NextApiRequest) {
-  // ...
-  try {
-    // Create a connection to the database using the pool instead of dbConfig
-    const connection = await pool.getConnection();
-
-    try {
-      // Query the database
-      // ...
-    } finally {
-      connection.release(); // Release the connection back to the pool
-    }
-  } catch (error) {
-    // Handle error
   }
 }

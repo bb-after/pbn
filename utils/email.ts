@@ -83,7 +83,7 @@ export async function sendLoginEmail(contact: any, token: string, request?: any)
   // Add request-specific information if available
   if (request) {
     htmlBody += `
-      <p>New content has been submitted for your approval for <strong>${contact.client_name}</strong>.</p>
+      <p>New content has been submitted for your approval for content from <strong>Status Labs</strong>.</p>
       <div style="background-color: #f5f5f5; border-left: 4px solid #4CAF50; padding: 15px; margin: 20px 0;">
         <h3 style="margin-top: 0;">${request.title}</h3>
         ${request.description ? `<p>${request.description}</p>` : ''}
