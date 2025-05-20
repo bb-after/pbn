@@ -1,18 +1,21 @@
-import React from 'react';
-import { Container, Typography, Box, Paper, Button } from '@mui/material';
+import React, { useState } from 'react';
+import { Container, Typography, Box } from '@mui/material';
 import LayoutContainer from '../../components/LayoutContainer';
 import StyledHeader from '../../components/StyledHeader';
 import ClientApprovalRequestForm from '../../components/ClientApprovalRequestForm';
 import { useRouter } from 'next/router';
 import useValidateUserToken from 'hooks/useValidateUserToken';
-import Link from 'next/link';
 
 export default function UploadApprovalRequestPage() {
   const router = useRouter();
   const { isValidUser, isLoading } = useValidateUserToken();
+  const [googleToken, setGoogleToken] = useState<string | null>(null);
+
+  const handleGoogleLoginSuccess = (credentialResponse: any) => {
+    setGoogleToken(credentialResponse.credential);
+  };
 
   const handleSubmitSuccess = () => {
-    // Navigate to the approval requests list after successful submission
     setTimeout(() => {
       router.push('/client-approval');
     }, 2000);
@@ -47,7 +50,12 @@ export default function UploadApprovalRequestPage() {
             an email notification with a link to review the content.
           </Typography>
 
-          <ClientApprovalRequestForm onSubmitSuccess={handleSubmitSuccess} />
+          <ClientApprovalRequestForm
+            onSubmitSuccess={handleSubmitSuccess}
+            googleAccessToken={googleToken ?? undefined}
+            onGoogleLoginSuccess={handleGoogleLoginSuccess}
+            googleClientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID_CONTENT_APPROVAL!}
+          />
         </Box>
       </Container>
     </LayoutContainer>

@@ -679,28 +679,31 @@ export default function ClientApprovalPage() {
                   ))}
                 </TextField>
               </Grid>
-              <Grid item xs={12} md={3}>
-                <TextField
-                  select
-                  fullWidth
-                  label="User"
-                  value={userFilter}
-                  onChange={e => {
-                    // Get the value directly from the event
-                    const value = e.target.value;
-                    console.log('User filter changed directly from event:', value);
-                    // Call handler with the value from the event
-                    handleUserFilterChange(value);
-                  }}
-                >
-                  <MenuItem value="all">All Users</MenuItem>
-                  {users.map(user => (
-                    <MenuItem key={user.id} value={user.id}>
-                      {user.name}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              </Grid>
+
+              {users.length > 0 && (
+                <Grid item xs={12} md={3}>
+                  <TextField
+                    select
+                    fullWidth
+                    label="User"
+                    value={userFilter}
+                    onChange={e => {
+                      // Get the value directly from the event
+                      const value = e.target.value;
+                      console.log('User filter changed directly from event:', value);
+                      // Call handler with the value from the event
+                      handleUserFilterChange(value);
+                    }}
+                  >
+                    <MenuItem value="all">All Users</MenuItem>
+                    {users.map(user => (
+                      <MenuItem key={user.id} value={user.id}>
+                        {user.name}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+              )}
               <Grid item xs={12} md={2}>
                 <Button
                   fullWidth
