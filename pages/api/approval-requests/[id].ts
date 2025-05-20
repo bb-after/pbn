@@ -3,6 +3,8 @@ import mysql from 'mysql2/promise';
 import AWS from 'aws-sdk';
 import { URL } from 'url';
 import { validateUserToken } from '../validate-user-token'; // Ensure this import is present
+import nodemailer from 'nodemailer';
+import axios from 'axios';
 
 // Configure AWS (ensure region is set, credentials should be auto-loaded from env)
 AWS.config.update({ region: 'us-east-2' }); // Force us-east-2 based on bucket URL
@@ -16,6 +18,17 @@ const pool = mysql.createPool({
   database: process.env.DB_DATABASE,
   waitForConnections: true,
   connectionLimit: 20,
+});
+
+// Configure email transport
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: parseInt(process.env.SMTP_PORT || '587'),
+  secure: process.env.SMTP_SECURE === 'true',
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASSWORD,
+  },
 });
 
 // --- Updated Interface ---
@@ -289,187 +302,266 @@ async function updateApprovalRequest(
   res: NextApiResponse,
   isClientPortal: boolean
 ) {
-  const { status, publishedUrl, contactId, markViewed, isArchived } = req.body;
-
-  // Staff authentication
-  let userInfo = null;
-  if (!isClientPortal) {
-    userInfo = await validateUserToken(req);
-    if (!userInfo || !userInfo.isValid) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-  }
-
-  // Only require contactId for client portal actions
-  if (isClientPortal && !contactId) {
-    return res.status(400).json({ error: 'Contact ID is required for client portal actions' });
-  }
-  // Only require contactId for status updates if it's a client portal action
-  if (status && isClientPortal && !contactId) {
-    return res.status(400).json({ error: 'Contact ID is required when updating status' });
-  }
-  if (markViewed && isClientPortal && !contactId) {
-    return res.status(400).json({ error: 'Contact ID is required when marking as viewed' });
-  }
-
-  const connection = await pool.getConnection();
-
   try {
-    await connection.beginTransaction();
-    let updated = false;
+    // Extract update data
+    const {
+      status,
+      title,
+      description,
+      file,
+      inlineContent,
+      contactId,
+      contacts,
+      markViewed,
+      note, // Add handling for notes
+      notifyOwner = true, // Add notification flag
+      publishedUrl, // Restore this parameter
+      isArchived, // Restore this parameter
+    } = req.body;
 
-    if (markViewed && contactId) {
-      const checkRecentViewQuery = `
-        SELECT COUNT(*) as count 
-        FROM approval_request_views 
-        WHERE request_id = ? AND contact_id = ? AND viewed_at > NOW() - INTERVAL 30 SECOND
-      `;
-      const [recentViewResult] = await connection.query(checkRecentViewQuery, [
-        requestId,
-        contactId,
-      ]);
+    // Staff authentication
+    if (!isClientPortal) {
+      const userToken = req.headers.authorization?.split(' ')[1];
+      if (!userToken) {
+        return res.status(401).json({ error: 'Authentication token is required' });
+      }
 
-      if ((recentViewResult as any[])[0].count === 0) {
-        // No recent view found, proceed with insert
-        // Explicitly insert UTC timestamp
-        const insertViewQuery = `
-          INSERT INTO approval_request_views (request_id, contact_id, viewed_at) 
-          VALUES (?, ?, UTC_TIMESTAMP())
-        `;
-        // Pass only request_id and contact_id as values now
-        await connection.query(insertViewQuery, [requestId, contactId]);
-        console.log(`View logged (UTC) for request ${requestId}, contact ${contactId}`);
-        updated = true; // Mark as updated because we inserted
-      } else {
-        console.log(
-          `Duplicate view detected within 30s for request ${requestId}, contact ${contactId}. Skipping insert.`
-        );
-        // Still mark as updated because the *intent* to mark view was processed
-        updated = true;
+      const validationResult = await validateUserToken({
+        headers: { 'x-auth-token': userToken },
+      } as unknown as NextApiRequest);
+
+      if (!validationResult.isValid) {
+        return res.status(401).json({ error: 'Invalid or expired token' });
       }
     }
 
-    // Handle status update (approved/rejected)
-    if (status) {
-      if (isClientPortal && contactId) {
-        // Existing logic for client portal contact approval
-        // ... (existing code) ...
-        const updateStatusQuery = `
-          UPDATE client_approval_requests 
-          SET status = ? 
-          WHERE request_id = ? 
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+      let updated = false;
+
+      // Handle view marking
+      if (markViewed && contactId) {
+        const checkRecentViewQuery = `
+          SELECT COUNT(*) as count 
+          FROM approval_request_views 
+          WHERE request_id = ? AND contact_id = ? AND viewed_at > NOW() - INTERVAL 30 SECOND
         `;
-        // Only update main status if ALL contacts have approved or if one rejects
-        // This logic might need refinement based on specific business rules
-        // For now, let's assume rejection sets status immediately,
-        // and approval only sets main status if everyone approved (checked separately)
-
-        // Update the specific contact's approval record using UTC_TIMESTAMP()
-        const updateContactQuery = `
-          UPDATE approval_request_contacts 
-          SET has_approved = ?, approved_at = CASE WHEN ? = 'approved' THEN UTC_TIMESTAMP() ELSE NULL END
-          WHERE request_id = ? AND contact_id = ?
-        `;
-
-        const hasApproved = status === 'approved' ? 1 : 0;
-
-        // Pass status for the CASE statement, instead of approvedAt
-        await connection.query(updateContactQuery, [
-          hasApproved,
-          status, // Parameter for the CASE statement
+        const [recentViewResult] = await connection.query(checkRecentViewQuery, [
           requestId,
           contactId,
         ]);
-        console.log(
-          `Approval updated (UTC) for request ${requestId}, contact ${contactId}, status: ${status}`
-        );
-        updated = true;
 
-        // Logic to update the main request status (can be complex)
-        if (status === 'rejected') {
-          // If one rejects, reject the whole request
-          await connection.query(updateStatusQuery, ['rejected', requestId]);
-          console.log(`Request ${requestId} status set to rejected.`);
-        } else if (status === 'approved') {
-          // Check if all other contacts have also approved
-          const checkAllApprovedQuery = `
-            SELECT COUNT(*) as total, SUM(has_approved) as approved_count
+        if ((recentViewResult as any[])[0].count === 0) {
+          // No recent view found, proceed with insert
+          // Explicitly insert UTC timestamp
+          const insertViewQuery = `
+            INSERT INTO approval_request_views (request_id, contact_id, viewed_at) 
+            VALUES (?, ?, UTC_TIMESTAMP())
+          `;
+          // Pass only request_id and contact_id as values now
+          await connection.query(insertViewQuery, [requestId, contactId]);
+          console.log(`View logged (UTC) for request ${requestId}, contact ${contactId}`);
+          updated = true; // Mark as updated because we inserted
+        } else {
+          console.log(
+            `Duplicate view detected within 30s for request ${requestId}, contact ${contactId}. Skipping insert.`
+          );
+          // Still mark as updated because the *intent* to mark view was processed
+          updated = true;
+        }
+      }
+
+      if (isClientPortal && contactId) {
+        // Additional check: Verify the contact is associated with this request
+        const hasAccess = await checkContactAccess(requestId, contactId);
+        if (!hasAccess) {
+          await connection.rollback();
+          connection.release();
+          return res.status(403).json({
+            error: 'Forbidden',
+            message: 'You do not have permission to update this request',
+          });
+        }
+
+        // Mark contact as having approved the request if status is provided
+        if (status === 'approved') {
+          const approvalUpdateQuery = `
+            UPDATE approval_request_contacts
+            SET has_approved = 1, approved_at = NOW()
+            WHERE request_id = ? AND contact_id = ?
+          `;
+          await connection.query(approvalUpdateQuery, [requestId, contactId]);
+
+          // Add note as a comment if provided
+          if (note && note.trim()) {
+            const addNoteQuery = `
+              INSERT INTO approval_request_comments (request_id, user_id, client_contact_id, comment, created_at)
+              VALUES (?, NULL, ?, ?, NOW())
+            `;
+            await connection.query(addNoteQuery, [
+              requestId,
+              contactId,
+              `[APPROVAL NOTE] ${note.trim()}`,
+            ]);
+          }
+
+          // Check if all contacts have approved
+          const checkApprovalQuery = `
+            SELECT 
+              COUNT(*) as total_contacts,
+              SUM(CASE WHEN has_approved = 1 THEN 1 ELSE 0 END) as approved_contacts
             FROM approval_request_contacts
             WHERE request_id = ?
           `;
-          const [approvalStatusRows]: any = await connection.query(checkAllApprovedQuery, [
-            requestId,
-          ]);
-          if (approvalStatusRows[0].total === approvalStatusRows[0].approved_count) {
-            // All contacts have approved, update main status
-            await connection.query(updateStatusQuery, ['approved', requestId]);
-            console.log(`Request ${requestId} status set to approved (all contacts approved).`);
-            // TODO: Potentially trigger publish workflow here?
+          const [approvalResult] = await connection.query(checkApprovalQuery, [requestId]);
+          const approvalData = (approvalResult as any[])[0];
+
+          // If all contacts have approved, update the request status
+          if (
+            approvalData.total_contacts > 0 &&
+            approvalData.approved_contacts === approvalData.total_contacts
+          ) {
+            const updateRequestQuery = `
+              UPDATE client_approval_requests
+              SET status = 'approved', updated_at = NOW()
+              WHERE request_id = ?
+            `;
+            await connection.query(updateRequestQuery, [requestId]);
+          }
+
+          // If notifyOwner is true, send email and Slack notifications
+          if (notifyOwner) {
+            // Get request details for notification
+            const requestDetailsQuery = `
+              SELECT ar.*, c.client_name, u.name as owner_name, u.email as owner_email, u.id as owner_id
+              FROM client_approval_requests ar
+              JOIN clients c ON ar.client_id = c.client_id
+              LEFT JOIN users u ON ar.created_by_id = u.id
+              WHERE ar.request_id = ?
+            `;
+            const [requestDetails] = await connection.query(requestDetailsQuery, [requestId]);
+
+            if ((requestDetails as any[]).length > 0) {
+              const requestData = (requestDetails as any[])[0];
+
+              // Get contact info
+              const contactQuery = `
+                SELECT name, email FROM client_contacts WHERE contact_id = ?
+              `;
+              const [contactRows] = await connection.query(contactQuery, [contactId]);
+              const contactData = (contactRows as any[])[0];
+
+              // Send notifications
+              if (requestData.owner_email) {
+                await sendApprovalEmail({
+                  ownerName: requestData.owner_name || 'Content Owner',
+                  ownerEmail: requestData.owner_email,
+                  clientName: requestData.client_name,
+                  requestTitle: requestData.title,
+                  requestId: requestId,
+                  note: note || null,
+                  approverName: contactData?.name || 'Client',
+                  approverEmail: contactData?.email || '',
+                });
+              }
+
+              // Send Slack notification if configured
+              if (process.env.SLACK_APPROVAL_WEBHOOK) {
+                await sendApprovalSlackNotification({
+                  ownerName: requestData.owner_name || 'Content Owner',
+                  ownerId: requestData.owner_id,
+                  clientName: requestData.client_name,
+                  requestTitle: requestData.title,
+                  requestId: requestId,
+                  note: note || null,
+                  approverName: contactData?.name || 'Client',
+                  isFullyApproved: approvalData.approved_contacts === approvalData.total_contacts,
+                  approvedCount: approvalData.approved_contacts,
+                  totalCount: approvalData.total_contacts,
+                });
+              }
+            }
           }
         }
-      } else if (!isClientPortal && userInfo && userInfo.isValid) {
-        // Staff approval: check if user is creator or admin
-        const [rows]: any = await connection.query(
-          'SELECT created_by_id FROM client_approval_requests WHERE request_id = ?',
-          [requestId]
-        );
-        if (!rows.length) {
-          await connection.rollback();
-          return res.status(404).json({ error: 'Approval request not found' });
+
+        // If this is just a view marking operation, don't perform other updates
+        if (markViewed && !status) {
+          await connection.commit();
+          connection.release();
+          return res.status(200).json({ message: 'Request view marked successfully' });
         }
-        const isOwner = rows[0].created_by_id == userInfo.user_id;
-        const isAdmin = userInfo.role === 'admin';
-        if (!isOwner && !isAdmin) {
-          await connection.rollback();
-          return res
-            .status(403)
-            .json({ error: 'Forbidden: You do not have permission to approve this request' });
-        }
-        // Staff is authorized, update the main request status directly
-        const updateStatusQuery = `
-          UPDATE client_approval_requests 
-          SET status = ? 
-          WHERE request_id = ? 
+      }
+
+      // Handle status update (both client portal and staff)
+      if (status) {
+        const query = `
+          UPDATE client_approval_requests SET status = ?, updated_at = NOW() WHERE request_id = ?
         `;
-        await connection.query(updateStatusQuery, [status, requestId]);
-        console.log(`Staff set request ${requestId} status to ${status}`);
+        await connection.query(query, [status, requestId]);
+        console.log(`Status updated to ${status} for request ${requestId}`);
         updated = true;
       }
-    }
 
-    // Handle published URL update (likely staff only)
-    if (publishedUrl !== undefined && !isClientPortal) {
-      const query = `
-        UPDATE client_approval_requests SET published_url = ? WHERE request_id = ?
-      `;
-      await connection.query(query, [publishedUrl || null, requestId]);
-      console.log(`Published URL updated for request ${requestId}`);
-      updated = true;
-    }
-
-    // Handle archiving (staff only)
-    if (isArchived !== undefined && !isClientPortal) {
-      const query = `
-            UPDATE client_approval_requests SET is_archived = ? WHERE request_id = ?
+      // Handle published URL update (staff only)
+      if (publishedUrl !== undefined && !isClientPortal) {
+        const query = `
+          UPDATE client_approval_requests SET published_url = ? WHERE request_id = ?
         `;
-      await connection.query(query, [isArchived ? 1 : 0, requestId]);
-      console.log(`Archive status updated for request ${requestId}`);
-      updated = true;
-    }
+        await connection.query(query, [publishedUrl || null, requestId]);
+        console.log(`Published URL updated for request ${requestId}`);
+        updated = true;
+      }
 
-    if (!updated) {
+      // Handle file update (likely staff only)
+      if (file !== undefined && !isClientPortal) {
+        const query = `
+          UPDATE client_approval_requests SET file_url = ? WHERE request_id = ?
+        `;
+        await connection.query(query, [file || null, requestId]);
+        console.log(`File updated for request ${requestId}`);
+        updated = true;
+      }
+
+      // Handle inline content update (likely staff only)
+      if (inlineContent !== undefined && !isClientPortal) {
+        const query = `
+          UPDATE client_approval_requests SET inline_content = ? WHERE request_id = ?
+        `;
+        await connection.query(query, [inlineContent || null, requestId]);
+        console.log(`Inline content updated for request ${requestId}`);
+        updated = true;
+      }
+
+      // Handle archiving (staff only)
+      if (isArchived !== undefined && !isClientPortal) {
+        const query = `
+          UPDATE client_approval_requests SET is_archived = ? WHERE request_id = ?
+        `;
+        await connection.query(query, [isArchived ? 1 : 0, requestId]);
+        console.log(`Archive status updated for request ${requestId}`);
+        updated = true;
+      }
+
+      // If nothing was updated, there might be an issue
+      if (!updated) {
+        await connection.rollback();
+        connection.release();
+        return res.status(400).json({ error: 'No updates were made' });
+      }
+
+      await connection.commit();
+      connection.release();
+      return res.status(200).json({ message: 'Approval request updated successfully' });
+    } catch (error) {
       await connection.rollback();
-      return res.status(400).json({ error: 'No valid update operation specified' });
+      connection.release();
+      throw error;
     }
-
-    await connection.commit();
-    return res.status(200).json({ message: 'Approval request updated successfully' });
   } catch (error) {
-    await connection.rollback();
     console.error('Error updating approval request:', error);
     return res.status(500).json({ error: 'Failed to update approval request' });
-  } finally {
-    connection.release();
   }
 }
 
@@ -516,5 +608,197 @@ async function deleteApprovalRequest(requestId: number, res: NextApiResponse) {
     return res.status(500).json({ error: 'Failed to delete approval request' });
   } finally {
     connection.release();
+  }
+}
+
+// Add email notification for approvals
+async function sendApprovalEmail(params: {
+  ownerName: string;
+  ownerEmail: string;
+  clientName: string;
+  requestTitle: string;
+  requestId: number;
+  note: string | null;
+  approverName: string;
+  approverEmail: string;
+}) {
+  const {
+    ownerName,
+    ownerEmail,
+    clientName,
+    requestTitle,
+    requestId,
+    note,
+    approverName,
+    approverEmail,
+  } = params;
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const requestUrl = `${appUrl}/approval-requests/${requestId}`;
+
+  const emailHtml = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #333;">Content Approval Notification</h2>
+      <p>Hello ${ownerName},</p>
+      <p><strong>${approverName}</strong> has approved your content request.</p>
+      
+      <div style="margin: 20px 0; padding: 15px; background-color: #f5f5f5; border-left: 4px solid #4CAF50;">
+        <p style="margin: 0 0 10px 0;"><strong>Client:</strong> ${clientName}</p>
+        <p style="margin: 0 0 10px 0;"><strong>Request:</strong> ${requestTitle}</p>
+        ${
+          note
+            ? `<p style="margin: 0; font-weight: bold;">Note:</p>
+        <p style="white-space: pre-line;">${note}</p>`
+            : ''
+        }
+      </div>
+      
+      <p>
+        <a href="${requestUrl}" style="display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 4px;">
+          View Request
+        </a>
+      </p>
+      
+      <p style="color: #666; font-size: 14px; margin-top: 30px;">
+        This is an automated email from your content approval system.
+      </p>
+    </div>
+  `;
+
+  try {
+    await transporter.sendMail({
+      from: process.env.EMAIL_FROM || '"Content Approval System" <noreply@example.com>',
+      to: ownerEmail,
+      subject: `Content Approved: ${requestTitle} (${clientName})`,
+      html: emailHtml,
+      replyTo: approverEmail || undefined,
+    });
+
+    console.log(`Approval email sent to ${ownerEmail}`);
+  } catch (error) {
+    console.error('Error sending approval email:', error);
+    // Don't throw - allow the API to complete even if email fails
+  }
+}
+
+// Slack notification for approvals
+async function sendApprovalSlackNotification(params: {
+  ownerName: string;
+  ownerId: string;
+  clientName: string;
+  requestTitle: string;
+  requestId: number;
+  note: string | null;
+  approverName: string;
+  isFullyApproved: boolean;
+  approvedCount: number;
+  totalCount: number;
+}) {
+  const {
+    ownerName,
+    ownerId,
+    clientName,
+    requestTitle,
+    requestId,
+    note,
+    approverName,
+    isFullyApproved,
+    approvedCount,
+    totalCount,
+  } = params;
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const requestUrl = `${appUrl}/approval-requests/${requestId}`;
+
+  try {
+    // Create Slack message with properly defined types
+    const message: any = {
+      blocks: [
+        {
+          type: 'header',
+          text: {
+            type: 'plain_text',
+            text: isFullyApproved ? 'Content Fully Approved! 🎉' : 'Content Approval Update ✅',
+            emoji: true,
+          },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: isFullyApproved
+              ? `*${approverName}* has approved your content, completing the approval process!`
+              : `*${approverName}* has approved your content (${approvedCount}/${totalCount} approvals received)`,
+          },
+        },
+        {
+          type: 'divider',
+        },
+        {
+          type: 'section',
+          fields: [
+            {
+              type: 'mrkdwn',
+              text: `*Client:*\n${clientName}`,
+            },
+            {
+              type: 'mrkdwn',
+              text: `*Request:*\n${requestTitle}`,
+            },
+          ],
+        },
+      ],
+    };
+
+    // Add note if provided
+    if (note) {
+      message.blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*Approval Note:*\n${note}`,
+        },
+      });
+    }
+
+    // Add footer
+    message.blocks.push(
+      {
+        type: 'divider',
+      },
+      {
+        type: 'actions',
+        elements: [
+          {
+            type: 'button',
+            text: {
+              type: 'plain_text',
+              text: 'View Request',
+              emoji: true,
+            },
+            url: requestUrl,
+            style: 'primary',
+          },
+        ],
+      }
+    );
+
+    // Add user mention if we have owner ID
+    if (ownerId) {
+      message.blocks.unshift({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `<@${ownerId}> Your content has received an approval`,
+        },
+      });
+    }
+
+    // Send to Slack
+    await axios.post(process.env.SLACK_APPROVAL_WEBHOOK as string, message);
+    console.log('Slack approval notification sent');
+  } catch (error) {
+    console.error('Error sending Slack approval notification:', error);
+    // Don't throw - allow the API to complete even if Slack notification fails
   }
 }

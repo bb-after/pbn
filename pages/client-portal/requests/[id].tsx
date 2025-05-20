@@ -28,6 +28,8 @@ import {
   DialogActions,
   CircularProgress,
   Alert,
+  Tooltip,
+  FormLabel,
 } from '@mui/material';
 import {
   AccountCircle,
@@ -244,6 +246,16 @@ export default function ClientRequestDetailPage() {
   // State for approval/rejection
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+
+  // State for feedback dialog
+  const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false);
+  const [feedbackNote, setFeedbackNote] = useState('');
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
+
+  // State for optional approval note dialog
+  const [approvalNoteDialogOpen, setApprovalNoteDialogOpen] = useState(false);
+  const [approvalNote, setApprovalNote] = useState('');
+  const [submittingApproval, setSubmittingApproval] = useState(false);
 
   // State for comments
   const [newComment, setNewComment] = useState('');
@@ -660,17 +672,56 @@ export default function ClientRequestDetailPage() {
         {
           status: 'approved',
           contactId: clientInfo?.contact_id,
+          note: approvalNote.trim() || null, // Include note if provided
+          notifyOwner: true, // Trigger email notification
         },
         { headers }
       );
 
       setApprovalDialogOpen(false);
+      setApprovalNote('');
       fetchRequestDetails();
     } catch (error) {
       console.error('Error approving request:', error);
       setError('Failed to approve request');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  // Handle submit with feedback
+  const handleSubmitWithFeedback = async () => {
+    if (!feedbackNote.trim()) {
+      setError('Please provide feedback before submitting');
+      return;
+    }
+
+    setSubmittingFeedback(true);
+
+    try {
+      const headers = {
+        'x-client-portal': 'true',
+        'x-client-contact-id': clientInfo?.contact_id.toString(),
+      };
+
+      await axios.put(
+        `/api/approval-requests/${id}/feedback`,
+        {
+          feedback: feedbackNote,
+          contactId: clientInfo?.contact_id,
+          notifyOwner: true, // Trigger email notification
+        },
+        { headers }
+      );
+
+      setFeedbackDialogOpen(false);
+      setFeedbackNote('');
+      fetchRequestDetails();
+    } catch (error) {
+      console.error('Error submitting feedback:', error);
+      setError('Failed to submit feedback');
+    } finally {
+      setSubmittingFeedback(false);
     }
   };
 
@@ -1083,7 +1134,15 @@ export default function ClientRequestDetailPage() {
         <link rel="stylesheet" href="/vendor/recogito.min.css" />
       </Head>
       {/* Header */}
-      <AppBar position="static">
+      <AppBar
+        position="fixed"
+        sx={{
+          zIndex: theme => theme.zIndex.drawer + 1,
+          boxShadow: 3,
+          backgroundColor: 'grey.100',
+          color: 'text.primary',
+        }}
+      >
         <Toolbar>
           <IconButton
             size="large"
@@ -1099,6 +1158,44 @@ export default function ClientRequestDetailPage() {
             Content Review
           </Typography>
 
+          {/* Add Approve button to App Bar - only show if pending and not approved yet */}
+          {request && request.status === 'pending' && !hasApproved() && (
+            <Tooltip
+              title={
+                <Typography variant="body2">
+                  <strong>Your Decision</strong>
+                  <br />
+                  Please review the content and approve if you&apos;re satisfied with it. Once
+                  approved, the content will be prepared for publishing.
+                </Typography>
+              }
+              arrow
+            >
+              <Button
+                variant="contained"
+                color="success"
+                startIcon={<CheckCircleIcon />}
+                onClick={() => setApprovalDialogOpen(true)}
+                sx={{ mr: 2, fontWeight: 'bold', px: 3 }}
+              >
+                Approve
+              </Button>
+            </Tooltip>
+          )}
+
+          {/* Add Submit with Feedback button */}
+          {request && request.status === 'pending' && !hasApproved() && (
+            <Button
+              variant="outlined"
+              color="primary"
+              startIcon={<CommentIcon />}
+              onClick={() => setFeedbackDialogOpen(true)}
+              sx={{ mr: 2 }}
+            >
+              Submit with Feedback
+            </Button>
+          )}
+
           <Box>
             <IconButton
               size="large"
@@ -1109,7 +1206,17 @@ export default function ClientRequestDetailPage() {
               onClick={handleMenuOpen}
               color="inherit"
             >
-              <AccountCircle />
+              <Avatar
+                sx={{
+                  bgcolor: 'primary.main',
+                  mr: 2,
+                  width: 32,
+                  height: 32,
+                  fontSize: '0.9rem',
+                }}
+              >
+                {clientInfo ? clientInfo.name.charAt(0).toUpperCase() : 'C'}
+              </Avatar>
             </IconButton>
             <Menu
               id="menu-appbar"
@@ -1138,6 +1245,9 @@ export default function ClientRequestDetailPage() {
           </Box>
         </Toolbar>
       </AppBar>
+
+      {/* Add a toolbar component for proper spacing below the AppBar */}
+      <Toolbar />
 
       {/* Content */}
       <Container maxWidth="lg">
@@ -1215,72 +1325,24 @@ export default function ClientRequestDetailPage() {
                         </CardContent>
                       </Card>
 
-                      {/* Decision box */}
-                      <Paper
-                        elevation={3}
-                        sx={{
-                          p: 3,
-                          mb: 2,
-                          borderLeft: 4,
-                          borderColor: 'success.main',
-                          position: 'relative',
-                          overflow: 'hidden',
-                          '&::before': {
-                            content: '""',
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                            width: '100%',
-                            height: '4px',
-                            backgroundColor: 'success.main',
-                          },
-                        }}
-                      >
-                        <Typography
-                          variant="h6"
-                          gutterBottom
-                          sx={{ fontWeight: 'bold', color: 'success.dark' }}
-                        >
-                          Your Decision
-                        </Typography>
+                      {/* Remove the Decision box and keep only the approval status alerts */}
+                      {request.status === 'approved' && (
+                        <Alert severity="success" sx={{ mb: 2 }}>
+                          You have approved this content.
+                        </Alert>
+                      )}
 
-                        {request.status === 'approved' ? (
-                          <Alert severity="success" sx={{ mt: 2 }}>
-                            You have approved this content.
-                          </Alert>
-                        ) : request.status === 'rejected' ? (
-                          <Alert severity="error" sx={{ mt: 2 }}>
-                            You have rejected this content.
-                          </Alert>
-                        ) : hasApproved() ? (
-                          <Alert severity="success" sx={{ mt: 2 }}>
-                            You have approved this content. Waiting for other stakeholders to
-                            review.
-                          </Alert>
-                        ) : (
-                          <>
-                            <Typography variant="body2" paragraph sx={{ mt: 2 }}>
-                              <strong>Please review the content below</strong> and provide your
-                              decision. Once approved, the content will be prepared for publishing.
-                            </Typography>
+                      {request.status === 'rejected' && (
+                        <Alert severity="error" sx={{ mb: 2 }}>
+                          You have rejected this content.
+                        </Alert>
+                      )}
 
-                            <Grid container spacing={2} sx={{ mt: 1 }}>
-                              <Grid item xs={12}>
-                                <Button
-                                  fullWidth
-                                  variant="contained"
-                                  color="success"
-                                  startIcon={<CheckCircleIcon />}
-                                  onClick={() => setApprovalDialogOpen(true)}
-                                  size="large"
-                                >
-                                  Approve
-                                </Button>
-                              </Grid>
-                            </Grid>
-                          </>
-                        )}
-                      </Paper>
+                      {request.status === 'pending' && hasApproved() && (
+                        <Alert severity="success" sx={{ mb: 2 }}>
+                          You have approved this content. Waiting for other stakeholders to review.
+                        </Alert>
+                      )}
 
                       {/* Published URL (if available) */}
                       {request.published_url && (
@@ -1324,72 +1386,6 @@ export default function ClientRequestDetailPage() {
                             <Typography variant="h4" gutterBottom>
                               {request.title}
                             </Typography>
-
-                            {/* Add client identity banner */}
-                            <Paper
-                              elevation={0}
-                              sx={{
-                                p: 2,
-                                mb: 2,
-                                bgcolor: '#f8f9fa',
-                                border: '1px solid #e0e0e0',
-                                borderRadius: 1,
-                              }}
-                            >
-                              <Box display="flex" alignItems="center" mb={1}>
-                                <Avatar
-                                  sx={{
-                                    bgcolor: 'primary.main',
-                                    mr: 2,
-                                    width: 32,
-                                    height: 32,
-                                    fontSize: '0.9rem',
-                                  }}
-                                >
-                                  {clientInfo ? clientInfo.name.charAt(0).toUpperCase() : 'C'}
-                                </Avatar>
-                                <Box>
-                                  <Typography variant="subtitle2">
-                                    You are viewing as:{' '}
-                                    <strong>{clientInfo ? clientInfo.name : 'Client'}</strong>
-                                  </Typography>
-                                  <Typography variant="caption" color="text.secondary">
-                                    {clientInfo ? clientInfo.email : ''}
-                                    {!isLoggedInToGoogle && (
-                                      <span style={{ marginLeft: 8, color: '#d32f2f' }}>
-                                        (Note: You appear as &quot;Anonymous&quot; in document edits
-                                        because you&apos;re not logged into Google)
-                                      </span>
-                                    )}
-                                  </Typography>
-                                </Box>
-                              </Box>
-
-                              <Box mt={1}>
-                                <Typography
-                                  variant="caption"
-                                  sx={{ display: 'block', fontWeight: 'medium' }}
-                                >
-                                  <strong>How to provide feedback:</strong>
-                                </Typography>
-                                <Typography variant="caption" sx={{ display: 'block' }}>
-                                  • To make edits, select text and type your changes (they&apos;ll
-                                  appear as suggestions)
-                                </Typography>
-                                <Typography variant="caption" sx={{ display: 'block' }}>
-                                  • Right-click on a suggestion to accept or reject it
-                                </Typography>
-                                {!isLoggedInToGoogle && (
-                                  <Typography
-                                    variant="caption"
-                                    sx={{ display: 'block', color: '#d32f2f', mt: 1 }}
-                                  >
-                                    <strong>Note:</strong> You&apos;re not logged into Google, so
-                                    you&apos;ll appear as &quot;Anonymous&quot; in suggestions
-                                  </Typography>
-                                )}
-                              </Box>
-                            </Paper>
 
                             {/* Add a way to toggle minimal mode for clients */}
                             {/* <Box display="flex" justifyContent="flex-end" mb={1}>
@@ -1767,10 +1763,28 @@ export default function ClientRequestDetailPage() {
       <Dialog open={approvalDialogOpen} onClose={() => setApprovalDialogOpen(false)}>
         <DialogTitle>Confirm Approval</DialogTitle>
         <DialogContent>
-          <DialogContentText>
+          <DialogContentText sx={{ mb: 2 }}>
             Are you sure you want to approve this content? This will indicate that you have reviewed
             the content and are satisfied with it.
           </DialogContentText>
+
+          <Box sx={{ mt: 2 }}>
+            <FormLabel component="legend" sx={{ mb: 1, display: 'block' }}>
+              Add any comments about your approval (optional)
+            </FormLabel>
+            <TextField
+              fullWidth
+              multiline
+              rows={3}
+              value={approvalNote}
+              onChange={e => setApprovalNote(e.target.value)}
+              placeholder="Your note will be sent to the content owner"
+              variant="outlined"
+            />
+            <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5, display: 'block' }}>
+              Your note will be sent to the content owner with your approval
+            </Typography>
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setApprovalDialogOpen(false)}>Cancel</Button>
@@ -1781,6 +1795,40 @@ export default function ClientRequestDetailPage() {
             disabled={actionLoading}
           >
             {actionLoading ? <CircularProgress size={24} /> : 'Approve'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Feedback dialog */}
+      <Dialog open={feedbackDialogOpen} onClose={() => setFeedbackDialogOpen(false)}>
+        <DialogTitle>Submit with Feedback</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Please provide your feedback about this content. The content owner will be notified.
+          </DialogContentText>
+          <TextField
+            autoFocus
+            required
+            label="Your Feedback"
+            fullWidth
+            multiline
+            rows={4}
+            value={feedbackNote}
+            onChange={e => setFeedbackNote(e.target.value)}
+            placeholder="What changes or improvements would you like to see?"
+            error={!feedbackNote.trim() && submittingFeedback}
+            helperText={!feedbackNote.trim() && submittingFeedback ? 'Feedback is required' : ''}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setFeedbackDialogOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleSubmitWithFeedback}
+            disabled={submittingFeedback || !feedbackNote.trim()}
+            color="primary"
+          >
+            {submittingFeedback ? <CircularProgress size={24} /> : 'Submit Feedback'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -23,6 +23,7 @@ import dynamic from 'next/dynamic';
 import Script from 'next/script';
 import ClientContactForm from './ClientContactForm';
 import type { ClientContact } from './ClientContactForm';
+import { GoogleOAuthProvider, useGoogleLogin } from '@react-oauth/google';
 
 // Import Quill CSS
 import 'react-quill/dist/quill.snow.css';
@@ -40,6 +41,9 @@ interface Client {
 
 interface ApprovalRequestFormProps {
   onSubmitSuccess?: () => void;
+  googleAccessToken?: string;
+  onGoogleLoginSuccess?: (response: any) => void;
+  googleClientId?: string;
 }
 
 // Quill editor configuration (optional, customize as needed)
@@ -55,7 +59,12 @@ const quillModules = {
 
 const quillFormats = ['header', 'bold', 'italic', 'underline', 'list', 'bullet', 'link'];
 
-export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalRequestFormProps) {
+export default function ClientApprovalRequestForm({
+  onSubmitSuccess,
+  googleAccessToken,
+  onGoogleLoginSuccess,
+  googleClientId,
+}: ApprovalRequestFormProps) {
   // Form state
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -86,6 +95,12 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
 
   // Contact form state
   const [contactFormOpen, setContactFormOpen] = useState(false);
+
+  // Add this state for storing the real access token
+  const [accessToken, setAccessToken] = useState<string | null>(googleAccessToken || null);
+
+  // Add this state for storing the login prompt
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
 
   // Load clients on component mount
   useEffect(() => {
@@ -156,24 +171,31 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
     setSelectedContacts(newSelectedContacts);
   };
 
-  // Restore original handleCreateGoogleDoc
+  // Update handleCreateGoogleDoc to check for token and show login
   const handleCreateGoogleDoc = () => {
     // Only proceed if we have both client and title, and we're not already loading
     if (selectedClient && title.trim() && !docLoading) {
-      createNewGoogleDoc(selectedClient.client_name, title.trim());
+      if (accessToken || googleAccessToken) {
+        // Use the non-null access token
+        const token = accessToken || googleAccessToken || '';
+        createNewGoogleDoc(selectedClient.client_name, title.trim(), token);
+      } else {
+        // Instead of calling login() directly, set a state that shows the login button
+        setShowLoginPrompt(true);
+      }
     }
   };
 
-  // Create a new Google Doc with client name and title
-  const createNewGoogleDoc = async (clientName: string, articleTitle: string) => {
+  // Modify createNewGoogleDoc to require access token
+  const createNewGoogleDoc = async (clientName: string, articleTitle: string, token: string) => {
     setDocLoading(true);
     try {
       // Get auth token from localStorage
-      const token = typeof window !== 'undefined' ? localStorage.getItem('usertoken') : null;
+      const authToken = typeof window !== 'undefined' ? localStorage.getItem('usertoken') : null;
 
       // Log token for debugging (but truncate for security)
-      if (token) {
-        console.log('Using auth token (first 10 chars):', token.substring(0, 10) + '...');
+      if (authToken) {
+        console.log('Using auth token (first 10 chars):', authToken.substring(0, 10) + '...');
       } else {
         console.warn('No auth token found in localStorage');
       }
@@ -183,10 +205,11 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
         '/api/google-docs/create',
         {
           title: `${clientName} - ${articleTitle}`,
+          googleAccessToken: token, // Pass the actual access token
         },
         {
           headers: {
-            'x-auth-token': token,
+            'x-auth-token': authToken,
           },
         }
       );
@@ -263,6 +286,7 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
         contactIds: selectedContacts.map(c => c.contact_id),
         googleDocId: googleDocId, // Also store the raw doc ID for reference
         contentType: 'google_doc', // Flag to indicate this is a Google Doc URL
+        googleAccessToken,
       };
 
       // Get auth token from localStorage
@@ -360,6 +384,57 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
     setTimeout(() => {
       setShowOverlay(false);
     }, 1500);
+  };
+
+  // Function to handle successful login
+  const handleLoginSuccess = (tokenResponse: any) => {
+    console.log('Google login successful, got access token');
+    const newToken = tokenResponse.access_token;
+    setAccessToken(newToken);
+
+    // Also call the parent's success handler if it exists
+    if (onGoogleLoginSuccess) {
+      onGoogleLoginSuccess({ credential: newToken });
+    }
+
+    // If the user already filled in client and title, create the doc right away
+    if (selectedClient && title.trim()) {
+      setTimeout(() => createNewGoogleDoc(selectedClient.client_name, title.trim(), newToken), 500);
+    }
+
+    // Hide the login prompt
+    setShowLoginPrompt(false);
+  };
+
+  // Create a wrapper component that uses useGoogleLogin hook inside the GoogleOAuthProvider
+  const GoogleLoginButton = () => {
+    const login = useGoogleLogin({
+      onSuccess: handleLoginSuccess,
+      onError: error => {
+        console.error('Google login failed:', error);
+        setDocError('Google sign-in failed. Please try again.');
+      },
+      scope: 'https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive',
+    });
+
+    return (
+      <Button
+        variant="contained"
+        color="primary"
+        onClick={() => login()}
+        startIcon={
+          <img
+            src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg"
+            alt="G"
+            width="18"
+            height="18"
+            style={{ filter: 'brightness(0) invert(1)' }}
+          />
+        }
+      >
+        Sign in with Google
+      </Button>
+    );
   };
 
   return (
@@ -664,15 +739,28 @@ export default function ClientApprovalRequestForm({ onSubmitSuccess }: ApprovalR
                       </strong>
                     </Typography>
 
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      onClick={handleCreateGoogleDoc}
-                      startIcon={<UploadIcon />}
-                      sx={{ mt: 2 }}
-                    >
-                      Create Document
-                    </Button>
+                    {(!accessToken && !googleAccessToken && googleClientId) || showLoginPrompt ? (
+                      <Box my={2} textAlign="center">
+                        <Typography variant="body2" gutterBottom>
+                          Please sign in with Google to create the document:
+                        </Typography>
+                        {googleClientId && (
+                          <GoogleOAuthProvider clientId={googleClientId}>
+                            <GoogleLoginButton />
+                          </GoogleOAuthProvider>
+                        )}
+                      </Box>
+                    ) : (
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={handleCreateGoogleDoc}
+                        startIcon={<UploadIcon />}
+                        sx={{ mt: 2 }}
+                      >
+                        Create Document
+                      </Button>
+                    )}
                   </Box>
                 ) : (
                   <Box

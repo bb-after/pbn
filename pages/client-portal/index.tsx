@@ -317,7 +317,22 @@ export default function ClientPortalPage() {
                 <Grid container spacing={3}>
                   {pendingRequests.map(request => (
                     <Grid item xs={12} md={6} lg={4} key={request.request_id}>
-                      <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                      <Card
+                        elevation={3}
+                        sx={{
+                          height: '100%',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          position: 'relative',
+                          transition: 'all 0.2s ease-in-out',
+                          cursor: 'pointer',
+                          '&:hover': {
+                            transform: 'translateY(-4px)',
+                            boxShadow: 6,
+                          },
+                        }}
+                        onClick={() => handleViewRequest(request.request_id)}
+                      >
                         <CardContent sx={{ flexGrow: 1 }}>
                           <Box
                             display="flex"
@@ -361,7 +376,10 @@ export default function ClientPortalPage() {
                           <Button
                             fullWidth
                             variant="contained"
-                            onClick={() => handleViewRequest(request.request_id)}
+                            onClick={e => {
+                              e.stopPropagation(); // Prevent card click from triggering
+                              handleViewRequest(request.request_id);
+                            }}
                           >
                             Review Content
                           </Button>
@@ -454,7 +472,7 @@ export default function ClientPortalPage() {
                               target="_blank"
                               rel="noopener noreferrer"
                             >
-                              View Published
+                              View Published Content
                             </Button>
                           )}
                         </CardActions>
