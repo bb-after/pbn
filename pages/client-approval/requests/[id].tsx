@@ -69,6 +69,7 @@ import DOMPurify from 'dompurify';
 import dynamic from 'next/dynamic';
 import ReactionPicker from 'components/ReactionPicker';
 import { createRoot } from 'react-dom/client';
+import ViewLogModal from 'components/ViewLogModal';
 
 // Add Recogito types declaration reference (assuming it exists)
 /// <reference path="../../../client-portal/recogito.d.ts" />
@@ -647,12 +648,27 @@ export default function ApprovalRequestDetailPage() {
 
   const handleToggleClientNotification = (contactId: number) => {
     setClientsToNotify(prev => {
-      if (prev.includes(contactId)) {
-        return prev.filter(id => id !== contactId);
-      } else {
-        return [...prev, contactId];
+      const newSelection = prev.includes(contactId)
+        ? prev.filter(id => id !== contactId)
+        : [...prev, contactId];
+
+      // If no clients are selected, automatically uncheck the notification checkbox
+      if (newSelection.length === 0) {
+        setNotifyClientsOnApproval(false);
       }
+
+      return newSelection;
     });
+  };
+
+  const handleNotifyClientsCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const checked = e.target.checked;
+    setNotifyClientsOnApproval(checked);
+
+    // If turning on notifications but no clients selected, select all clients
+    if (checked && clientsToNotify.length === 0 && request?.contacts) {
+      setClientsToNotify(request.contacts.map(contact => contact.contact_id));
+    }
   };
 
   const handleManualApproval = async () => {
@@ -779,9 +795,9 @@ export default function ApprovalRequestDetailPage() {
                     <Grid item xs={12} md={4}>
                       <Card variant="outlined">
                         <CardContent>
-                          <Typography variant="subtitle2" gutterBottom>
+                          {/* <Typography variant="subtitle2" gutterBottom>
                             Request Info
-                          </Typography>
+                          </Typography> */}
                           <Box display="flex" justifyContent="space-between" mb={1}>
                             <Typography variant="body2" color="textSecondary">
                               Created:
@@ -790,7 +806,7 @@ export default function ApprovalRequestDetailPage() {
                               {new Date(request.created_at).toLocaleDateString()}
                             </Typography>
                           </Box>
-                          <Box display="flex" justifyContent="space-between" mb={1}>
+                          {/* <Box display="flex" justifyContent="space-between" mb={1}>
                             <Typography variant="body2" color="textSecondary">
                               Latest Version:
                             </Typography>
@@ -799,7 +815,7 @@ export default function ApprovalRequestDetailPage() {
                                 ? request.versions[0].version_number
                                 : 1}
                             </Typography>
-                          </Box>
+                          </Box> */}
                           <Box display="flex" justifyContent="space-between">
                             <Typography variant="body2" color="textSecondary">
                               Approvals:
@@ -1384,326 +1400,14 @@ export default function ApprovalRequestDetailPage() {
         </Dialog>
 
         {/* --- View Log Modal --- */}
-        <Dialog open={viewLogModalOpen} onClose={handleCloseViewLog} maxWidth="sm" fullWidth>
-          <DialogTitle>
-            <Box display="flex" alignItems="center">
-              <Avatar sx={{ mr: 2 }}>
-                {selectedContactViews?.name.charAt(0).toUpperCase() || '?'}
-              </Avatar>
-              <Box>
-                {selectedContactViews?.name || 'Contact'}
-                <Typography variant="body2" color="text.secondary">
-                  {selectedContactViews?.email}
-                </Typography>
-              </Box>
-            </Box>
-          </DialogTitle>
-          <DialogContent dividers>
-            <Box mb={3}>
-              <Grid container spacing={2}>
-                <Grid item xs={6}>
-                  <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
-                    <Typography variant="subtitle2" gutterBottom>
-                      Approval Status
-                    </Typography>
-                    <Box display="flex" alignItems="center" mt={1}>
-                      {selectedContactViews?.has_approved ? (
-                        <>
-                          <CheckIcon color="success" sx={{ mr: 1 }} />
-                          <Typography>
-                            Approved on{' '}
-                            {selectedContactViews.approved_at
-                              ? new Date(selectedContactViews.approved_at).toLocaleDateString()
-                              : 'Unknown date'}
-                          </Typography>
-                        </>
-                      ) : (
-                        <>
-                          <CloseIcon color="disabled" sx={{ mr: 1 }} />
-                          <Typography>Not approved yet</Typography>
-                        </>
-                      )}
-                    </Box>
-                  </Paper>
-                </Grid>
-                <Grid item xs={6}>
-                  <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
-                    <Typography variant="subtitle2" gutterBottom>
-                      View Status
-                    </Typography>
-                    <Box display="flex" alignItems="center" mt={1}>
-                      {selectedContactViews?.has_viewed ? (
-                        <>
-                          <VisibilityIcon color="info" sx={{ mr: 1 }} />
-                          <Typography>
-                            Last viewed on{' '}
-                            {selectedContactViews.views && selectedContactViews.views.length > 0
-                              ? new Date(
-                                  selectedContactViews.views[0].viewed_at
-                                ).toLocaleDateString()
-                              : 'Unknown date'}
-                          </Typography>
-                        </>
-                      ) : (
-                        <>
-                          <VisibilityOffIcon color="disabled" sx={{ mr: 1 }} />
-                          <Typography>Not viewed yet</Typography>
-                        </>
-                      )}
-                    </Box>
-                  </Paper>
-                </Grid>
-              </Grid>
-            </Box>
-            <br />
-            <br />
-            <Typography variant="h6" gutterBottom>
-              View History
-            </Typography>
-            {selectedContactViews && selectedContactViews.views.length > 0 ? (
-              <TableContainer component={Paper} elevation={0} square variant="outlined">
-                <Table size="small" aria-label="view history table">
-                  <TableHead sx={{ bgcolor: 'grey.100' }}>
-                    <TableRow>
-                      <TableCell>Time Viewed (Local)</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {selectedContactViews.views.map(view => (
-                      <TableRow
-                        key={view.view_id}
-                        sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
-                      >
-                        <TableCell>{new Date(view.viewed_at).toLocaleString()}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            ) : (
-              <Alert severity="info" sx={{ mb: 2 }}>
-                No views recorded for this contact.
-              </Alert>
-            )}
-          </DialogContent>
-          <DialogActions>
-            {selectedContactViews && (
-              <Button
-                startIcon={
-                  resendingContactId === selectedContactViews.contact_id ? (
-                    <CircularProgress size={20} />
-                  ) : (
-                    <EmailIcon />
-                  )
-                }
-                color="primary"
-                variant="contained"
-                onClick={() =>
-                  selectedContactViews && handleResendNotification(selectedContactViews.contact_id)
-                }
-                disabled={resendingContactId === selectedContactViews?.contact_id}
-                sx={{ mr: 'auto' }}
-              >
-                Send Notification
-              </Button>
-            )}
-            <Button onClick={handleCloseViewLog}>Close</Button>
-          </DialogActions>
-        </Dialog>
+        <ViewLogModal
+          open={viewLogModalOpen}
+          onClose={handleCloseViewLog}
+          contactViews={selectedContactViews}
+          resendingContactId={resendingContactId}
+          onResendNotification={handleResendNotification}
+        />
         {/* --- End View Log Modal --- */}
-
-        {/* --- Version Content Modal --- */}
-        <Dialog
-          open={versionContentModalOpen}
-          onClose={handleCloseVersionContent}
-          maxWidth="md"
-          fullWidth
-        >
-          <DialogTitle>
-            Version {selectedVersion?.version_number || ''} Content
-            {selectedVersion && (
-              <Typography variant="caption" display="block" color="text.secondary">
-                Created on {new Date(selectedVersion.created_at).toLocaleString()}
-              </Typography>
-            )}
-          </DialogTitle>
-          <DialogContent dividers>
-            {selectedVersion ? (
-              <>
-                {selectedVersion.comments && (
-                  <Box mb={3}>
-                    <Typography variant="subtitle2" gutterBottom>
-                      Version Notes:
-                    </Typography>
-                    <Paper elevation={0} sx={{ p: 2, bgcolor: 'grey.50' }}>
-                      <Typography variant="body2">{selectedVersion.comments}</Typography>
-                    </Paper>
-                  </Box>
-                )}
-
-                {/* Show file download if available */}
-                {selectedVersion.file_url ? (
-                  <Box textAlign="center" py={3}>
-                    <Typography variant="body1" gutterBottom>
-                      This version contains a file attachment.
-                    </Typography>
-                    <Button
-                      variant="contained"
-                      startIcon={<DownloadIcon />}
-                      href={selectedVersion.file_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      Download File
-                    </Button>
-                  </Box>
-                ) : /* For inline content, show based on type */
-                selectedVersion.content_type === 'google_doc' ||
-                  (selectedVersion.inline_content &&
-                    selectedVersion.inline_content.includes('docs.google.com') &&
-                    !selectedVersion.inline_content.startsWith('<')) ? (
-                  <Box>
-                    {/* Add toggle button for editor mode */}
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                      <Typography
-                        variant="h5"
-                        sx={{
-                          maxWidth: '75%',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        Version {selectedVersion?.version_number || ''} Content
-                      </Typography>
-
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        color="secondary"
-                        onClick={() => setIsMinimalMode(!isMinimalMode)}
-                        startIcon={isMinimalMode ? <ArticleIcon /> : <CloseIcon />}
-                      >
-                        {isMinimalMode ? 'Use Standard Editor' : 'Use Minimal Editor'}
-                      </Button>
-                    </Box>
-
-                    {/* Single iframe approach */}
-                    <Box
-                      sx={{
-                        height: '400px',
-                        border: '1px solid',
-                        borderColor: 'rgba(0, 0, 0, 0.23)',
-                        borderRadius: 1,
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <iframe
-                        src={
-                          selectedVersion.google_doc_id
-                            ? getEmbeddableGoogleDocUrl(
-                                `https://docs.google.com/document/d/${selectedVersion.google_doc_id}`,
-                                true,
-                                isMinimalMode
-                              )
-                            : getEmbeddableGoogleDocUrl(
-                                selectedVersion.inline_content || '',
-                                true,
-                                isMinimalMode
-                              )
-                        }
-                        width="100%"
-                        height="100%"
-                        frameBorder="0"
-                        style={{ border: 'none' }}
-                        allow="autoplay; encrypted-media"
-                      ></iframe>
-                    </Box>
-                  </Box>
-                ) : (
-                  // For regular HTML content
-                  <Box py={3}>
-                    <div
-                      dangerouslySetInnerHTML={{
-                        __html: DOMPurify.sanitize(
-                          selectedVersion.inline_content
-                            ? `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request?.title || ''}</h1>${selectedVersion.inline_content}`
-                            : 'No content available'
-                        ),
-                      }}
-                    />
-                  </Box>
-                )}
-              </>
-            ) : (
-              <Box textAlign="center" py={3}>
-                <CircularProgress />
-              </Box>
-            )}
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={handleCloseVersionContent}>Close</Button>
-          </DialogActions>
-        </Dialog>
-        {/* --- End Version Content Modal --- */}
-
-        {/* --- New Version Dialog with Google Doc URL --- */}
-        <Dialog
-          open={newVersionDialogOpen}
-          onClose={handleCloseNewVersionDialog}
-          maxWidth="md"
-          fullWidth
-        >
-          <DialogTitle>Create New Version</DialogTitle>
-          <DialogContent dividers>
-            <DialogContentText sx={{ mb: 2 }}>
-              Creating a new version will reset approval status for all contacts and send them a
-              notification. Please provide a Google Doc URL for the new version.
-            </DialogContentText>
-
-            <Typography variant="subtitle1" gutterBottom>
-              Google Doc URL
-            </Typography>
-            <Box mb={3}>
-              <TextField
-                fullWidth
-                label="Google Doc URL"
-                placeholder="https://docs.google.com/document/d/..."
-                value={newVersionGoogleDocUrl}
-                onChange={handleNewVersionGoogleDocUrlChange}
-                helperText="Please share the Google Doc with appropriate permissions"
-                InputProps={{
-                  startAdornment: <LinkIcon color="action" sx={{ mr: 1 }} />,
-                }}
-              />
-            </Box>
-
-            <Typography variant="subtitle1" gutterBottom>
-              Version Notes
-            </Typography>
-            <TextField
-              fullWidth
-              multiline
-              rows={3}
-              label="Describe the changes in this version"
-              placeholder="E.g., Updated content based on client feedback, Fixed formatting issues, etc."
-              value={newVersionComment}
-              onChange={e => setNewVersionComment(e.target.value)}
-            />
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={handleCloseNewVersionDialog}>Cancel</Button>
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={handleSubmitNewVersion}
-              disabled={isSubmittingVersion || !newVersionGoogleDocUrl.trim()}
-            >
-              {isSubmittingVersion ? <CircularProgress size={24} /> : 'Submit New Version'}
-            </Button>
-          </DialogActions>
-        </Dialog>
-        {/* --- End New Version Dialog --- */}
 
         {/* --- Approval Confirmation Dialog --- */}
         <Dialog
@@ -1723,8 +1427,8 @@ export default function ApprovalRequestDetailPage() {
               <FormControlLabel
                 control={
                   <Checkbox
-                    checked={notifyClientsOnApproval}
-                    onChange={e => setNotifyClientsOnApproval(e.target.checked)}
+                    checked={notifyClientsOnApproval && clientsToNotify.length > 0}
+                    onChange={handleNotifyClientsCheckboxChange}
                   />
                 }
                 label="Notify clients about approval"

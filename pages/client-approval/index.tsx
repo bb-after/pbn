@@ -265,10 +265,24 @@ export default function ClientApprovalPage() {
         request.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         request.client_name.toLowerCase().includes(searchTerm.toLowerCase());
 
-      // Filter by archived status based on tab
-      const matchesArchived = tabValue === 0 ? !request.is_archived : request.is_archived;
+      // Handle the three tab states:
+      // 0: Active Requests - not archived
+      // 1: Approved Requests - approved and not archived
+      // 2: Archived Requests - archived
+      let matchesTab = false;
 
-      return matchesSearch && matchesArchived;
+      if (tabValue === 0) {
+        // Active Requests tab - show only pending and non-archived requests
+        matchesTab = !request.is_archived && request.status === 'pending';
+      } else if (tabValue === 1) {
+        // Approved Requests tab - show only approved and non-archived requests
+        matchesTab = !request.is_archived && request.status === 'approved';
+      } else if (tabValue === 2) {
+        // Archived Requests tab - show only archived requests
+        matchesTab = request.is_archived;
+      }
+
+      return matchesSearch && matchesTab;
     });
   };
 
@@ -619,6 +633,7 @@ export default function ClientApprovalPage() {
           <Box my={3}>
             <Tabs value={tabValue} onChange={handleTabChange} aria-label="approval request tabs">
               <Tab label="Active Requests" />
+              <Tab label="Approved Requests" />
               <Tab label="Archived Requests" />
             </Tabs>
           </Box>
@@ -734,7 +749,9 @@ export default function ClientApprovalPage() {
                   any requests or they might all be {tabValue === 0 ? 'archived' : 'active'}.
                 </span>
               ) : tabValue === 0 ? (
-                'No active approval requests found. Create a new request to get started.'
+                'No pending approval requests found. Create a new request to get started.'
+              ) : tabValue === 1 ? (
+                'No approved requests found.'
               ) : (
                 'No archived approval requests found.'
               )}
