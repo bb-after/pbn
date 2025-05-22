@@ -288,6 +288,9 @@ export default function ClientRequestDetailPage() {
   // Add isMinimalMode state
   const [isMinimalMode, setIsMinimalMode] = useState(true);
 
+  // State to store the staff member's email
+  const [staffEmail, setStaffEmail] = useState<string | null>(null);
+
   // Get client token from localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -348,6 +351,11 @@ export default function ClientRequestDetailPage() {
       // Only set request if we got valid data
       if (response.data) {
         setRequest(response.data);
+
+        // Fetch staff member email if we have created_by_id
+        if (response.data.created_by_id) {
+          fetchStaffEmail(response.data.created_by_id);
+        }
 
         // If we have Recogito instance and new comments, update them without reinitializing
         if (recogitoInstance.current && response.data.section_comments) {
@@ -452,6 +460,24 @@ export default function ClientRequestDetailPage() {
       setLoading(false);
     }
   }, [id, clientInfo]);
+
+  // Fetch staff member email
+  const fetchStaffEmail = async (userId: string) => {
+    try {
+      const headers = {
+        'x-client-portal': 'true',
+        'x-client-contact-id': clientInfo?.contact_id.toString(),
+      };
+
+      const response = await axios.get(`/api/users/${userId}/email`, { headers });
+      if (response.data && response.data.email) {
+        setStaffEmail(response.data.email);
+      }
+    } catch (error) {
+      console.error('Error fetching staff email:', error);
+      // Don't set an error, just fail silently since this is not critical
+    }
+  };
 
   // Mark the request as viewed
   const markRequestAsViewed = useCallback(async () => {
@@ -1186,10 +1212,10 @@ export default function ClientRequestDetailPage() {
           {/* Add Submit with Feedback button */}
           {request && request.status === 'pending' && !hasApproved() && (
             <Button
-              variant="outlined"
-              color="primary"
-              startIcon={<CommentIcon />}
               onClick={() => setFeedbackDialogOpen(true)}
+              variant="outlined"
+              color="warning"
+              startIcon={<CommentIcon />}
               sx={{ mr: 2 }}
             >
               Submit with Feedback
@@ -1286,11 +1312,8 @@ export default function ClientRequestDetailPage() {
                       }}
                     >
                       {/* Request info card */}
-                      <Card variant="outlined" sx={{ mb: 2 }}>
+                      <Card variant="outlined">
                         <CardContent>
-                          <Typography variant="subtitle2" gutterBottom>
-                            Request Info
-                          </Typography>
                           <Box display="flex" justifyContent="space-between" mb={1}>
                             <Typography variant="body2" color="textSecondary">
                               Submitted:
@@ -1299,29 +1322,13 @@ export default function ClientRequestDetailPage() {
                               {new Date(request.created_at).toLocaleDateString()}
                             </Typography>
                           </Box>
+
                           <Box display="flex" justifyContent="space-between" mb={1}>
                             <Typography variant="body2" color="textSecondary">
-                              Version:
+                              Submitted by:
                             </Typography>
-                            <Typography variant="body2">
-                              {request.versions && request.versions.length > 0
-                                ? request.versions[0].version_number
-                                : 1}
-                            </Typography>
+                            <Typography variant="body2">{staffEmail || 'Staff member'}</Typography>
                           </Box>
-                          {request.versions && request.versions.length > 1 && (
-                            <Box mt={2}>
-                              <Button
-                                variant="outlined"
-                                fullWidth
-                                startIcon={<HistoryIcon />}
-                                onClick={() => setVersionHistoryOpen(true)}
-                                size="small"
-                              >
-                                View Version History
-                              </Button>
-                            </Box>
-                          )}
                         </CardContent>
                       </Card>
 

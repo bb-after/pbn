@@ -116,9 +116,15 @@ async function getApprovalRequest(
 
     // Query to get basic request details
     const requestQuery = `
-      SELECT ar.*, c.client_name
+      SELECT ar.*, c.client_name, 
+        u.name as approved_by_name,
+        CASE 
+          WHEN ar.approved_by_user_id IS NOT NULL THEN ar.updated_at
+          ELSE NULL
+        END as staff_approved_at
       FROM client_approval_requests ar
       JOIN clients c ON ar.client_id = c.client_id
+      LEFT JOIN users u ON ar.approved_by_user_id = u.id
       WHERE ar.request_id = ?
     `;
 
@@ -283,6 +289,9 @@ async function getApprovalRequest(
     responseData.updated_at = requestData.updated_at;
     responseData.is_archived = Boolean(requestData.is_archived);
     responseData.inline_content = requestData.inline_content || null;
+    responseData.approved_by_user_id = requestData.approved_by_user_id || null;
+    responseData.approved_by_name = requestData.approved_by_name || null;
+    responseData.staff_approved_at = requestData.staff_approved_at || null;
     responseData.contacts = contactsWithViews;
     responseData.versions = versionRows;
     responseData.comments = standardComments;
@@ -321,16 +330,31 @@ async function updateApprovalRequest(
 
     // Staff authentication
     if (!isClientPortal) {
-      const userToken = req.headers.authorization?.split(' ')[1];
+      const userToken =
+        (req.headers['x-auth-token'] as string) || (req.cookies && req.cookies.auth_token);
       if (!userToken) {
         return res.status(401).json({ error: 'Authentication token is required' });
       }
 
-      const validationResult = await validateUserToken({
-        headers: { 'x-auth-token': userToken },
-      } as unknown as NextApiRequest);
+      const validationResult = await validateUserToken(req);
 
       if (!validationResult.isValid) {
+        return res.status(401).json({ error: 'Invalid or expired token' });
+      }
+    }
+
+    // Add this line to declare validationResult in outer scope
+    let staffValidationResult: {
+      isValid: boolean;
+      user_id: any;
+      username?: any;
+      role?: any;
+    } | null = null;
+
+    // If not client portal, get the staff user info
+    if (!isClientPortal) {
+      staffValidationResult = await validateUserToken(req);
+      if (staffValidationResult && !staffValidationResult.isValid) {
         return res.status(401).json({ error: 'Invalid or expired token' });
       }
     }
@@ -496,10 +520,34 @@ async function updateApprovalRequest(
 
       // Handle status update (both client portal and staff)
       if (status) {
-        const query = `
-          UPDATE client_approval_requests SET status = ?, updated_at = NOW() WHERE request_id = ?
+        let updateQuery = `
+          UPDATE client_approval_requests SET status = ?
         `;
-        await connection.query(query, [status, requestId]);
+        const queryParams = [status];
+
+        // If this is a staff approval (not client portal) and status is 'approved',
+        // record which staff member approved it
+        if (!isClientPortal && status === 'approved' && staffValidationResult?.isValid) {
+          // Store the user ID of the staff member who approved
+          updateQuery += `, approved_by_user_id = ?`;
+          queryParams.push(staffValidationResult.user_id);
+
+          // Add a system comment to record the manual approval
+          const addNoteQuery = `
+            INSERT INTO approval_request_comments (request_id, user_id, client_contact_id, comment, created_at)
+            VALUES (?, ?, NULL, ?, NOW())
+          `;
+          await connection.query(addNoteQuery, [
+            requestId,
+            staffValidationResult.user_id,
+            `[STAFF APPROVAL] This content was manually approved by staff`,
+          ]);
+        }
+
+        updateQuery += `, updated_at = NOW() WHERE request_id = ?`;
+        queryParams.push(requestId);
+
+        await connection.query(updateQuery, queryParams);
         console.log(`Status updated to ${status} for request ${requestId}`);
         updated = true;
       }
