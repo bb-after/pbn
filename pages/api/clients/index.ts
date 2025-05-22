@@ -1,24 +1,14 @@
-import mysql from 'mysql2/promise';
 import { NextApiRequest, NextApiResponse } from 'next';
+import { RowDataPacket, ResultSetHeader } from 'mysql2/promise';
+import { query, transaction } from '../../../lib/db';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Define your MySQL connection options
-  const dbConfig = {
-    host: process.env.DB_HOST_NAME,
-    user: process.env.DB_USER_NAME,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_DATABASE,
-  };
-
-  // Create a MySQL connection
-  const connection = await mysql.createConnection(dbConfig);
-
   try {
     switch (req.method) {
       case 'GET':
-        return await getClients(req, res, connection);
+        return await getClients(req, res);
       case 'POST':
-        return await createClient(req, res, connection);
+        return await createClient(req, res);
       default:
         res.setHeader('Allow', ['GET', 'POST']);
         return res.status(405).end(`Method ${req.method} Not Allowed`);
@@ -26,16 +16,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   } catch (error) {
     console.error('Error in clients API:', error);
     return res.status(500).json({ error: 'Internal Server Error' });
-  } finally {
-    await connection.end();
   }
 }
 
-async function getClients(req: NextApiRequest, res: NextApiResponse, connection: mysql.Connection) {
+async function getClients(req: NextApiRequest, res: NextApiResponse) {
   const { search, active, includeStats, industryId, regionId } = req.query;
 
   // Main client query with optimized stats using single pass aggregation
-  let query = `
+  let queryText = `
     SELECT 
       c.client_id, 
       c.client_name, 
@@ -45,7 +33,7 @@ async function getClients(req: NextApiRequest, res: NextApiResponse, connection:
   `;
 
   if (includeStats === 'true') {
-    query = `
+    queryText = `
       SELECT 
         c.client_id, 
         c.client_name, 
@@ -57,20 +45,20 @@ async function getClients(req: NextApiRequest, res: NextApiResponse, connection:
     `;
   }
 
-  query += ` FROM clients c `;
+  queryText += ` FROM clients c `;
 
   // Add joins for filtering by industry or region
   if (industryId) {
-    query += ` JOIN clients_industry_mapping cim ON c.client_id = cim.client_id `;
+    queryText += ` JOIN clients_industry_mapping cim ON c.client_id = cim.client_id `;
   }
 
   if (regionId) {
-    query += ` JOIN clients_region_mapping crm ON c.client_id = crm.client_id `;
+    queryText += ` JOIN clients_region_mapping crm ON c.client_id = crm.client_id `;
   }
 
   // Left joins for stats - only add if includeStats is true
   if (includeStats === 'true') {
-    query += `
+    queryText += `
       LEFT JOIN superstar_site_submissions ss ON c.client_id = ss.client_id
       LEFT JOIN pbn_site_submissions ps ON c.client_id = ps.client_id
     `;
@@ -101,17 +89,17 @@ async function getClients(req: NextApiRequest, res: NextApiResponse, connection:
   }
 
   if (whereConditions.length > 0) {
-    query += ` WHERE ${whereConditions.join(' AND ')}`;
+    queryText += ` WHERE ${whereConditions.join(' AND ')}`;
   }
 
   if (includeStats === 'true') {
-    query += ` GROUP BY c.client_id, c.client_name, c.is_active, c.created_at, c.updated_at`;
+    queryText += ` GROUP BY c.client_id, c.client_name, c.is_active, c.created_at, c.updated_at`;
   }
 
-  query += ` ORDER BY c.client_name ASC`;
+  queryText += ` ORDER BY c.client_name ASC`;
 
-  // Execute the main client query
-  const [rows] = await connection.execute(query, params);
+  // Execute the main client query using our DB utility
+  const [rows] = await query<RowDataPacket[]>(queryText, params);
   const clients = Array.isArray(rows) ? rows : [];
 
   // Fetch all industries and regions in bulk instead of per client
@@ -122,7 +110,7 @@ async function getClients(req: NextApiRequest, res: NextApiResponse, connection:
 
   if (clientIds.length > 0) {
     // Bulk fetch industries for all clients
-    const [industryRows] = await connection.execute<mysql.RowDataPacket[]>(
+    const [industryRows] = await query<RowDataPacket[]>(
       `SELECT cim.client_id, i.industry_id, i.industry_name
        FROM clients_industry_mapping cim
        JOIN industries i ON cim.industry_id = i.industry_id
@@ -142,7 +130,7 @@ async function getClients(req: NextApiRequest, res: NextApiResponse, connection:
     });
 
     // Bulk fetch regions for all clients
-    const [regionRows] = await connection.execute<mysql.RowDataPacket[]>(
+    const [regionRows] = await query<RowDataPacket[]>(
       `SELECT crm.client_id, r.region_id, r.region_name, r.region_type
        FROM clients_region_mapping crm
        JOIN geo_regions r ON crm.region_id = r.region_id
@@ -173,11 +161,7 @@ async function getClients(req: NextApiRequest, res: NextApiResponse, connection:
   return res.status(200).json(clientsWithMappings);
 }
 
-async function createClient(
-  req: NextApiRequest,
-  res: NextApiResponse,
-  connection: mysql.Connection
-) {
+async function createClient(req: NextApiRequest, res: NextApiResponse) {
   const { clientName, isActive = 1, industries = [], regions = [] } = req.body;
 
   if (!clientName) {
@@ -185,7 +169,7 @@ async function createClient(
   }
 
   // Check for duplicate client names
-  const [existingClients] = await connection.execute(
+  const [existingClients] = await query<RowDataPacket[]>(
     'SELECT client_id FROM clients WHERE client_name = ?',
     [clientName]
   );
@@ -194,46 +178,47 @@ async function createClient(
     return res.status(409).json({ error: 'A client with this name already exists' });
   }
 
+  // Use transaction helper for the multi-statement operation
   try {
-    await connection.beginTransaction();
-
-    // Insert client
-    const [result] = await connection.execute<mysql.ResultSetHeader>(
-      'INSERT INTO clients (client_name, is_active) VALUES (?, ?)',
-      [clientName, isActive]
-    );
-
-    const clientId = (result as mysql.ResultSetHeader).insertId;
-
-    // Insert industry mappings
-    if (industries.length > 0) {
-      const industryValues = industries.map((id: any) => [clientId, id]);
-      await connection.query(
-        'INSERT INTO clients_industry_mapping (client_id, industry_id) VALUES ?',
-        [industryValues]
+    const result = await transaction(async connection => {
+      // Insert client
+      const [result] = await connection.query<ResultSetHeader>(
+        'INSERT INTO clients (client_name, is_active) VALUES (?, ?)',
+        [clientName, isActive]
       );
-    }
 
-    // Insert region mappings
-    if (regions.length > 0) {
-      const regionValues = regions.map((id: any) => [clientId, id]);
-      await connection.query('INSERT INTO clients_region_mapping (client_id, region_id) VALUES ?', [
-        regionValues,
-      ]);
-    }
+      const clientId = result.insertId;
 
-    await connection.commit();
+      // Insert industry mappings
+      if (industries.length > 0) {
+        const industryValues = industries.map((id: any) => [clientId, id]);
+        await connection.query(
+          'INSERT INTO clients_industry_mapping (client_id, industry_id) VALUES ?',
+          [industryValues]
+        );
+      }
 
-    return res.status(201).json({
-      clientId,
-      clientName,
-      isActive,
-      industries,
-      regions,
-      message: 'Client created successfully',
+      // Insert region mappings
+      if (regions.length > 0) {
+        const regionValues = regions.map((id: any) => [clientId, id]);
+        await connection.query(
+          'INSERT INTO clients_region_mapping (client_id, region_id) VALUES ?',
+          [regionValues]
+        );
+      }
+
+      return {
+        clientId,
+        clientName,
+        isActive,
+        industries,
+        regions,
+        message: 'Client created successfully',
+      };
     });
+
+    return res.status(201).json(result);
   } catch (error) {
-    await connection.rollback();
     console.error('Error creating client:', error);
     return res.status(500).json({ error: 'Failed to create client' });
   }
