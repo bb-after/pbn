@@ -129,6 +129,8 @@ interface ApprovalRequest {
   is_archived: boolean;
   created_at: string;
   updated_at: string;
+  approved_by_name?: string | null;
+  staff_approved_at?: string | null;
   contacts: ContactWithViews[]; // Use the updated ContactWithViews interface
   versions: Array<{
     version_id: number;
@@ -785,6 +787,41 @@ export default function ApprovalRequestDetailPage() {
                         Client: {request.client_name}
                       </Typography>
 
+                      {/* Display manual approval info prominently if approved by staff */}
+                      {request.status === 'approved' && request.approved_by_name && (
+                        <Box mt={2} mb={2} display="flex" alignItems="center">
+                          <Paper
+                            elevation={0}
+                            sx={{
+                              bgcolor: 'success.light',
+                              color: 'success.contrastText',
+                              p: 1.5,
+                              borderRadius: 1,
+                              display: 'flex',
+                              alignItems: 'center',
+                              width: 'fit-content',
+                            }}
+                          >
+                            <CheckIcon sx={{ mr: 1 }} />
+                            <Typography variant="body1" fontWeight="medium">
+                              Manually approved by {request.approved_by_name}
+                              {request.staff_approved_at && (
+                                <>
+                                  {' '}
+                                  on {new Date(
+                                    request.staff_approved_at
+                                  ).toLocaleDateString()} at{' '}
+                                  {new Date(request.staff_approved_at).toLocaleTimeString([], {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </>
+                              )}
+                            </Typography>
+                          </Paper>
+                        </Box>
+                      )}
+
                       {request.description && (
                         <Typography variant="body1" sx={{ mt: 2 }}>
                           {request.description}
@@ -926,8 +963,13 @@ export default function ApprovalRequestDetailPage() {
                             {/* Add status banner for approved content */}
                             {request.status === 'approved' && (
                               <Alert severity="success" sx={{ mb: 2 }} icon={<CheckIcon />}>
-                                This content has been approved. Annotations shown are from the
-                                review process.
+                                This content has been approved
+                                {request.approved_by_name
+                                  ? ` by ${request.approved_by_name} (Staff)`
+                                  : request.contacts.some(c => c.has_approved)
+                                    ? ` by client contact`
+                                    : ''}
+                                . Annotations shown are from the review process.
                               </Alert>
                             )}
 
@@ -1187,7 +1229,35 @@ export default function ApprovalRequestDetailPage() {
                                               color="textPrimary"
                                               sx={{ mt: 1, display: 'block' }}
                                             >
-                                              {comment.comment}
+                                              {comment.comment.startsWith('[STAFF APPROVAL]') ? (
+                                                <Box
+                                                  sx={{
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    mb: 1,
+                                                  }}
+                                                >
+                                                  <Chip
+                                                    label={`Manually Approved by ${comment.commenter_name}`}
+                                                    color="success"
+                                                    size="small"
+                                                    icon={<CheckIcon />}
+                                                    sx={{ alignSelf: 'flex-start', mb: 1 }}
+                                                  />
+                                                  <Box
+                                                    sx={{
+                                                      backgroundColor: 'success.light',
+                                                      color: 'success.contrastText',
+                                                      padding: 1,
+                                                      borderRadius: 1,
+                                                    }}
+                                                  >
+                                                    Content manually approved by staff
+                                                  </Box>
+                                                </Box>
+                                              ) : (
+                                                comment.comment
+                                              )}
                                               <ReactionPicker
                                                 targetType="comment"
                                                 targetId={comment.comment_id}

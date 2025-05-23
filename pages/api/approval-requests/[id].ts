@@ -116,9 +116,15 @@ async function getApprovalRequest(
 
     // Query to get basic request details
     const requestQuery = `
-      SELECT ar.*, c.client_name
+      SELECT ar.*, c.client_name, 
+        u.name as approved_by_name,
+        CASE 
+          WHEN ar.approved_by_user_id IS NOT NULL THEN ar.updated_at
+          ELSE NULL
+        END as staff_approved_at
       FROM client_approval_requests ar
       JOIN clients c ON ar.client_id = c.client_id
+      LEFT JOIN users u ON ar.approved_by_user_id = u.id
       WHERE ar.request_id = ?
     `;
 
@@ -286,6 +292,9 @@ async function getApprovalRequest(
     responseData.content_type = requestData.content_type || 'html';
     responseData.google_doc_id = requestData.google_doc_id || null;
     responseData.required_approvals = requestData.required_approvals || contactsWithViews.length;
+    responseData.approved_by_user_id = requestData.approved_by_user_id || null;
+    responseData.approved_by_name = requestData.approved_by_name || null;
+    responseData.staff_approved_at = requestData.staff_approved_at || null;
     responseData.contacts = contactsWithViews;
     responseData.versions = versionRows;
     responseData.comments = standardComments;
@@ -324,16 +333,31 @@ async function updateApprovalRequest(
 
     // Staff authentication
     if (!isClientPortal) {
-      const userToken = req.headers.authorization?.split(' ')[1];
+      const userToken =
+        (req.headers['x-auth-token'] as string) || (req.cookies && req.cookies.auth_token);
       if (!userToken) {
         return res.status(401).json({ error: 'Authentication token is required' });
       }
 
-      const validationResult = await validateUserToken({
-        headers: { 'x-auth-token': userToken },
-      } as unknown as NextApiRequest);
+      const validationResult = await validateUserToken(req);
 
       if (!validationResult.isValid) {
+        return res.status(401).json({ error: 'Invalid or expired token' });
+      }
+    }
+
+    // Add this line to declare validationResult in outer scope
+    let staffValidationResult: {
+      isValid: boolean;
+      user_id: any;
+      username?: any;
+      role?: any;
+    } | null = null;
+
+    // If not client portal, get the staff user info
+    if (!isClientPortal) {
+      staffValidationResult = await validateUserToken(req);
+      if (staffValidationResult && !staffValidationResult.isValid) {
         return res.status(401).json({ error: 'Invalid or expired token' });
       }
     }
