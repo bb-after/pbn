@@ -86,6 +86,9 @@ async function getApprovalRequests(req: NextApiRequest, res: NextApiResponse, us
         ar.file_url, 
         ar.file_type, 
         ar.inline_content, -- Select inline_content
+        ar.content_type,
+        ar.google_doc_id,
+        ar.required_approvals,
         ar.status, 
         ar.created_by_id, 
         ar.published_url,
@@ -377,17 +380,34 @@ async function getApprovalRequests(req: NextApiRequest, res: NextApiResponse, us
 // Create a new approval request
 async function createApprovalRequest(req: NextApiRequest, res: NextApiResponse, userInfo: any) {
   // Destructure request body with new contentType field
-  const { clientId, title, description, inlineContent, contactIds, googleDocId, contentType } =
-    req.body;
+  const {
+    clientId,
+    title,
+    description,
+    inlineContent,
+    contactIds,
+    googleDocId,
+    contentType,
+    requiredApprovals,
+  } = req.body;
 
   console.log('Creating approval request with user_id:', userInfo.user_id);
   console.log('Request content type:', contentType);
+  console.log('Required approvals:', requiredApprovals || contactIds.length);
 
   // Validate required fields - check inlineContent instead of fileUrl
   if (!clientId || !title || !inlineContent || !contactIds || !contactIds.length) {
     // Updated error message
     return res.status(400).json({
       error: 'Client ID, title, content, and at least one contact are required',
+    });
+  }
+
+  // Ensure required approvals is valid
+  const requiredApprovalsCount = requiredApprovals || contactIds.length;
+  if (requiredApprovalsCount < 1 || requiredApprovalsCount > contactIds.length) {
+    return res.status(400).json({
+      error: 'Required approvals must be at least 1 and not more than the number of contacts',
     });
   }
 
@@ -401,11 +421,12 @@ async function createApprovalRequest(req: NextApiRequest, res: NextApiResponse, 
     // 1. Create the approval request
     //    - Add content_type to track the type of content (google_doc or html)
     //    - Store necessary Google Doc information
+    //    - Add required_approvals field
     const createRequestQuery = `
       INSERT INTO client_approval_requests
-        (client_id, title, description, file_url, file_type, inline_content, content_type, google_doc_id, created_by_id)
+        (client_id, title, description, file_url, file_type, inline_content, content_type, google_doc_id, created_by_id, required_approvals)
       VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const requestValues = [
@@ -418,6 +439,7 @@ async function createApprovalRequest(req: NextApiRequest, res: NextApiResponse, 
       contentType || 'html', // Default to 'html' if not specified
       googleDocId || null, // The Google Doc ID if applicable
       userInfo.user_id, // Use the actual user ID from validation/session
+      requiredApprovalsCount, // Add the required approvals count
     ];
 
     console.log('Inserting request with values:', {
@@ -428,6 +450,7 @@ async function createApprovalRequest(req: NextApiRequest, res: NextApiResponse, 
       contentType: contentType || 'html',
       googleDocId: googleDocId || null,
       userId: userInfo.user_id,
+      requiredApprovals: requiredApprovalsCount,
     });
 
     const [requestResult]: any = await connection.query(createRequestQuery, requestValues);
