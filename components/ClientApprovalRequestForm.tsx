@@ -18,7 +18,7 @@ import {
   Divider,
 } from '@mui/material';
 import axios from 'axios';
-import { CloudUpload as UploadIcon } from '@mui/icons-material';
+import { CloudUpload as UploadIcon, Google } from '@mui/icons-material';
 import dynamic from 'next/dynamic';
 import Script from 'next/script';
 import ClientContactForm from './ClientContactForm';
@@ -101,6 +101,9 @@ export default function ClientApprovalRequestForm({
 
   // Add this state for storing the login prompt
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+
+  // Add this state for storing the required approvals
+  const [requiredApprovals, setRequiredApprovals] = useState<number | null>(null);
 
   // Load clients on component mount
   useEffect(() => {
@@ -287,6 +290,7 @@ export default function ClientApprovalRequestForm({
         googleDocId: googleDocId, // Also store the raw doc ID for reference
         contentType: 'google_doc', // Flag to indicate this is a Google Doc URL
         googleAccessToken,
+        requiredApprovals: requiredApprovals || selectedContacts.length, // Include requiredApprovals or default to all contacts
       };
 
       // Get auth token from localStorage
@@ -418,20 +422,7 @@ export default function ClientApprovalRequestForm({
     });
 
     return (
-      <Button
-        variant="contained"
-        color="primary"
-        onClick={() => login()}
-        startIcon={
-          <img
-            src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg"
-            alt="G"
-            width="18"
-            height="18"
-            style={{ filter: 'brightness(0) invert(1)' }}
-          />
-        }
-      >
+      <Button variant="contained" color="primary" onClick={() => login()} startIcon={<Google />}>
         Sign in with Google
       </Button>
     );
@@ -861,6 +852,58 @@ export default function ClientApprovalRequestForm({
                   </FormHelperText>
                 </FormControl>
               </Grid>
+
+              {/* Required Approvals */}
+              {selectedContacts.length > 0 && (
+                <Grid item xs={12} mt={2}>
+                  <FormControl fullWidth>
+                    <FormLabel component="legend">Required Approvals</FormLabel>
+                    <Box display="flex" alignItems="center" mt={1}>
+                      <TextField
+                        type="number"
+                        label="Number of approvals required"
+                        value={requiredApprovals || ''}
+                        onChange={e => {
+                          const value = e.target.value;
+                          if (value === '') {
+                            setRequiredApprovals(null);
+                          } else {
+                            const numValue = parseInt(value, 10);
+                            if (
+                              !isNaN(numValue) &&
+                              numValue >= 1 &&
+                              numValue <= selectedContacts.length
+                            ) {
+                              setRequiredApprovals(numValue);
+                            }
+                          }
+                        }}
+                        InputProps={{
+                          inputProps: {
+                            min: 1,
+                            max: selectedContacts.length,
+                          },
+                        }}
+                        sx={{ width: '250px' }}
+                      />
+                      <Box ml={2} flex={1}>
+                        <Typography variant="body2" color="text.secondary">
+                          {requiredApprovals
+                            ? requiredApprovals === 1
+                              ? 'Only 1 contact must approve for content to be considered approved.'
+                              : requiredApprovals === selectedContacts.length
+                                ? 'All contacts must approve for content to be considered approved.'
+                                : `At least ${requiredApprovals} out of ${selectedContacts.length} contacts must approve.`
+                            : 'All contacts must approve for content to be considered approved.'}
+                        </Typography>
+                      </Box>
+                    </Box>
+                    <FormHelperText>
+                      Leave empty to require approval from all selected contacts.
+                    </FormHelperText>
+                  </FormControl>
+                </Grid>
+              )}
 
               {/* Submit Button */}
               <Grid item xs={12}>

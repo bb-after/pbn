@@ -1,9 +1,9 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import mysql from 'mysql2/promise';
-import AWS from 'aws-sdk';
+import * as mysql from 'mysql2/promise';
+import * as AWS from 'aws-sdk';
 import { URL } from 'url';
 import { validateUserToken } from '../validate-user-token'; // Ensure this import is present
-import nodemailer from 'nodemailer';
+import * as nodemailer from 'nodemailer';
 import axios from 'axios';
 
 // Configure AWS (ensure region is set, credentials should be auto-loaded from env)
@@ -289,6 +289,9 @@ async function getApprovalRequest(
     responseData.updated_at = requestData.updated_at;
     responseData.is_archived = Boolean(requestData.is_archived);
     responseData.inline_content = requestData.inline_content || null;
+    responseData.content_type = requestData.content_type || 'html';
+    responseData.google_doc_id = requestData.google_doc_id || null;
+    responseData.required_approvals = requestData.required_approvals || contactsWithViews.length;
     responseData.approved_by_user_id = requestData.approved_by_user_id || null;
     responseData.approved_by_name = requestData.approved_by_name || null;
     responseData.staff_approved_at = requestData.staff_approved_at || null;
@@ -435,17 +438,21 @@ async function updateApprovalRequest(
           const checkApprovalQuery = `
             SELECT 
               COUNT(*) as total_contacts,
-              SUM(CASE WHEN has_approved = 1 THEN 1 ELSE 0 END) as approved_contacts
-            FROM approval_request_contacts
-            WHERE request_id = ?
+              SUM(CASE WHEN has_approved = 1 THEN 1 ELSE 0 END) as approved_contacts,
+              cr.required_approvals
+            FROM approval_request_contacts arc
+            JOIN client_approval_requests cr ON arc.request_id = cr.request_id
+            WHERE arc.request_id = ?
+            GROUP BY cr.request_id
           `;
           const [approvalResult] = await connection.query(checkApprovalQuery, [requestId]);
           const approvalData = (approvalResult as any[])[0];
 
-          // If all contacts have approved, update the request status
+          // If we've reached the required number of approvals, update the request status
           if (
             approvalData.total_contacts > 0 &&
-            approvalData.approved_contacts === approvalData.total_contacts
+            approvalData.approved_contacts >=
+              (approvalData.required_approvals || approvalData.total_contacts)
           ) {
             const updateRequestQuery = `
               UPDATE client_approval_requests
@@ -501,9 +508,13 @@ async function updateApprovalRequest(
                   requestId: requestId,
                   note: note || null,
                   approverName: contactData?.name || 'Client',
-                  isFullyApproved: approvalData.approved_contacts === approvalData.total_contacts,
+                  isFullyApproved:
+                    approvalData.approved_contacts >=
+                    (approvalData.required_approvals || approvalData.total_contacts),
                   approvedCount: approvalData.approved_contacts,
                   totalCount: approvalData.total_contacts,
+                  requiredApprovals: approvalData.required_approvals || approvalData.total_contacts,
+                  isStaffApproval: false,
                 });
               }
             }
@@ -527,21 +538,108 @@ async function updateApprovalRequest(
 
         // If this is a staff approval (not client portal) and status is 'approved',
         // record which staff member approved it
-        if (!isClientPortal && status === 'approved' && staffValidationResult?.isValid) {
-          // Store the user ID of the staff member who approved
-          updateQuery += `, approved_by_user_id = ?`;
-          queryParams.push(staffValidationResult.user_id);
+        if (!isClientPortal && status === 'approved') {
+          // Assuming validationResult is meant to be a variable that should be defined earlier in the code
+          const validationResult = await validateUserToken({
+            headers: { 'x-auth-token': req.headers.authorization?.split(' ')[1] || '' },
+          } as unknown as NextApiRequest);
 
-          // Add a system comment to record the manual approval
-          const addNoteQuery = `
-            INSERT INTO approval_request_comments (request_id, user_id, client_contact_id, comment, created_at)
-            VALUES (?, ?, NULL, ?, NOW())
-          `;
-          await connection.query(addNoteQuery, [
-            requestId,
-            staffValidationResult.user_id,
-            `[STAFF APPROVAL] This content was manually approved by staff`,
-          ]);
+          if (validationResult.isValid) {
+            // Store the user ID of the staff member who approved
+            updateQuery += `, approved_by_user_id = ?`;
+            queryParams.push(validationResult.user_id);
+
+            // Add a system comment to record the manual approval
+            const addNoteQuery = `
+              INSERT INTO approval_request_comments (request_id, user_id, client_contact_id, comment, created_at)
+              VALUES (?, ?, NULL, ?, NOW())
+            `;
+
+            await connection.query(addNoteQuery, [
+              requestId,
+              validationResult.user_id,
+              `[STAFF APPROVAL] This content was manually approved by staff`,
+            ]);
+
+            const requestDetailsQuery = `
+              SELECT ar.*, c.client_name, u.name as owner_name, u.email as owner_email, u.id as owner_id,
+              su.name as staff_name
+              FROM client_approval_requests ar
+              JOIN clients c ON ar.client_id = c.client_id
+              LEFT JOIN users u ON ar.created_by_id = u.id
+              LEFT JOIN users su ON su.id = ?
+              WHERE ar.request_id = ?
+            `;
+
+            const [requestDetails] = await connection.query(requestDetailsQuery, [
+              validationResult.user_id,
+              requestId,
+            ]);
+
+            if ((requestDetails as any[]).length > 0) {
+              const requestData = (requestDetails as any[])[0];
+
+              // Send Slack notification for staff approval
+              if (process.env.SLACK_WEBHOOK_URL) {
+                try {
+                  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+                  const requestUrl = `${appUrl}/client-approval/requests/${requestId}`;
+
+                  await axios.post(process.env.SLACK_WEBHOOK_URL, {
+                    text: `🚨 Content for ${requestData.client_name} manually approved by staff: ${requestData.staff_name || 'Unknown'}`,
+                    blocks: [
+                      {
+                        type: 'header',
+                        text: {
+                          type: 'plain_text',
+                          text: '🚨 Content Manually Approved by Staff 🚨',
+                          emoji: true,
+                        },
+                      },
+                      {
+                        type: 'section',
+                        text: {
+                          type: 'mrkdwn',
+                          text: `*${requestData.staff_name || 'Staff member'}* has manually approved content`,
+                        },
+                      },
+                      {
+                        type: 'section',
+                        fields: [
+                          {
+                            type: 'mrkdwn',
+                            text: `*Title:*\n${requestData.title}`,
+                          },
+                          {
+                            type: 'mrkdwn',
+                            text: `*Client:*\n${requestData.client_name}`,
+                          },
+                        ],
+                      },
+                      {
+                        type: 'actions',
+                        elements: [
+                          {
+                            type: 'button',
+                            text: {
+                              type: 'plain_text',
+                              text: 'View Request',
+                              emoji: true,
+                            },
+                            style: 'primary',
+                            url: requestUrl,
+                          },
+                        ],
+                      },
+                    ],
+                  });
+                  console.log('Staff approval Slack notification sent');
+                } catch (slackError) {
+                  console.error('Error sending Slack notification for staff approval:', slackError);
+                }
+              }
+            }
+          }
         }
 
         updateQuery += `, updated_at = NOW() WHERE request_id = ?`;
@@ -741,6 +839,8 @@ async function sendApprovalSlackNotification(params: {
   isFullyApproved: boolean;
   approvedCount: number;
   totalCount: number;
+  requiredApprovals: number;
+  isStaffApproval: boolean;
 }) {
   const {
     ownerName,
@@ -753,6 +853,8 @@ async function sendApprovalSlackNotification(params: {
     isFullyApproved,
     approvedCount,
     totalCount,
+    requiredApprovals,
+    isStaffApproval,
   } = params;
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
@@ -766,7 +868,11 @@ async function sendApprovalSlackNotification(params: {
           type: 'header',
           text: {
             type: 'plain_text',
-            text: isFullyApproved ? 'Content Fully Approved! 🎉' : 'Content Approval Update ✅',
+            text: isStaffApproval
+              ? '🚨 Content Manually Approved by Staff 🚨'
+              : isFullyApproved
+                ? 'Content Fully Approved! 🎉'
+                : 'Content Approval Update ✅',
             emoji: true,
           },
         },
@@ -774,9 +880,11 @@ async function sendApprovalSlackNotification(params: {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: isFullyApproved
-              ? `*${approverName}* has approved your content, completing the approval process!`
-              : `*${approverName}* has approved your content (${approvedCount}/${totalCount} approvals received)`,
+            text: isStaffApproval
+              ? `*${approverName}* has manually approved this content as staff`
+              : isFullyApproved
+                ? `*${approverName}* has approved your content, completing the approval process!`
+                : `*${approverName}* has approved your content (${approvedCount}/${totalCount} approvals received, ${requiredApprovals} required)`,
           },
         },
         {
