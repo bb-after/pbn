@@ -37,36 +37,94 @@ function formatForSlack(text: string): string {
 }
 
 /**
- * 1. HubSpot Files API: Retrieve Private File Paths
+ * 1. HubSpot Files API: Retrieve Private File Paths with improved error handling
  */
 async function getHubSpotFilePaths(fileIds: string[]): Promise<string[]> {
   const filePaths: string[] = [];
+
   for (const fileId of fileIds) {
+    // Create a new AbortController for each request
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout per request
+
     try {
-      // Example: https://developers.hubspot.com/docs/api/files/files
-      const response = await fetch(`https://api.hubapi.com/files/v3/files/${fileId}`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${process.env.HUBSPOT_QUOTE_REQUEST_ACCESS_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      if (!response.ok) {
-        console.error('Error fetching file:', await response.text());
-        // Decide whether to throw or just skip this file
+      console.log(`Attempting to fetch HubSpot file: ${fileId}`);
+
+      // Retry logic for network issues
+      let retries = 3;
+      let response;
+
+      while (retries > 0) {
+        try {
+          response = await fetch(`https://api.hubapi.com/files/v3/files/${fileId}`, {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${process.env.HUBSPOT_QUOTE_REQUEST_ACCESS_TOKEN}`,
+              'Content-Type': 'application/json',
+            },
+            signal: controller.signal,
+          });
+          break; // Success, exit retry loop
+        } catch (fetchError: any) {
+          retries--;
+          console.warn(
+            `HubSpot API retry ${4 - retries}/3 for file ${fileId}:`,
+            fetchError.message
+          );
+
+          if (retries === 0) {
+            console.error(
+              `Failed to fetch HubSpot file ${fileId} after 3 retries:`,
+              fetchError.message
+            );
+            // Don't throw, just skip this file and continue processing
+            break;
+          }
+
+          // Wait before retry (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, (4 - retries) * 1000));
+        }
+      }
+
+      // Clear the timeout for this request
+      clearTimeout(timeoutId);
+
+      if (!response) {
+        console.error(`No response received for file ${fileId}, skipping`);
         continue;
       }
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unable to read error response');
+        console.error(`HubSpot API error for file ${fileId}:`, response.status, errorText);
+        continue; // Skip this file but continue processing others
+      }
+
       const fileData = await response.json();
+      console.log(`Successfully fetched file data for ${fileId}:`, fileData);
+
       // Adjust property names as needed—this is hypothetical
       // Typically you might see { url, hiddenUrl, ... }
       if (fileData.url) {
         filePaths.push(fileData.url);
+        console.log(`Added file URL: ${fileData.url}`);
+      } else {
+        console.warn(`No URL found in file data for ${fileId}:`, Object.keys(fileData));
       }
-    } catch (err) {
-      console.error('Error in getHubSpotFilePaths:', err);
-      // Could throw or just log
+    } catch (err: any) {
+      // Clear the timeout in case of error
+      clearTimeout(timeoutId);
+
+      console.error(`Error processing HubSpot file ${fileId}:`, {
+        message: err.message,
+        code: err.code,
+        type: err.name,
+      });
+      // Continue processing other files instead of failing completely
     }
   }
+
+  console.log(`HubSpot file processing complete. Retrieved ${filePaths.length} file paths.`);
   return filePaths;
 }
 
@@ -180,19 +238,38 @@ async function processWebhook(body: any) {
     budget_discussed: body.budget_discussed,
   };
 
-  const screenshotFileIds = [
-    body.quote_request_image_1,
-    body.quote_attachment__2,
-    body.quote_attachment__3,
-  ].filter(Boolean);
+  console.log('Processing webhook for deal:', dealData.hs_object_id);
 
-  const screenshotPaths = screenshotFileIds.length
-    ? await getHubSpotFilePaths(screenshotFileIds)
-    : [];
+  // Try to fetch screenshots, but don't fail if this doesn't work
+  let screenshotPaths: string[] = [];
+  let screenshotSection = 'No screenshots available';
 
-  const screenshotSection = screenshotPaths.length
-    ? screenshotPaths.map((url, i) => `Screenshot #${i + 1}: ${url}`).join('\n')
-    : 'No screenshots available';
+  try {
+    const screenshotFileIds = [
+      body.quote_request_image_1,
+      body.quote_attachment__2,
+      body.quote_attachment__3,
+    ].filter(Boolean);
+
+    if (screenshotFileIds.length > 0) {
+      console.log('Attempting to fetch screenshot files:', screenshotFileIds);
+      screenshotPaths = await getHubSpotFilePaths(screenshotFileIds);
+
+      if (screenshotPaths.length > 0) {
+        screenshotSection = screenshotPaths
+          .map((url, i) => `Screenshot #${i + 1}: ${url}`)
+          .join('\n');
+        console.log('Successfully retrieved screenshot URLs:', screenshotPaths);
+      } else {
+        console.warn('No screenshot URLs were retrieved');
+      }
+    } else {
+      console.log('No screenshot file IDs provided');
+    }
+  } catch (screenshotError: any) {
+    console.error('Error fetching screenshots (continuing anyway):', screenshotError.message);
+    screenshotSection = 'Screenshots could not be retrieved due to network issues';
+  }
 
   const userMessage = `
   Here is the information for the quote request we need to generate:
@@ -206,17 +283,50 @@ async function processWebhook(body: any) {
   Screenshots of Search Result Ranking:
   ${screenshotSection}`.trim();
 
-  const assistantId = process.env.OPENAI_ASSISTANT_ID!;
-  const threadId = process.env.OPENAI_THREAD_ID!;
+  console.log('Sending message to OpenAI assistant...');
 
-  await sendMessageToThread({ threadId, userMessage });
-  const assistantReply = await createThreadRun({ threadId, assistantId });
-  const slackMessage = createSlackMessage(assistantReply, dealData, screenshotSection);
-  await postToSlack(
-    slackMessage,
-    '#quote-requests-v2',
-    process.env.SLACK_QUOTE_REQUESTS_WEBHOOK_URL!
-  );
+  try {
+    const assistantId = process.env.OPENAI_ASSISTANT_ID!;
+    const threadId = process.env.OPENAI_THREAD_ID!;
+
+    await sendMessageToThread({ threadId, userMessage });
+    console.log('Message sent to thread successfully');
+
+    const assistantReply = await createThreadRun({ threadId, assistantId });
+    console.log('Received assistant reply');
+
+    const slackMessage = createSlackMessage(assistantReply, dealData, screenshotSection);
+
+    await postToSlack(
+      slackMessage,
+      '#quote-requests-v2',
+      process.env.SLACK_QUOTE_REQUESTS_WEBHOOK_URL!
+    );
+    console.log('Quote request processed and sent to Slack successfully');
+  } catch (aiError: any) {
+    console.error('Error processing AI request:', aiError.message);
+
+    // Send a fallback message to Slack even if AI processing fails
+    try {
+      const fallbackMessage = createSlackMessage(
+        'AI processing failed due to network issues. Please process this quote request manually.',
+        dealData,
+        screenshotSection
+      );
+
+      await postToSlack(
+        fallbackMessage,
+        '#quote-requests-v2',
+        process.env.SLACK_QUOTE_REQUESTS_WEBHOOK_URL!
+      );
+      console.log('Fallback message sent to Slack');
+    } catch (slackError: any) {
+      console.error('Failed to send fallback Slack message:', slackError.message);
+      throw new Error(
+        `Both AI processing and Slack fallback failed: ${aiError.message} | ${slackError.message}`
+      );
+    }
+  }
 }
 
 async function sendMessageToThread({
@@ -239,16 +349,50 @@ async function sendMessageToThread({
     payload,
   });
 
+  // Create AbortController for timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'OpenAI-Beta': 'assistants=v2',
-        Authorization: `Bearer ${process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
+    let retries = 3;
+    let response;
+
+    while (retries > 0) {
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'OpenAI-Beta': 'assistants=v2',
+            Authorization: `Bearer ${process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+        break; // Success, exit retry loop
+      } catch (fetchError: any) {
+        retries--;
+        console.warn(`OpenAI API retry ${4 - retries}/3:`, fetchError.message);
+
+        if (retries === 0) {
+          console.error(
+            'Failed to send message to OpenAI thread after 3 retries:',
+            fetchError.message
+          );
+          throw fetchError;
+        }
+
+        // Wait before retry (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, (4 - retries) * 2000));
+      }
+    }
+
+    // Clear the timeout
+    clearTimeout(timeoutId);
+
+    if (!response) {
+      throw new Error('No response received from OpenAI API');
+    }
 
     // Log the raw response before parsing
     const rawResponse = await response.text();
@@ -259,6 +403,9 @@ async function sendMessageToThread({
       throw new Error(`Failed to send message to thread: ${rawResponse}`);
     }
   } catch (error: unknown) {
+    // Clear the timeout in case of error
+    clearTimeout(timeoutId);
+
     console.error('Full error details:', {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
