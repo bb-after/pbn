@@ -42,17 +42,39 @@ function formatForSlack(text: string): string {
  */
 async function getHubSpotFilePaths(fileIds: string[]): Promise<string[]> {
   const filePaths: string[] = [];
+  const maxTotalTime = 30000; // 30 seconds max for all files
+  const startTime = Date.now();
 
   for (const fileId of fileIds) {
+    // Check if we've exceeded the total time limit
+    const elapsedTime = Date.now() - startTime;
+    if (elapsedTime > maxTotalTime) {
+      console.warn(
+        `⏰ Total file fetching time limit exceeded (${elapsedTime}ms). Skipping remaining files.`
+      );
+      break;
+    }
+
     try {
       console.log(`Attempting to fetch HubSpot file: ${fileId}`);
 
-      // Retry logic for network issues
+      // Retry logic for network issues with per-file time limit
       let retries = 3;
       let response;
       let lastError;
+      const fileStartTime = Date.now();
+      const maxFileTime = 15000; // 15 seconds max per file
 
       while (retries > 0) {
+        // Check if this individual file has taken too long
+        const fileElapsedTime = Date.now() - fileStartTime;
+        if (fileElapsedTime > maxFileTime) {
+          console.warn(
+            `⏰ File ${fileId} exceeded individual time limit (${fileElapsedTime}ms). Skipping.`
+          );
+          break;
+        }
+
         // Create a new AbortController for each retry attempt
         const controller = new AbortController();
         const timeoutId = setTimeout(() => {
@@ -98,7 +120,7 @@ async function getHubSpotFilePaths(fileIds: string[]): Promise<string[]> {
             break;
           }
 
-          // Wait before retry (exponential backoff)
+          // Wait before retry (exponential backoff) but check time limits
           const backoffDelay = (4 - retries) * 1000;
           console.log(`Waiting ${backoffDelay}ms before retry for file ${fileId}`);
           await new Promise(resolve => setTimeout(resolve, backoffDelay));
@@ -411,6 +433,7 @@ async function processWebhook(body: any) {
   let screenshotPaths: string[] = [];
   let screenshotSection = 'No screenshots available';
   let screenshotStartTime = Date.now();
+  const maxScreenshotTime = 45000; // 45 seconds max for all screenshot processing
 
   try {
     screenshotStartTime = Date.now();
@@ -422,7 +445,16 @@ async function processWebhook(body: any) {
 
     if (screenshotFileIds.length > 0) {
       console.log('Attempting to fetch screenshot files:', screenshotFileIds);
-      screenshotPaths = await getHubSpotFilePaths(screenshotFileIds);
+
+      // Add timeout wrapper for the entire screenshot fetching process
+      const screenshotPromise = getHubSpotFilePaths(screenshotFileIds);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error(`Screenshot processing timeout after ${maxScreenshotTime}ms`));
+        }, maxScreenshotTime);
+      });
+
+      screenshotPaths = (await Promise.race([screenshotPromise, timeoutPromise])) as string[];
 
       if (screenshotPaths.length > 0) {
         screenshotSection = screenshotPaths
@@ -479,11 +511,7 @@ async function processWebhook(body: any) {
     const slackStartTime = Date.now();
     const slackMessage = createSlackMessage(assistantReply, dealData, screenshotSection);
 
-    await postToSlack(
-      slackMessage,
-      '#quote-requests-v2',
-      process.env.SLACK_QUOTE_REQUESTS_WEBHOOK_URL!
-    );
+    await postToSlack(slackMessage, '#quote-requests-v2', process.env.SLACK_WEBHOOK_URL!);
     const slackTime = Date.now() - slackStartTime;
     console.log(`Slack notification sent in ${slackTime}ms`);
 
@@ -503,11 +531,7 @@ async function processWebhook(body: any) {
         screenshotSection
       );
 
-      await postToSlack(
-        fallbackMessage,
-        '#quote-requests-v2',
-        process.env.SLACK_QUOTE_REQUESTS_WEBHOOK_URL!
-      );
+      await postToSlack(fallbackMessage, '#quote-requests-v2', process.env.SLACK_WEBHOOK_URL!);
       console.log('Fallback message sent to Slack');
     } catch (slackError: any) {
       console.error('Failed to send fallback Slack message:', slackError.message);
@@ -641,6 +665,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  // Log environment variable availability for debugging
+  const requiredEnvVars = {
+    HUBSPOT_QUOTE_REQUEST_ACCESS_TOKEN: !!process.env.HUBSPOT_QUOTE_REQUEST_ACCESS_TOKEN,
+    OPENAI_QUOTE_REQUEST_API_KEY_ID: !!process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID,
+    OPENAI_ASSISTANT_ID: !!process.env.OPENAI_ASSISTANT_ID,
+    OPENAI_THREAD_ID: !!process.env.OPENAI_THREAD_ID,
+    SLACK_WEBHOOK_URL: !!process.env.SLACK_WEBHOOK_URL,
+    HUBSPOT_QUOTE_REQUEST_WEBHOOK_SECRET: !!process.env.HUBSPOT_QUOTE_REQUEST_WEBHOOK_SECRET,
+  };
+
+  console.log('🔍 Environment variables check:', requiredEnvVars);
+
+  const missingVars = Object.entries(requiredEnvVars)
+    .filter(([_, present]) => !present)
+    .map(([name, _]) => name);
+
+  if (missingVars.length > 0) {
+    console.error('❌ Missing required environment variables:', missingVars);
+  }
+
   // (Optional) check your custom webhook secret from HubSpot or any source
   const hubspotSecret = req.headers['hubspot_quote_request_webhook_secret'];
   if (!hubspotSecret || hubspotSecret !== process.env.HUBSPOT_QUOTE_REQUEST_WEBHOOK_SECRET) {
@@ -690,11 +734,7 @@ The quote request webhook was received but processing failed completely. Please 
 ${JSON.stringify(req.body, null, 2).slice(0, 1000)}${JSON.stringify(req.body, null, 2).length > 1000 ? '...' : ''}
 \`\`\``;
 
-      await postToSlack(
-        errorMessage,
-        '#quote-requests-v2',
-        process.env.SLACK_QUOTE_REQUESTS_WEBHOOK_URL!
-      );
+      await postToSlack(errorMessage, '#quote-requests-v2', process.env.SLACK_WEBHOOK_URL!);
       console.log('Emergency error notification sent to Slack');
     } catch (slackError: any) {
       console.error('Failed to send emergency error notification to Slack:', slackError.message);
