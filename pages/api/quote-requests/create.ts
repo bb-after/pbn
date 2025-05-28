@@ -4,6 +4,7 @@ import { postToSlack } from 'utils/postToSlack';
 type DealData = {
   hs_object_id: Number;
   keyword: string;
+  keyword_monthly_search_volume: string;
   referral: string;
   timeline: string;
   location: string;
@@ -174,6 +175,7 @@ function createSlackMessage(
   *New Quote Request Details:*
   • *HubSpot Deal:* https://app.hubspot.com/contacts/24444832/record/0-3/${dealData.hs_object_id}
   • *Keywords:* ${dealData.keyword || 'N/A'}
+  • *Global Monthly Search Volume:* ${dealData.keyword_monthly_search_volume || 'N/A'}
   • *Referral:* ${dealData.referral || 'N/A'}
   • *Timeline:* ${dealData.timeline || 'N/A'}
   • *Location:* ${dealData.location || 'N/A'}
@@ -387,9 +389,11 @@ async function createThreadRun({
 }
 
 async function processWebhook(body: any) {
+  const startTime = Date.now();
   const dealData: DealData = {
     hs_object_id: body.hs_object_id,
     keyword: body.keyword,
+    keyword_monthly_search_volume: body.keyword_monthly_search_volume,
     referral: body.referral,
     timeline: body.timeline,
     location: body.location,
@@ -397,13 +401,19 @@ async function processWebhook(body: any) {
     budget_discussed: body.budget_discussed,
   };
 
-  console.log('Processing webhook for deal:', dealData.hs_object_id);
+  console.log(
+    'Processing webhook for deal:',
+    dealData.hs_object_id,
+    `(started at ${new Date().toISOString()})`
+  );
 
   // Try to fetch screenshots, but don't fail if this doesn't work
   let screenshotPaths: string[] = [];
   let screenshotSection = 'No screenshots available';
+  let screenshotStartTime = Date.now();
 
   try {
+    screenshotStartTime = Date.now();
     const screenshotFileIds = [
       body.quote_request_image_1,
       body.quote_attachment__2,
@@ -425,14 +435,22 @@ async function processWebhook(body: any) {
     } else {
       console.log('No screenshot file IDs provided');
     }
+
+    const screenshotDuration = Date.now() - screenshotStartTime;
+    console.log(`Screenshot processing completed in ${screenshotDuration}ms`);
   } catch (screenshotError: any) {
-    console.error('Error fetching screenshots (continuing anyway):', screenshotError.message);
+    const screenshotDuration = Date.now() - screenshotStartTime;
+    console.error(
+      `Error fetching screenshots after ${screenshotDuration}ms (continuing anyway):`,
+      screenshotError.message
+    );
     screenshotSection = 'Screenshots could not be retrieved due to network issues';
   }
 
   const userMessage = `
   Here is the information for the quote request we need to generate:
   Keyword(s): ${dealData.keyword ?? 'N/A'}
+  Global Monthly Search Volume: ${dealData.keyword_monthly_search_volume ?? 'N/A'}
   Referral: ${dealData.referral ?? 'N/A'}
   Budget Discussed: ${dealData.budget_discussed ?? 'N/A'}
   Timeline: ${dealData.timeline ?? 'N/A'}
@@ -445,15 +463,20 @@ async function processWebhook(body: any) {
   console.log('Sending message to OpenAI assistant...');
 
   try {
+    const aiStartTime = Date.now();
     const assistantId = process.env.OPENAI_ASSISTANT_ID!;
     const threadId = process.env.OPENAI_THREAD_ID!;
 
     await sendMessageToThread({ threadId, userMessage });
-    console.log('Message sent to thread successfully');
+    const messageTime = Date.now() - aiStartTime;
+    console.log(`Message sent to thread successfully in ${messageTime}ms`);
 
+    const runStartTime = Date.now();
     const assistantReply = await createThreadRun({ threadId, assistantId });
-    console.log('Received assistant reply');
+    const runTime = Date.now() - runStartTime;
+    console.log(`Received assistant reply in ${runTime}ms`);
 
+    const slackStartTime = Date.now();
     const slackMessage = createSlackMessage(assistantReply, dealData, screenshotSection);
 
     await postToSlack(
@@ -461,9 +484,16 @@ async function processWebhook(body: any) {
       '#quote-requests-v2',
       process.env.SLACK_QUOTE_REQUESTS_WEBHOOK_URL!
     );
-    console.log('Quote request processed and sent to Slack successfully');
+    const slackTime = Date.now() - slackStartTime;
+    console.log(`Slack notification sent in ${slackTime}ms`);
+
+    const totalTime = Date.now() - startTime;
+    console.log(
+      `Quote request processed and sent to Slack successfully. Total execution time: ${totalTime}ms (${Math.round(totalTime / 1000)}s)`
+    );
   } catch (aiError: any) {
-    console.error('Error processing AI request:', aiError.message);
+    const totalTime = Date.now() - startTime;
+    console.error(`Error processing AI request after ${totalTime}ms:`, aiError.message);
 
     // Send a fallback message to Slack even if AI processing fails
     try {
@@ -607,6 +637,8 @@ async function sendMessageToThread({
  * 3. Main Handler
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const handlerStartTime = Date.now();
+
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   // (Optional) check your custom webhook secret from HubSpot or any source
@@ -620,15 +652,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // Extract deal ID for error reporting
   const dealId = req.body?.hs_object_id || 'Unknown';
+  console.log(
+    `Starting quote request processing for deal ${dealId} at ${new Date().toISOString()}`
+  );
 
   try {
     await processWebhook(req.body);
+    const totalHandlerTime = Date.now() - handlerStartTime;
+    console.log(
+      `✅ Quote request handler completed successfully for deal ${dealId}. Total handler time: ${totalHandlerTime}ms (${Math.round(totalHandlerTime / 1000)}s)`
+    );
   } catch (error: any) {
-    console.error('Error in /quote-requests/create:', {
-      dealId,
-      error: error.message,
-      stack: error.stack?.split('\n').slice(0, 5).join('\n'),
-    });
+    const totalHandlerTime = Date.now() - handlerStartTime;
+    console.error(
+      `❌ Quote request handler failed for deal ${dealId} after ${totalHandlerTime}ms:`,
+      {
+        dealId,
+        error: error.message,
+        stack: error.stack?.split('\n').slice(0, 5).join('\n'),
+      }
+    );
 
     // Final fallback: Always notify Slack when the entire process fails
     try {
@@ -637,6 +680,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 *Deal ID:* ${dealId}
 *HubSpot Deal:* https://app.hubspot.com/contacts/24444832/record/0-3/${dealId}
 *Error:* ${error.message}
+*Execution Time:* ${Math.round(totalHandlerTime / 1000)}s
 *Time:* ${new Date().toISOString()}
 
 The quote request webhook was received but processing failed completely. Please check the server logs and process this request manually.
@@ -659,6 +703,7 @@ ${JSON.stringify(req.body, null, 2).slice(0, 1000)}${JSON.stringify(req.body, nu
         originalError: error.message,
         slackError: slackError.message,
         dealId,
+        totalTime: `${Math.round(totalHandlerTime / 1000)}s`,
       });
     }
   }
