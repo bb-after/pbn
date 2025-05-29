@@ -38,145 +38,44 @@ function formatForSlack(text: string): string {
 }
 
 /**
- * 1. HubSpot Files API: Retrieve Private File Paths with improved error handling
+ * 1. HubSpot Files API: Retrieve Private File Paths - simplified version
  */
 async function getHubSpotFilePaths(fileIds: string[]): Promise<string[]> {
   const filePaths: string[] = [];
-  const maxTotalTime = 30000; // 30 seconds max for all files
-  const startTime = Date.now();
 
   for (const fileId of fileIds) {
-    // Check if we've exceeded the total time limit
-    const elapsedTime = Date.now() - startTime;
-    if (elapsedTime > maxTotalTime) {
-      console.warn(
-        `⏰ Total file fetching time limit exceeded (${elapsedTime}ms). Skipping remaining files.`
-      );
-      break;
-    }
-
     try {
       console.log(`Attempting to fetch HubSpot file: ${fileId}`);
 
-      // Retry logic for network issues with per-file time limit
-      let retries = 3;
-      let response;
-      let lastError;
-      const fileStartTime = Date.now();
-      const maxFileTime = 15000; // 15 seconds max per file
+      const response = await fetch(`https://api.hubapi.com/files/v3/files/${fileId}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${process.env.HUBSPOT_QUOTE_REQUEST_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+      });
 
-      while (retries > 0) {
-        // Check if this individual file has taken too long
-        const fileElapsedTime = Date.now() - fileStartTime;
-        if (fileElapsedTime > maxFileTime) {
-          console.warn(
-            `⏰ File ${fileId} exceeded individual time limit (${fileElapsedTime}ms). Skipping.`
-          );
-          break;
-        }
-
-        // Create a new AbortController for each retry attempt
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => {
-          console.log(`Timeout triggered for HubSpot file ${fileId} after 8 seconds`);
-          controller.abort();
-        }, 8000); // 8 second timeout per request
-
-        try {
-          console.log(`Retry attempt ${4 - retries}/3 for file ${fileId}`);
-
-          response = await fetch(`https://api.hubapi.com/files/v3/files/${fileId}`, {
-            method: 'GET',
-            headers: {
-              Authorization: `Bearer ${process.env.HUBSPOT_QUOTE_REQUEST_ACCESS_TOKEN}`,
-              'Content-Type': 'application/json',
-            },
-            signal: controller.signal,
-          });
-
-          clearTimeout(timeoutId);
-          console.log(
-            `Successfully received response for file ${fileId}, status: ${response.status}`
-          );
-          break; // Success, exit retry loop
-        } catch (fetchError: any) {
-          clearTimeout(timeoutId);
-          lastError = fetchError;
-          retries--;
-
-          console.warn(`HubSpot API retry ${4 - retries}/3 for file ${fileId}:`, {
-            message: fetchError.message,
-            name: fetchError.name,
-            code: fetchError.code,
-          });
-
-          if (retries === 0) {
-            console.error(`Failed to fetch HubSpot file ${fileId} after 3 retries. Last error:`, {
-              message: fetchError.message,
-              name: fetchError.name,
-              code: fetchError.code,
-            });
-            // Don't throw, just skip this file and continue processing
-            break;
-          }
-
-          // Wait before retry (exponential backoff) but check time limits
-          const backoffDelay = (4 - retries) * 1000;
-          console.log(`Waiting ${backoffDelay}ms before retry for file ${fileId}`);
-          await new Promise(resolve => setTimeout(resolve, backoffDelay));
-        }
-      }
-
-      if (!response) {
-        console.error(`No response received for file ${fileId} after all retries, skipping`);
-        continue;
-      }
+      console.log(`Response received for file ${fileId}, status: ${response.status}`);
 
       if (!response.ok) {
-        let errorText = 'Unable to read error response';
-        try {
-          errorText = await response.text();
-        } catch (textError) {
-          console.warn(`Could not read error response text for file ${fileId}:`, textError);
-        }
         console.error(`HubSpot API error for file ${fileId}:`, {
           status: response.status,
           statusText: response.statusText,
-          errorText,
         });
         continue; // Skip this file but continue processing others
       }
 
-      let fileData;
-      try {
-        fileData = await response.json();
-        console.log(`Successfully parsed JSON for file ${fileId}:`, {
-          hasUrl: !!fileData.url,
-          keys: Object.keys(fileData),
-        });
-      } catch (jsonError: any) {
-        console.error(`Failed to parse JSON response for file ${fileId}:`, jsonError.message);
-        continue;
-      }
+      const fileData = await response.json();
+      console.log(`Successfully parsed JSON for file ${fileId}`);
 
-      // Adjust property names as needed—this is hypothetical
-      // Typically you might see { url, hiddenUrl, ... }
       if (fileData.url) {
         filePaths.push(fileData.url);
         console.log(`Added file URL for ${fileId}: ${fileData.url}`);
       } else {
-        console.warn(
-          `No URL found in file data for ${fileId}. Available keys:`,
-          Object.keys(fileData)
-        );
+        console.warn(`No URL found in file data for ${fileId}`);
       }
     } catch (err: any) {
-      console.error(`Unexpected error processing HubSpot file ${fileId}:`, {
-        message: err.message,
-        code: err.code,
-        type: err.name,
-        stack: err.stack?.split('\n').slice(0, 3).join('\n'), // First 3 lines of stack
-      });
+      console.error(`Error processing HubSpot file ${fileId}:`, err.message);
       // Continue processing other files instead of failing completely
     }
   }
@@ -433,7 +332,6 @@ async function processWebhook(body: any) {
   let screenshotPaths: string[] = [];
   let screenshotSection = 'No screenshots available';
   let screenshotStartTime = Date.now();
-  const maxScreenshotTime = 45000; // 45 seconds max for all screenshot processing
 
   try {
     screenshotStartTime = Date.now();
@@ -445,16 +343,7 @@ async function processWebhook(body: any) {
 
     if (screenshotFileIds.length > 0) {
       console.log('Attempting to fetch screenshot files:', screenshotFileIds);
-
-      // Add timeout wrapper for the entire screenshot fetching process
-      const screenshotPromise = getHubSpotFilePaths(screenshotFileIds);
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => {
-          reject(new Error(`Screenshot processing timeout after ${maxScreenshotTime}ms`));
-        }, maxScreenshotTime);
-      });
-
-      screenshotPaths = (await Promise.race([screenshotPromise, timeoutPromise])) as string[];
+      screenshotPaths = await getHubSpotFilePaths(screenshotFileIds);
 
       if (screenshotPaths.length > 0) {
         screenshotSection = screenshotPaths
@@ -559,73 +448,20 @@ async function sendMessageToThread({
   console.log('Preparing to send message to OpenAI thread:', threadId);
 
   try {
-    let retries = 3;
-    let response;
-    let lastError;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'OpenAI-Beta': 'assistants=v2',
+        Authorization: `Bearer ${process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
 
-    while (retries > 0) {
-      // Create a new AbortController for each retry attempt
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        console.log(`Timeout triggered for OpenAI API call after 30 seconds`);
-        controller.abort();
-      }, 30000);
-
-      try {
-        console.log(`OpenAI API attempt ${4 - retries}/3`);
-
-        response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'OpenAI-Beta': 'assistants=v2',
-            Authorization: `Bearer ${process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-        console.log(`Successfully received response from OpenAI API, status: ${response.status}`);
-        break; // Success, exit retry loop
-      } catch (fetchError: any) {
-        clearTimeout(timeoutId);
-        lastError = fetchError;
-        retries--;
-
-        console.warn(`OpenAI API retry ${4 - retries}/3:`, {
-          message: fetchError.message,
-          name: fetchError.name,
-          code: fetchError.code,
-        });
-
-        if (retries === 0) {
-          console.error('Failed to send message to OpenAI thread after 3 retries. Last error:', {
-            message: fetchError.message,
-            name: fetchError.name,
-            code: fetchError.code,
-          });
-          throw fetchError;
-        }
-
-        // Wait before retry (exponential backoff)
-        const backoffDelay = (4 - retries) * 2000;
-        console.log(`Waiting ${backoffDelay}ms before retry for OpenAI API`);
-        await new Promise(resolve => setTimeout(resolve, backoffDelay));
-      }
-    }
-
-    if (!response) {
-      throw new Error('No response received from OpenAI API after all retries');
-    }
+    console.log(`Successfully received response from OpenAI API, status: ${response.status}`);
 
     if (!response.ok) {
-      let errorText = 'Unable to read error response';
-      try {
-        errorText = await response.text();
-      } catch (textError) {
-        console.warn('Could not read OpenAI error response text:', textError);
-      }
+      const errorText = await response.text();
       console.error('OpenAI API error:', {
         status: response.status,
         statusText: response.statusText,
@@ -634,24 +470,14 @@ async function sendMessageToThread({
       throw new Error(`Failed to send message to thread: ${response.status} ${errorText}`);
     }
 
-    // Parse the successful response
-    try {
-      const responseData = await response.json();
-      console.log('Successfully sent message to OpenAI thread:', {
-        messageId: responseData.id,
-        threadId: responseData.thread_id,
-      });
-    } catch (jsonError: any) {
-      console.warn(
-        'Could not parse OpenAI response JSON (but request was successful):',
-        jsonError.message
-      );
-    }
+    const responseData = await response.json();
+    console.log('Successfully sent message to OpenAI thread:', {
+      messageId: responseData.id,
+      threadId: responseData.thread_id,
+    });
   } catch (error: unknown) {
-    console.error('Unexpected error in sendMessageToThread:', {
+    console.error('Error in sendMessageToThread:', {
       error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack?.split('\n').slice(0, 3).join('\n') : undefined,
-      nodeVersion: process.version,
     });
     throw error;
   }
