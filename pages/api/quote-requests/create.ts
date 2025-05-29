@@ -56,7 +56,7 @@ async function getHubSpotFilePaths(fileIds: string[]): Promise<string[]> {
       });
 
       if (!response.ok) {
-        console.error(`HubSpot API error for file ${fileId}: ${response.status}`);
+        console.log(`HubSpot API error for file ${fileId}: ${response.status}`);
         continue;
       }
 
@@ -66,7 +66,7 @@ async function getHubSpotFilePaths(fileIds: string[]): Promise<string[]> {
         console.log(`Added file URL for ${fileId}`);
       }
     } catch (err: any) {
-      console.error(`Error processing HubSpot file ${fileId}:`, err.message);
+      console.log(`Error processing HubSpot file ${fileId}:`, err.message);
     }
   }
 
@@ -203,7 +203,7 @@ async function processWebhook(body: any) {
       }
     }
   } catch (screenshotError: any) {
-    console.error('Error fetching screenshots:', screenshotError.message);
+    console.log('Error fetching screenshots:', screenshotError.message);
     screenshotSection = 'Screenshots could not be retrieved';
   }
 
@@ -294,6 +294,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     console.log(`✅ Quote request handler completed successfully for deal ${dealId}`);
   } catch (error: any) {
-    console.error(`❌ Quote request handler failed for deal ${dealId}:`, error.message);
+    console.log(`❌ Quote request handler failed for deal ${dealId}:`, error.message);
   }
 }
