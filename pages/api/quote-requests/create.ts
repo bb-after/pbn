@@ -10,8 +10,6 @@ const pool = mysql.createPool({
   database: process.env.DB_DATABASE,
   waitForConnections: true,
   connectionLimit: 20,
-  idleTimeout: 60000, // 60 seconds before idle connections are closed
-  queueLimit: 0, // unlimited queue
 });
 
 // Fallback in-memory cache for when database is unavailable
@@ -123,195 +121,65 @@ async function createThreadRun({
   threadId: string;
   assistantId: string;
 }): Promise<string> {
-  console.log('Creating OpenAI thread run for assistant:', assistantId);
-
-  // Create the run with timeout
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => {
-    console.log('Timeout triggered for createThreadRun after 30 seconds');
-    controller.abort();
-  }, 30000);
-
-  let createRunResponse;
-  try {
-    createRunResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs`, {
-      method: 'POST',
-      headers: {
-        'OpenAI-Beta': 'assistants=v2',
-        Authorization: `Bearer ${process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        assistant_id: assistantId,
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-  } catch (error: any) {
-    clearTimeout(timeoutId);
-    console.error('Failed to create OpenAI run:', error.message);
-    throw new Error(`Failed to create run: ${error.message}`);
-  }
+  // Create the run
+  const createRunResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs`, {
+    method: 'POST',
+    headers: {
+      'OpenAI-Beta': 'assistants=v2',
+      Authorization: `Bearer ${process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      assistant_id: assistantId,
+    }),
+  });
 
   if (!createRunResponse.ok) {
-    let errorText = 'Unable to read error response';
-    try {
-      errorText = await createRunResponse.text();
-    } catch (textError) {
-      console.error('Could not read create run error response:', textError);
-    }
-    console.error('OpenAI create run error:', {
-      status: createRunResponse.status,
-      statusText: createRunResponse.statusText,
-      errorText,
-    });
-    throw new Error(`Failed to create run: ${createRunResponse.status} ${errorText}`);
+    throw new Error(`Failed to create run: ${createRunResponse.status}`);
   }
 
   const runData = await createRunResponse.json();
   const runId = runData.id;
-  console.log('Created OpenAI run:', runId);
 
-  // Poll the run status until it's completed with timeout
-  const maxPollingTime = 120000; // 2 minutes max
-  const startTime = Date.now();
-  let pollCount = 0;
-  const maxPolls = 120; // Max 120 polls (2 minutes at 1 second intervals)
+  // Poll until completed
+  while (true) {
+    const runStatusResponse = await fetch(
+      `https://api.openai.com/v1/threads/${threadId}/runs/${runId}`,
+      {
+        headers: {
+          'OpenAI-Beta': 'assistants=v2',
+          Authorization: `Bearer ${process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID}`,
+        },
+      }
+    );
 
-  while (pollCount < maxPolls) {
-    const elapsedTime = Date.now() - startTime;
-    if (elapsedTime > maxPollingTime) {
-      console.error(`OpenAI run polling timeout after ${elapsedTime}ms`);
-      throw new Error(`Run polling timeout after ${Math.round(elapsedTime / 1000)} seconds`);
-    }
+    const runStatus = await runStatusResponse.json();
 
-    pollCount++;
-    console.log(`Polling run status (attempt ${pollCount}/${maxPolls})`);
-
-    const statusController = new AbortController();
-    const statusTimeoutId = setTimeout(() => {
-      console.log('Timeout triggered for run status check after 10 seconds');
-      statusController.abort();
-    }, 10000); // 10 second timeout for each status check
-
-    let runStatusResponse;
-    try {
-      runStatusResponse = await fetch(
-        `https://api.openai.com/v1/threads/${threadId}/runs/${runId}`,
+    if (runStatus.status === 'completed') {
+      // Get messages
+      const messagesResponse = await fetch(
+        `https://api.openai.com/v1/threads/${threadId}/messages`,
         {
           headers: {
             'OpenAI-Beta': 'assistants=v2',
             Authorization: `Bearer ${process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID}`,
           },
-          signal: statusController.signal,
         }
       );
-      clearTimeout(statusTimeoutId);
-    } catch (statusError: any) {
-      clearTimeout(statusTimeoutId);
-      console.error(`Failed to check run status (poll ${pollCount}):`, statusError.message);
-
-      // Wait before retrying
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      continue;
-    }
-
-    if (!runStatusResponse.ok) {
-      console.error(
-        `Run status check failed with status ${runStatusResponse.status} (poll ${pollCount})`
-      );
-
-      // Wait before retrying
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      continue;
-    }
-
-    let runStatus;
-    try {
-      runStatus = await runStatusResponse.json();
-    } catch (jsonError: any) {
-      console.error(`Failed to parse run status JSON (poll ${pollCount}):`, jsonError.message);
-
-      // Wait before retrying
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      continue;
-    }
-
-    console.log(`Run status: ${runStatus.status} (poll ${pollCount})`);
-
-    if (runStatus.status === 'completed') {
-      console.log('OpenAI run completed, fetching messages');
-
-      // Get the latest message with timeout
-      const messagesController = new AbortController();
-      const messagesTimeoutId = setTimeout(() => {
-        console.log('Timeout triggered for messages fetch after 15 seconds');
-        messagesController.abort();
-      }, 15000);
-
-      let messagesResponse;
-      try {
-        messagesResponse = await fetch(
-          `https://api.openai.com/v1/threads/${threadId}/messages?run_id=${runId}`,
-          {
-            headers: {
-              'OpenAI-Beta': 'assistants=v2',
-              Authorization: `Bearer ${process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID}`,
-            },
-            signal: messagesController.signal,
-          }
-        );
-        clearTimeout(messagesTimeoutId);
-      } catch (messagesError: any) {
-        clearTimeout(messagesTimeoutId);
-        console.error('Failed to fetch messages:', messagesError.message);
-        throw new Error(`Failed to fetch messages: ${messagesError.message}`);
-      }
-
-      if (!messagesResponse.ok) {
-        let errorText = 'Unable to read error response';
-        try {
-          errorText = await messagesResponse.text();
-        } catch (textError) {
-          console.error('Could not read messages error response:', textError);
-        }
-        console.error('Failed to fetch messages:', {
-          status: messagesResponse.status,
-          statusText: messagesResponse.statusText,
-          errorText,
-        });
-        throw new Error(`Failed to fetch messages: ${messagesResponse.status} ${errorText}`);
-      }
 
       const messages = await messagesResponse.json();
-      console.log(`Received ${messages.data?.length || 0} messages`);
-
-      // Get the first message (most recent) from the assistant
       const lastAssistantMessage = messages.data?.find(
         (message: any) => message.role === 'assistant'
       );
 
-      const response = lastAssistantMessage?.content[0]?.text?.value || 'No response received';
-      console.log('Successfully retrieved assistant response');
-      return response;
+      return lastAssistantMessage?.content[0]?.text?.value || 'No response received';
     } else if (runStatus.status === 'failed') {
-      const errorMessage = runStatus.last_error?.message || 'Unknown error';
-      console.error('OpenAI run failed:', errorMessage);
-      throw new Error(`Run failed: ${errorMessage}`);
-    } else if (runStatus.status === 'cancelled') {
-      console.error('OpenAI run was cancelled');
-      throw new Error('Run was cancelled');
-    } else if (runStatus.status === 'expired') {
-      console.error('OpenAI run expired');
-      throw new Error('Run expired');
+      throw new Error(`Run failed: ${runStatus.last_error?.message || 'Unknown error'}`);
     }
 
-    // Wait before polling again
+    // Wait 1 second before polling again
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
-
-  console.error(`OpenAI run polling exceeded maximum attempts (${maxPolls})`);
-  throw new Error(`Run polling exceeded maximum attempts after ${maxPolls} polls`);
 }
 
 async function processWebhook(body: any) {
@@ -440,13 +308,7 @@ async function startTracking(dealId: string): Promise<number> {
     VALUES (?, 'processing')
   `;
 
-  // Add timeout to prevent hanging
-  const queryPromise = pool.query(query, [dealId]);
-  const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('Database query timeout after 10 seconds')), 10000)
-  );
-
-  const [result] = (await Promise.race([queryPromise, timeoutPromise])) as any;
+  const [result] = await pool.query(query, [dealId]);
   const insertId = (result as any).insertId;
 
   console.log(`Started tracking quote request for deal ${dealId} with ID ${insertId}`);
@@ -479,47 +341,7 @@ async function markFailed(trackingId: number, errorMessage: string): Promise<voi
  * 3. Main Handler
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const handlerStartTime = Date.now();
-
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
-  // Log environment variable availability for debugging
-  const requiredEnvVars = {
-    HUBSPOT_QUOTE_REQUEST_ACCESS_TOKEN: !!process.env.HUBSPOT_QUOTE_REQUEST_ACCESS_TOKEN,
-    OPENAI_QUOTE_REQUEST_API_KEY_ID: !!process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID,
-    OPENAI_ASSISTANT_ID: !!process.env.OPENAI_ASSISTANT_ID,
-    OPENAI_THREAD_ID: !!process.env.OPENAI_THREAD_ID,
-    SLACK_QUOTE_REQUESTS_WEBHOOK_URL: !!process.env.SLACK_QUOTE_REQUESTS_WEBHOOK_URL,
-    HUBSPOT_QUOTE_REQUEST_WEBHOOK_SECRET: !!process.env.HUBSPOT_QUOTE_REQUEST_WEBHOOK_SECRET,
-  };
-
-  // Also check database environment variables
-  const dbEnvVars = {
-    DB_HOST_NAME: !!process.env.DB_HOST_NAME,
-    DB_USER_NAME: !!process.env.DB_USER_NAME,
-    DB_PASSWORD: !!process.env.DB_PASSWORD,
-    DB_DATABASE: !!process.env.DB_DATABASE,
-  };
-
-  console.log('🔍 Environment variables check:', requiredEnvVars);
-  console.log('🗄️ Database environment variables:', dbEnvVars);
-
-  const missingVars = Object.entries(requiredEnvVars)
-    .filter(([_, present]) => !present)
-    .map(([name, _]) => name);
-
-  const missingDbVars = Object.entries(dbEnvVars)
-    .filter(([_, present]) => !present)
-    .map(([name, _]) => name);
-
-  if (missingVars.length > 0) {
-    console.error('❌ Missing required environment variables:', missingVars);
-  }
-
-  if (missingDbVars.length > 0) {
-    console.error('❌ Missing database environment variables:', missingDbVars);
-    console.log('⚠️ Database tracking will be disabled due to missing DB config');
-  }
 
   // Check webhook secret
   const hubspotSecret = req.headers['hubspot_quote_request_webhook_secret'];
@@ -545,9 +367,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   } catch (dbError: any) {
     console.error(`Database check failed for deal ${dealId}:`, dbError.message);
-    console.error('Database error details:', dbError);
     useDatabaseTracking = false;
-    console.log('⚠️ Falling back to in-memory deduplication due to DB error');
 
     // Fallback to in-memory deduplication
     const now = Date.now();
@@ -579,9 +399,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       trackingId = await startTracking(dealId.toString());
     } catch (dbError: any) {
       console.error(`Failed to start tracking for deal ${dealId}:`, dbError.message);
-      console.error('Database error details:', dbError);
-      // Continue processing even if tracking fails
-      console.log('⚠️ Continuing without database tracking due to DB error');
       trackingId = null;
     }
   }
