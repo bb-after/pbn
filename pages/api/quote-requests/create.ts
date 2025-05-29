@@ -10,6 +10,8 @@ const pool = mysql.createPool({
   database: process.env.DB_DATABASE,
   waitForConnections: true,
   connectionLimit: 20,
+  idleTimeout: 60000, // 60 seconds before idle connections are closed
+  queueLimit: 0, // unlimited queue
 });
 
 // Fallback in-memory cache for when database is unavailable
@@ -438,7 +440,13 @@ async function startTracking(dealId: string): Promise<number> {
     VALUES (?, 'processing')
   `;
 
-  const [result] = await pool.query(query, [dealId]);
+  // Add timeout to prevent hanging
+  const queryPromise = pool.query(query, [dealId]);
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Database query timeout after 10 seconds')), 10000)
+  );
+
+  const [result] = (await Promise.race([queryPromise, timeoutPromise])) as any;
   const insertId = (result as any).insertId;
 
   console.log(`Started tracking quote request for deal ${dealId} with ID ${insertId}`);
