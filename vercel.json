@@ -1,18 +1,19 @@
 {
-    "functions": {
-      "pages/api/generateContent.ts": {
-        "maxDuration": 120
-      },
-      "pages/api/dialpad-transcripts.ts": {
-        "maxDuration": 300
-      }
+  "functions": {
+    "pages/api/generateContent.ts": {
+      "maxDuration": 120
     },
-    "crons": [
-      {
-        "path": "/api/dialpad-transcripts",
-        "schedule": "0 0,12 * * *"
-      }
-    ]
-  
-  }
-  
+    "pages/api/dialpad-transcripts.ts": {
+      "maxDuration": 300
+    },
+    "pages/api/quote-requests/create.ts": {
+      "maxDuration": 300
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/dialpad-transcripts",
+      "schedule": "0 0,12 * * *"
+    }
+  ]
+}
