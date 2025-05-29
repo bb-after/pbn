@@ -353,3 +353,79 @@ export const callOpenAISuperstarVersion = async (inputData: any) => {
     throw new Error('Failed to fetch response from OpenAI API.');
   }
 };
+
+// Add this new function to fetch Google Doc content
+export const fetchGoogleDocContent = async (docId: string): Promise<string> => {
+  try {
+    const response = await fetch(`/api/google-docs/content?docId=${docId}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch Google Doc: ${response.statusText}`);
+    }
+    const data = await response.json();
+    return data.content || '';
+  } catch (error) {
+    console.error('Error fetching Google Doc:', error);
+    return '';
+  }
+};
+
+// Add this enhanced function that can include document context
+export const callOpenAIWithDocuments = async (inputData: any, documentIds: string[] = []) => {
+  const { engine = 'gpt-4o-mini', maxTokens = 4000 } = inputData;
+  const maxAnthropicTokens = 4000;
+
+  // Fetch document contents if provided
+  let documentContext = '';
+  if (documentIds.length > 0) {
+    console.log('Fetching document contents for assistant context...');
+    const documentContents = await Promise.all(
+      documentIds.map(async docId => {
+        const content = await fetchGoogleDocContent(docId);
+        return content ? `\n\n--- Document ${docId} ---\n${content}\n--- End Document ---\n` : '';
+      })
+    );
+    documentContext = documentContents.join('');
+  }
+
+  // Create enhanced prompt with document context
+  const promptMessage = documentContext
+    ? `${inputData.prompt}\n\nPlease take into account the following documents:\n${documentContext}`
+    : inputData.prompt;
+
+  const enhancedInputData = {
+    ...inputData,
+    prompt: promptMessage,
+  };
+
+  // Use existing callOpenAI function with enhanced prompt
+  return callOpenAI(enhancedInputData);
+};
+
+// Add this function to include public document URLs in prompts
+export const callOpenAIWithPublicDocuments = async (
+  inputData: any,
+  documentUrls: string[] = []
+) => {
+  // Create document references for the prompt
+  let documentContext = '';
+  if (documentUrls.length > 0) {
+    const documentList = documentUrls
+      .map((url, index) => `Document ${index + 1}: ${url}`)
+      .join('\n');
+
+    documentContext = `\n\nPlease reference and analyze the following documents:\n${documentList}\n`;
+  }
+
+  // Create enhanced prompt with document URLs
+  const promptMessage = documentContext
+    ? `${inputData.prompt}${documentContext}`
+    : inputData.prompt;
+
+  const enhancedInputData = {
+    ...inputData,
+    prompt: promptMessage,
+  };
+
+  // Use existing callOpenAI function with enhanced prompt
+  return callOpenAI(enhancedInputData);
+};
