@@ -1,20 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { postToSlack } from 'utils/postToSlack';
-import * as mysql from 'mysql2/promise';
-
-// Create a connection pool (reuse across requests)
-const pool = mysql.createPool({
-  host: process.env.DB_HOST_NAME,
-  user: process.env.DB_USER_NAME,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_DATABASE,
-  waitForConnections: true,
-  connectionLimit: 20,
-});
-
-// Fallback in-memory cache for when database is unavailable
-const fallbackProcessedDeals = new Map<string, number>();
-const DEDUP_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 
 type DealData = {
   hs_object_id: Number;
@@ -285,58 +270,6 @@ async function sendMessageToThread({
   console.log('Message sent to thread successfully');
 }
 
-// Database tracking functions
-async function isRecentlyProcessed(dealId: string): Promise<boolean> {
-  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-
-  const query = `
-    SELECT id FROM quote_request_tracking 
-    WHERE hubspot_deal_id = ? 
-    AND processed_at > ? 
-    AND status IN ('processing', 'completed')
-    ORDER BY processed_at DESC 
-    LIMIT 1
-  `;
-
-  const [rows] = await pool.query(query, [dealId, fiveMinutesAgo]);
-  return (rows as any[]).length > 0;
-}
-
-async function startTracking(dealId: string): Promise<number> {
-  const query = `
-    INSERT INTO quote_request_tracking (hubspot_deal_id, status) 
-    VALUES (?, 'processing')
-  `;
-
-  const [result] = await pool.query(query, [dealId]);
-  const insertId = (result as any).insertId;
-
-  console.log(`Started tracking quote request for deal ${dealId} with ID ${insertId}`);
-  return insertId;
-}
-
-async function markCompleted(trackingId: number): Promise<void> {
-  const query = `
-    UPDATE quote_request_tracking 
-    SET status = 'completed', updated_at = CURRENT_TIMESTAMP 
-    WHERE id = ?
-  `;
-
-  await pool.query(query, [trackingId]);
-  console.log(`Marked quote request tracking ID ${trackingId} as completed`);
-}
-
-async function markFailed(trackingId: number, errorMessage: string): Promise<void> {
-  const query = `
-    UPDATE quote_request_tracking 
-    SET status = 'failed', error_message = ?, updated_at = CURRENT_TIMESTAMP 
-    WHERE id = ?
-  `;
-
-  await pool.query(query, [errorMessage, trackingId]);
-  console.log(`Marked quote request tracking ID ${trackingId} as failed: ${errorMessage}`);
-}
-
 /**
  * 3. Main Handler
  */
@@ -356,76 +289,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const dealId = req.body?.hs_object_id || 'Unknown';
   console.log(`Starting quote request processing for deal ${dealId}`);
 
-  // Check for recent processing to prevent duplicates using database
-  let useDatabaseTracking = true;
-  try {
-    const isRecentlyProcessedResult = await isRecentlyProcessed(dealId.toString());
-
-    if (isRecentlyProcessedResult) {
-      console.log(`⚠️ Deal ${dealId} was recently processed (database check), skipping duplicate`);
-      return;
-    }
-  } catch (dbError: any) {
-    console.error(`Database check failed for deal ${dealId}:`, dbError.message);
-    useDatabaseTracking = false;
-
-    // Fallback to in-memory deduplication
-    const now = Date.now();
-    const lastProcessed = fallbackProcessedDeals.get(dealId.toString());
-
-    if (lastProcessed && now - lastProcessed < DEDUP_WINDOW_MS) {
-      const timeSince = Math.round((now - lastProcessed) / 1000);
-      console.log(
-        `⚠️ Deal ${dealId} was already processed ${timeSince}s ago (fallback check), skipping duplicate`
-      );
-      return;
-    }
-
-    // Mark this deal as being processed in fallback cache
-    fallbackProcessedDeals.set(dealId.toString(), now);
-
-    // Clean up old entries from fallback cache
-    for (const [id, timestamp] of fallbackProcessedDeals.entries()) {
-      if (now - timestamp > DEDUP_WINDOW_MS) {
-        fallbackProcessedDeals.delete(id);
-      }
-    }
-  }
-
-  // Start tracking this request in the database (if database is available)
-  let trackingId: number | null = null;
-  if (useDatabaseTracking) {
-    try {
-      trackingId = await startTracking(dealId.toString());
-    } catch (dbError: any) {
-      console.error(`Failed to start tracking for deal ${dealId}:`, dbError.message);
-      trackingId = null;
-    }
-  }
-
   try {
     await processWebhook(req.body);
-
-    // Mark as completed in database (if database tracking is available)
-    if (trackingId && useDatabaseTracking) {
-      try {
-        await markCompleted(trackingId);
-      } catch (dbError: any) {
-        console.error(`Failed to mark tracking ${trackingId} as completed:`, dbError.message);
-      }
-    }
 
     console.log(`✅ Quote request handler completed successfully for deal ${dealId}`);
   } catch (error: any) {
     console.error(`❌ Quote request handler failed for deal ${dealId}:`, error.message);
-
-    // Mark as failed in database (if database tracking is available)
-    if (trackingId && useDatabaseTracking) {
-      try {
-        await markFailed(trackingId, error.message);
-      } catch (dbError: any) {
-        console.error(`Failed to mark tracking ${trackingId} as failed:`, dbError.message);
-      }
-    }
   }
 }
