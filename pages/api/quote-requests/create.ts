@@ -375,7 +375,11 @@ async function processWebhook(body: any) {
 
   const slackMessage = createSlackMessage(assistantReply, dealData, screenshotSection);
 
-  await postToSlack(slackMessage, '#quote-requests-v2', process.env.SLACK_WEBHOOK_URL!);
+  await postToSlack(
+    slackMessage,
+    '#quote-requests-v2',
+    process.env.SLACK_QUOTE_REQUESTS_WEBHOOK_URL!
+  );
   console.log('Quote request processed and sent to Slack successfully');
 }
 
@@ -477,7 +481,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     OPENAI_QUOTE_REQUEST_API_KEY_ID: !!process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID,
     OPENAI_ASSISTANT_ID: !!process.env.OPENAI_ASSISTANT_ID,
     OPENAI_THREAD_ID: !!process.env.OPENAI_THREAD_ID,
-    SLACK_WEBHOOK_URL: !!process.env.SLACK_WEBHOOK_URL,
+    SLACK_QUOTE_REQUESTS_WEBHOOK_URL: !!process.env.SLACK_QUOTE_REQUESTS_WEBHOOK_URL,
     HUBSPOT_QUOTE_REQUEST_WEBHOOK_SECRET: !!process.env.HUBSPOT_QUOTE_REQUEST_WEBHOOK_SECRET,
   };
 
