@@ -1,10 +1,20 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { postToSlack } from 'utils/postToSlack';
-import { QuoteRequestTracker } from 'lib/quoteRequestTracking';
+import * as mysql from 'mysql2/promise';
 
-// Remove the in-memory cache - we'll use database tracking instead
-// const processedDeals = new Map<string, number>();
-// const DEDUP_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+// Create a connection pool (reuse across requests)
+const pool = mysql.createPool({
+  host: process.env.DB_HOST_NAME,
+  user: process.env.DB_USER_NAME,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_DATABASE,
+  waitForConnections: true,
+  connectionLimit: 20,
+});
+
+// Fallback in-memory cache for when database is unavailable
+const fallbackProcessedDeals = new Map<string, number>();
+const DEDUP_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 
 type DealData = {
   hs_object_id: Number;
@@ -365,7 +375,11 @@ async function processWebhook(body: any) {
 
   const slackMessage = createSlackMessage(assistantReply, dealData, screenshotSection);
 
-  await postToSlack(slackMessage, '#quote-requests-v2', process.env.SLACK_WEBHOOK_URL!);
+  await postToSlack(
+    slackMessage,
+    '#quote-requests-v2',
+    process.env.SLACK_QUOTE_REQUESTS_WEBHOOK_URL!
+  );
   console.log('Quote request processed and sent to Slack successfully');
 }
 
@@ -401,6 +415,58 @@ async function sendMessageToThread({
   console.log('Message sent to thread successfully');
 }
 
+// Database tracking functions
+async function isRecentlyProcessed(dealId: string): Promise<boolean> {
+  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+
+  const query = `
+    SELECT id FROM quote_request_tracking 
+    WHERE hubspot_deal_id = ? 
+    AND processed_at > ? 
+    AND status IN ('processing', 'completed')
+    ORDER BY processed_at DESC 
+    LIMIT 1
+  `;
+
+  const [rows] = await pool.query(query, [dealId, fiveMinutesAgo]);
+  return (rows as any[]).length > 0;
+}
+
+async function startTracking(dealId: string): Promise<number> {
+  const query = `
+    INSERT INTO quote_request_tracking (hubspot_deal_id, status) 
+    VALUES (?, 'processing')
+  `;
+
+  const [result] = await pool.query(query, [dealId]);
+  const insertId = (result as any).insertId;
+
+  console.log(`Started tracking quote request for deal ${dealId} with ID ${insertId}`);
+  return insertId;
+}
+
+async function markCompleted(trackingId: number): Promise<void> {
+  const query = `
+    UPDATE quote_request_tracking 
+    SET status = 'completed', updated_at = CURRENT_TIMESTAMP 
+    WHERE id = ?
+  `;
+
+  await pool.query(query, [trackingId]);
+  console.log(`Marked quote request tracking ID ${trackingId} as completed`);
+}
+
+async function markFailed(trackingId: number, errorMessage: string): Promise<void> {
+  const query = `
+    UPDATE quote_request_tracking 
+    SET status = 'failed', error_message = ?, updated_at = CURRENT_TIMESTAMP 
+    WHERE id = ?
+  `;
+
+  await pool.query(query, [errorMessage, trackingId]);
+  console.log(`Marked quote request tracking ID ${trackingId} as failed: ${errorMessage}`);
+}
+
 /**
  * 3. Main Handler
  */
@@ -415,18 +481,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     OPENAI_QUOTE_REQUEST_API_KEY_ID: !!process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID,
     OPENAI_ASSISTANT_ID: !!process.env.OPENAI_ASSISTANT_ID,
     OPENAI_THREAD_ID: !!process.env.OPENAI_THREAD_ID,
-    SLACK_WEBHOOK_URL: !!process.env.SLACK_WEBHOOK_URL,
+    SLACK_QUOTE_REQUESTS_WEBHOOK_URL: !!process.env.SLACK_QUOTE_REQUESTS_WEBHOOK_URL,
     HUBSPOT_QUOTE_REQUEST_WEBHOOK_SECRET: !!process.env.HUBSPOT_QUOTE_REQUEST_WEBHOOK_SECRET,
   };
 
+  // Also check database environment variables
+  const dbEnvVars = {
+    DB_HOST_NAME: !!process.env.DB_HOST_NAME,
+    DB_USER_NAME: !!process.env.DB_USER_NAME,
+    DB_PASSWORD: !!process.env.DB_PASSWORD,
+    DB_DATABASE: !!process.env.DB_DATABASE,
+  };
+
   console.log('🔍 Environment variables check:', requiredEnvVars);
+  console.log('🗄️ Database environment variables:', dbEnvVars);
 
   const missingVars = Object.entries(requiredEnvVars)
     .filter(([_, present]) => !present)
     .map(([name, _]) => name);
 
+  const missingDbVars = Object.entries(dbEnvVars)
+    .filter(([_, present]) => !present)
+    .map(([name, _]) => name);
+
   if (missingVars.length > 0) {
     console.error('❌ Missing required environment variables:', missingVars);
+  }
+
+  if (missingDbVars.length > 0) {
+    console.error('❌ Missing database environment variables:', missingDbVars);
+    console.log('⚠️ Database tracking will be disabled due to missing DB config');
   }
 
   // Check webhook secret
@@ -443,34 +527,64 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   console.log(`Starting quote request processing for deal ${dealId}`);
 
   // Check for recent processing to prevent duplicates using database
+  let useDatabaseTracking = true;
   try {
-    const isRecentlyProcessed = await QuoteRequestTracker.isRecentlyProcessed(dealId.toString());
+    const isRecentlyProcessedResult = await isRecentlyProcessed(dealId.toString());
 
-    if (isRecentlyProcessed) {
-      console.log(`⚠️ Deal ${dealId} was recently processed, skipping duplicate`);
+    if (isRecentlyProcessedResult) {
+      console.log(`⚠️ Deal ${dealId} was recently processed (database check), skipping duplicate`);
       return;
     }
   } catch (dbError: any) {
     console.error(`Database check failed for deal ${dealId}:`, dbError.message);
-    // Continue processing even if database check fails - better to process duplicate than miss a request
+    console.error('Database error details:', dbError);
+    useDatabaseTracking = false;
+    console.log('⚠️ Falling back to in-memory deduplication due to DB error');
+
+    // Fallback to in-memory deduplication
+    const now = Date.now();
+    const lastProcessed = fallbackProcessedDeals.get(dealId.toString());
+
+    if (lastProcessed && now - lastProcessed < DEDUP_WINDOW_MS) {
+      const timeSince = Math.round((now - lastProcessed) / 1000);
+      console.log(
+        `⚠️ Deal ${dealId} was already processed ${timeSince}s ago (fallback check), skipping duplicate`
+      );
+      return;
+    }
+
+    // Mark this deal as being processed in fallback cache
+    fallbackProcessedDeals.set(dealId.toString(), now);
+
+    // Clean up old entries from fallback cache
+    for (const [id, timestamp] of fallbackProcessedDeals.entries()) {
+      if (now - timestamp > DEDUP_WINDOW_MS) {
+        fallbackProcessedDeals.delete(id);
+      }
+    }
   }
 
-  // Start tracking this request in the database
+  // Start tracking this request in the database (if database is available)
   let trackingId: number | null = null;
-  try {
-    trackingId = await QuoteRequestTracker.startTracking(dealId.toString());
-  } catch (dbError: any) {
-    console.error(`Failed to start tracking for deal ${dealId}:`, dbError.message);
-    // Continue processing even if tracking fails
+  if (useDatabaseTracking) {
+    try {
+      trackingId = await startTracking(dealId.toString());
+    } catch (dbError: any) {
+      console.error(`Failed to start tracking for deal ${dealId}:`, dbError.message);
+      console.error('Database error details:', dbError);
+      // Continue processing even if tracking fails
+      console.log('⚠️ Continuing without database tracking due to DB error');
+      trackingId = null;
+    }
   }
 
   try {
     await processWebhook(req.body);
 
-    // Mark as completed in database
-    if (trackingId) {
+    // Mark as completed in database (if database tracking is available)
+    if (trackingId && useDatabaseTracking) {
       try {
-        await QuoteRequestTracker.markCompleted(trackingId);
+        await markCompleted(trackingId);
       } catch (dbError: any) {
         console.error(`Failed to mark tracking ${trackingId} as completed:`, dbError.message);
       }
@@ -480,10 +594,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   } catch (error: any) {
     console.error(`❌ Quote request handler failed for deal ${dealId}:`, error.message);
 
-    // Mark as failed in database
-    if (trackingId) {
+    // Mark as failed in database (if database tracking is available)
+    if (trackingId && useDatabaseTracking) {
       try {
-        await QuoteRequestTracker.markFailed(trackingId, error.message);
+        await markFailed(trackingId, error.message);
       } catch (dbError: any) {
         console.error(`Failed to mark tracking ${trackingId} as failed:`, dbError.message);
       }
