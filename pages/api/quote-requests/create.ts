@@ -1,5 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { postToSlack } from 'utils/postToSlack';
+import { QuoteRequestTracker } from 'lib/quoteRequestTracking';
+
+// Remove the in-memory cache - we'll use database tracking instead
+// const processedDeals = new Map<string, number>();
+// const DEDUP_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 
 type DealData = {
   hs_object_id: Number;
@@ -38,7 +43,7 @@ function formatForSlack(text: string): string {
 }
 
 /**
- * 1. HubSpot Files API: Retrieve Private File Paths - simplified version
+ * 1. HubSpot Files API: Retrieve Private File Paths - simple working version
  */
 async function getHubSpotFilePaths(fileIds: string[]): Promise<string[]> {
   const filePaths: string[] = [];
@@ -55,34 +60,22 @@ async function getHubSpotFilePaths(fileIds: string[]): Promise<string[]> {
         },
       });
 
-      console.log(`Response received for file ${fileId}, status: ${response.status}`);
-
       if (!response.ok) {
-        console.error(`HubSpot API error for file ${fileId}:`, {
-          status: response.status,
-          statusText: response.statusText,
-        });
-        continue; // Skip this file but continue processing others
+        console.error(`HubSpot API error for file ${fileId}: ${response.status}`);
+        continue;
       }
 
       const fileData = await response.json();
-      console.log(`Successfully parsed JSON for file ${fileId}`);
-
       if (fileData.url) {
         filePaths.push(fileData.url);
-        console.log(`Added file URL for ${fileId}: ${fileData.url}`);
-      } else {
-        console.warn(`No URL found in file data for ${fileId}`);
+        console.log(`Added file URL for ${fileId}`);
       }
     } catch (err: any) {
       console.error(`Error processing HubSpot file ${fileId}:`, err.message);
-      // Continue processing other files instead of failing completely
     }
   }
 
-  console.log(
-    `HubSpot file processing complete. Retrieved ${filePaths.length} file paths out of ${fileIds.length} attempted.`
-  );
+  console.log(`Retrieved ${filePaths.length} file paths`);
   return filePaths;
 }
 
@@ -153,7 +146,7 @@ async function createThreadRun({
     try {
       errorText = await createRunResponse.text();
     } catch (textError) {
-      console.warn('Could not read create run error response:', textError);
+      console.error('Could not read create run error response:', textError);
     }
     console.error('OpenAI create run error:', {
       status: createRunResponse.status,
@@ -204,7 +197,7 @@ async function createThreadRun({
       clearTimeout(statusTimeoutId);
     } catch (statusError: any) {
       clearTimeout(statusTimeoutId);
-      console.warn(`Failed to check run status (poll ${pollCount}):`, statusError.message);
+      console.error(`Failed to check run status (poll ${pollCount}):`, statusError.message);
 
       // Wait before retrying
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -212,7 +205,7 @@ async function createThreadRun({
     }
 
     if (!runStatusResponse.ok) {
-      console.warn(
+      console.error(
         `Run status check failed with status ${runStatusResponse.status} (poll ${pollCount})`
       );
 
@@ -225,7 +218,7 @@ async function createThreadRun({
     try {
       runStatus = await runStatusResponse.json();
     } catch (jsonError: any) {
-      console.warn(`Failed to parse run status JSON (poll ${pollCount}):`, jsonError.message);
+      console.error(`Failed to parse run status JSON (poll ${pollCount}):`, jsonError.message);
 
       // Wait before retrying
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -268,7 +261,7 @@ async function createThreadRun({
         try {
           errorText = await messagesResponse.text();
         } catch (textError) {
-          console.warn('Could not read messages error response:', textError);
+          console.error('Could not read messages error response:', textError);
         }
         console.error('Failed to fetch messages:', {
           status: messagesResponse.status,
@@ -310,7 +303,6 @@ async function createThreadRun({
 }
 
 async function processWebhook(body: any) {
-  const startTime = Date.now();
   const dealData: DealData = {
     hs_object_id: body.hs_object_id,
     keyword: body.keyword,
@@ -322,19 +314,13 @@ async function processWebhook(body: any) {
     budget_discussed: body.budget_discussed,
   };
 
-  console.log(
-    'Processing webhook for deal:',
-    dealData.hs_object_id,
-    `(started at ${new Date().toISOString()})`
-  );
+  console.log('Processing webhook for deal:', dealData.hs_object_id);
 
-  // Try to fetch screenshots, but don't fail if this doesn't work
+  // Try to fetch screenshots
   let screenshotPaths: string[] = [];
   let screenshotSection = 'No screenshots available';
-  let screenshotStartTime = Date.now();
 
   try {
-    screenshotStartTime = Date.now();
     const screenshotFileIds = [
       body.quote_request_image_1,
       body.quote_attachment__2,
@@ -342,30 +328,18 @@ async function processWebhook(body: any) {
     ].filter(Boolean);
 
     if (screenshotFileIds.length > 0) {
-      console.log('Attempting to fetch screenshot files:', screenshotFileIds);
+      console.log('Fetching screenshot files:', screenshotFileIds);
       screenshotPaths = await getHubSpotFilePaths(screenshotFileIds);
 
       if (screenshotPaths.length > 0) {
         screenshotSection = screenshotPaths
           .map((url, i) => `Screenshot #${i + 1}: ${url}`)
           .join('\n');
-        console.log('Successfully retrieved screenshot URLs:', screenshotPaths);
-      } else {
-        console.warn('No screenshot URLs were retrieved');
       }
-    } else {
-      console.log('No screenshot file IDs provided');
     }
-
-    const screenshotDuration = Date.now() - screenshotStartTime;
-    console.log(`Screenshot processing completed in ${screenshotDuration}ms`);
   } catch (screenshotError: any) {
-    const screenshotDuration = Date.now() - screenshotStartTime;
-    console.error(
-      `Error fetching screenshots after ${screenshotDuration}ms (continuing anyway):`,
-      screenshotError.message
-    );
-    screenshotSection = 'Screenshots could not be retrieved due to network issues';
+    console.error('Error fetching screenshots:', screenshotError.message);
+    screenshotSection = 'Screenshots could not be retrieved';
   }
 
   const userMessage = `
@@ -383,52 +357,16 @@ async function processWebhook(body: any) {
 
   console.log('Sending message to OpenAI assistant...');
 
-  try {
-    const aiStartTime = Date.now();
-    const assistantId = process.env.OPENAI_ASSISTANT_ID!;
-    const threadId = process.env.OPENAI_THREAD_ID!;
+  const assistantId = process.env.OPENAI_ASSISTANT_ID!;
+  const threadId = process.env.OPENAI_THREAD_ID!;
 
-    await sendMessageToThread({ threadId, userMessage });
-    const messageTime = Date.now() - aiStartTime;
-    console.log(`Message sent to thread successfully in ${messageTime}ms`);
+  await sendMessageToThread({ threadId, userMessage });
+  const assistantReply = await createThreadRun({ threadId, assistantId });
 
-    const runStartTime = Date.now();
-    const assistantReply = await createThreadRun({ threadId, assistantId });
-    const runTime = Date.now() - runStartTime;
-    console.log(`Received assistant reply in ${runTime}ms`);
+  const slackMessage = createSlackMessage(assistantReply, dealData, screenshotSection);
 
-    const slackStartTime = Date.now();
-    const slackMessage = createSlackMessage(assistantReply, dealData, screenshotSection);
-
-    await postToSlack(slackMessage, '#quote-requests-v2', process.env.SLACK_WEBHOOK_URL!);
-    const slackTime = Date.now() - slackStartTime;
-    console.log(`Slack notification sent in ${slackTime}ms`);
-
-    const totalTime = Date.now() - startTime;
-    console.log(
-      `Quote request processed and sent to Slack successfully. Total execution time: ${totalTime}ms (${Math.round(totalTime / 1000)}s)`
-    );
-  } catch (aiError: any) {
-    const totalTime = Date.now() - startTime;
-    console.error(`Error processing AI request after ${totalTime}ms:`, aiError.message);
-
-    // Send a fallback message to Slack even if AI processing fails
-    try {
-      const fallbackMessage = createSlackMessage(
-        'AI processing failed due to network issues. Please process this quote request manually.',
-        dealData,
-        screenshotSection
-      );
-
-      await postToSlack(fallbackMessage, '#quote-requests-v2', process.env.SLACK_WEBHOOK_URL!);
-      console.log('Fallback message sent to Slack');
-    } catch (slackError: any) {
-      console.error('Failed to send fallback Slack message:', slackError.message);
-      throw new Error(
-        `Both AI processing and Slack fallback failed: ${aiError.message} | ${slackError.message}`
-      );
-    }
-  }
+  await postToSlack(slackMessage, '#quote-requests-v2', process.env.SLACK_WEBHOOK_URL!);
+  console.log('Quote request processed and sent to Slack successfully');
 }
 
 async function sendMessageToThread({
@@ -445,42 +383,22 @@ async function sendMessageToThread({
     content: userMessage,
   };
 
-  console.log('Preparing to send message to OpenAI thread:', threadId);
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'OpenAI-Beta': 'assistants=v2',
+      Authorization: `Bearer ${process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
 
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'OpenAI-Beta': 'assistants=v2',
-        Authorization: `Bearer ${process.env.OPENAI_QUOTE_REQUEST_API_KEY_ID}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    console.log(`Successfully received response from OpenAI API, status: ${response.status}`);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('OpenAI API error:', {
-        status: response.status,
-        statusText: response.statusText,
-        errorText,
-      });
-      throw new Error(`Failed to send message to thread: ${response.status} ${errorText}`);
-    }
-
-    const responseData = await response.json();
-    console.log('Successfully sent message to OpenAI thread:', {
-      messageId: responseData.id,
-      threadId: responseData.thread_id,
-    });
-  } catch (error: unknown) {
-    console.error('Error in sendMessageToThread:', {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    throw error;
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to send message: ${response.status} ${errorText}`);
   }
+
+  console.log('Message sent to thread successfully');
 }
 
 /**
@@ -511,66 +429,64 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.error('❌ Missing required environment variables:', missingVars);
   }
 
-  // (Optional) check your custom webhook secret from HubSpot or any source
+  // Check webhook secret
   const hubspotSecret = req.headers['hubspot_quote_request_webhook_secret'];
   if (!hubspotSecret || hubspotSecret !== process.env.HUBSPOT_QUOTE_REQUEST_WEBHOOK_SECRET) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  // respond right away to hubspot to avoid timeout
+  // Respond immediately to HubSpot
   res.status(200).json({ message: 'Quote request received' });
 
-  // Extract deal ID for error reporting
+  // Extract deal ID for logging
   const dealId = req.body?.hs_object_id || 'Unknown';
-  console.log(
-    `Starting quote request processing for deal ${dealId} at ${new Date().toISOString()}`
-  );
+  console.log(`Starting quote request processing for deal ${dealId}`);
+
+  // Check for recent processing to prevent duplicates using database
+  try {
+    const isRecentlyProcessed = await QuoteRequestTracker.isRecentlyProcessed(dealId.toString());
+
+    if (isRecentlyProcessed) {
+      console.log(`⚠️ Deal ${dealId} was recently processed, skipping duplicate`);
+      return;
+    }
+  } catch (dbError: any) {
+    console.error(`Database check failed for deal ${dealId}:`, dbError.message);
+    // Continue processing even if database check fails - better to process duplicate than miss a request
+  }
+
+  // Start tracking this request in the database
+  let trackingId: number | null = null;
+  try {
+    trackingId = await QuoteRequestTracker.startTracking(dealId.toString());
+  } catch (dbError: any) {
+    console.error(`Failed to start tracking for deal ${dealId}:`, dbError.message);
+    // Continue processing even if tracking fails
+  }
 
   try {
     await processWebhook(req.body);
-    const totalHandlerTime = Date.now() - handlerStartTime;
-    console.log(
-      `✅ Quote request handler completed successfully for deal ${dealId}. Total handler time: ${totalHandlerTime}ms (${Math.round(totalHandlerTime / 1000)}s)`
-    );
-  } catch (error: any) {
-    const totalHandlerTime = Date.now() - handlerStartTime;
-    console.error(
-      `❌ Quote request handler failed for deal ${dealId} after ${totalHandlerTime}ms:`,
-      {
-        dealId,
-        error: error.message,
-        stack: error.stack?.split('\n').slice(0, 5).join('\n'),
+
+    // Mark as completed in database
+    if (trackingId) {
+      try {
+        await QuoteRequestTracker.markCompleted(trackingId);
+      } catch (dbError: any) {
+        console.error(`Failed to mark tracking ${trackingId} as completed:`, dbError.message);
       }
-    );
+    }
 
-    // Final fallback: Always notify Slack when the entire process fails
-    try {
-      const errorMessage = `🚨 *Quote Request Processing Failed*
+    console.log(`✅ Quote request handler completed successfully for deal ${dealId}`);
+  } catch (error: any) {
+    console.error(`❌ Quote request handler failed for deal ${dealId}:`, error.message);
 
-*Deal ID:* ${dealId}
-*HubSpot Deal:* https://app.hubspot.com/contacts/24444832/record/0-3/${dealId}
-*Error:* ${error.message}
-*Execution Time:* ${Math.round(totalHandlerTime / 1000)}s
-*Time:* ${new Date().toISOString()}
-
-The quote request webhook was received but processing failed completely. Please check the server logs and process this request manually.
-
-*Request Data:*
-\`\`\`
-${JSON.stringify(req.body, null, 2).slice(0, 1000)}${JSON.stringify(req.body, null, 2).length > 1000 ? '...' : ''}
-\`\`\``;
-
-      await postToSlack(errorMessage, '#quote-requests-v2', process.env.SLACK_WEBHOOK_URL!);
-      console.log('Emergency error notification sent to Slack');
-    } catch (slackError: any) {
-      console.error('Failed to send emergency error notification to Slack:', slackError.message);
-      // At this point we've done everything we can - log the final error
-      console.error('CRITICAL: Both quote processing and error notification failed', {
-        originalError: error.message,
-        slackError: slackError.message,
-        dealId,
-        totalTime: `${Math.round(totalHandlerTime / 1000)}s`,
-      });
+    // Mark as failed in database
+    if (trackingId) {
+      try {
+        await QuoteRequestTracker.markFailed(trackingId, error.message);
+      } catch (dbError: any) {
+        console.error(`Failed to mark tracking ${trackingId} as failed:`, dbError.message);
+      }
     }
   }
 }
