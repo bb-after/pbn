@@ -214,6 +214,11 @@ const StyledHeader = () => {
       group: 'Other Tools',
       items: [
         {
+          text: 'Lead Enricher',
+          href: '/lead-enricher',
+          description: 'Upload CSV data for lead enrichment and analysis',
+        },
+        {
           text: 'Backlink Buddy',
           href: '/backlink-buddy',
           description: 'Create multiple PBN articles with targeted backlinks',
