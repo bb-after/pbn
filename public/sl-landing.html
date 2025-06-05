@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Status Labs – Digital Presence</title>
+    <!-- <title>Status Labs – Digital Presence</title> -->
 
     <!-- Google Font -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -229,6 +229,62 @@
             #hero { grid-template-columns: 1fr; text-align: center; }
             #hero .copy { text-align: center; }
         }
+
+        /* ---------- PRINT STYLES ---------- */
+        @media print {
+            /* Hide browser headers/footers/timestamps */
+            @page {
+                margin: 0;
+                size: auto;
+            }
+            
+            body {
+                font-size: 0.85rem;
+                line-height: 1.4;
+                margin: 0;
+                padding: 0;
+            }
+            section {
+                padding: 2rem 1rem;
+                max-width: 100%;
+            }
+            h1 { font-size: 2rem; }
+            h2 { font-size: 1.5rem; }
+            h3 { font-size: 1.1rem; }
+            p { margin: 0 0 0.8rem 0; }
+            
+            #hero {
+                padding: 1.5rem 1rem;
+            }
+            #hero img.hero-graphic {
+                max-width: 200px;
+            }
+            
+            #approach .steps {
+                margin: 1.5rem 0 0 0;
+                gap: 1.5rem;
+            }
+            .step .circle {
+                width: 60px;
+                height: 60px;
+                font-size: 1.4rem;
+                margin: 0 auto 0.5rem auto;
+            }
+            
+            #services .grid,
+            #difference .grid {
+                gap: 1rem;
+                margin-top: 1.5rem;
+            }
+            .service {
+                padding: 1.2rem 1rem;
+            }
+            
+            #contact {
+                margin-top: 1.5rem;
+                font-size: 0.95rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -245,7 +301,7 @@
         </div>
         
         <!-- Placeholder graphic – replace src with your own image path -->
-        <img src="/images/hand-globe-3.png" alt="Hand holding a digital globe" class="hero-graphic" />
+        <img src="/images/sl-hand.png" alt="Hand holding a digital globe" class="hero-graphic" />
     </section>
 
     <!-- ========================= APPROACH ========================= -->
@@ -379,8 +435,11 @@
                     </div>
                 </div>
             </div>
-            <div>
-                <img class="team" src="/images/team-photo.png" alt="Status Labs team working together" />
+            <!-- Optional team photo -->
+            <div style="grid-column: span 3;">
+                <div style="width:50%; margin: 0 auto;">
+                    <img src="/images/status-labs-hq.png" width="300" alt="Status Labs Headquaters" class="team" />
+                </div>
             </div>
         </div>
 
