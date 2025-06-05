@@ -82,7 +82,55 @@ export default function LeadEnricherPage() {
     const lines = csvText.split('\n').filter(line => line.trim() !== '');
     if (lines.length === 0) return [];
 
-    const headers = lines[0].split(',').map(header => header.trim().replace(/"/g, ''));
+    // Parse CSV properly handling quoted fields
+    const parseCSVLine = (line: string): string[] => {
+      // Clean up line - remove carriage returns and fix malformed quotes
+      const cleanLine = line.replace(/\r/g, '').trim();
+
+      // Handle malformed lines that start with quote but aren't properly formatted
+      if (cleanLine.startsWith('"') && !cleanLine.includes('","') && cleanLine.includes(',')) {
+        // This looks like a malformed line, try to split it normally
+        return cleanLine
+          .replace(/^"|"$/g, '')
+          .split(',')
+          .map(val => val.trim());
+      }
+
+      const result: string[] = [];
+      let current = '';
+      let inQuotes = false;
+      let i = 0;
+
+      while (i < cleanLine.length) {
+        const char = cleanLine[i];
+
+        if (char === '"') {
+          if (inQuotes && cleanLine[i + 1] === '"') {
+            // Escaped quote
+            current += '"';
+            i += 2;
+          } else {
+            // Toggle quote state
+            inQuotes = !inQuotes;
+            i++;
+          }
+        } else if (char === ',' && !inQuotes) {
+          // Field separator
+          result.push(current.trim());
+          current = '';
+          i++;
+        } else {
+          current += char;
+          i++;
+        }
+      }
+
+      // Add last field
+      result.push(current.trim());
+      return result;
+    };
+
+    const headers = parseCSVLine(lines[0]).map(header => header.replace(/"/g, ''));
     const data = [];
 
     // Create a mapping of normalized headers to original headers
@@ -91,8 +139,20 @@ export default function LeadEnricherPage() {
       headerMap[header.toLowerCase()] = header;
     });
 
+    console.log('CSV Headers:', headers);
+    console.log('Header mapping:', headerMap);
+
     for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map(value => value.trim().replace(/"/g, ''));
+      const rawLine = lines[i];
+
+      // Skip obviously malformed or empty rows
+      const cleanLine = rawLine.replace(/\r/g, '').trim();
+      if (!cleanLine || cleanLine === '""' || cleanLine.match(/^"+$/)) {
+        console.log(`Skipping malformed row ${i + 1}:`, rawLine);
+        continue;
+      }
+
+      const values = parseCSVLine(rawLine).map(value => value.replace(/"/g, ''));
       const row: any = {};
 
       headers.forEach((header, index) => {
@@ -103,6 +163,35 @@ export default function LeadEnricherPage() {
       row.Company = row[headerMap['company']] || '';
       row.Keyword = row[headerMap['keyword']] || '';
       row.URL = row[headerMap['url']] || '';
+
+      // Skip rows where all required fields are empty or contain only commas/whitespace
+      const hasValidCompany = row.Company && row.Company.trim() && !row.Company.match(/^[,\s]*$/);
+      const hasValidKeyword = row.Keyword && row.Keyword.trim() && !row.Keyword.match(/^[,\s]*$/);
+      const hasValidURL = row.URL && row.URL.trim() && !row.URL.match(/^[,\s]*$/);
+
+      if (!hasValidCompany && !hasValidKeyword && !hasValidURL) {
+        console.log(`Skipping empty row ${i + 1}:`, {
+          Company: row.Company,
+          Keyword: row.Keyword,
+          URL: row.URL,
+        });
+        continue;
+      }
+
+      // Debug logging for problematic rows
+      if (i === 3 || i === 9) {
+        // rows 4 and 10 (0-indexed)
+        console.log(`Debug Row ${i + 1}:`, {
+          rawLine: rawLine,
+          parsedValues: values,
+          mappedData: {
+            Company: row.Company,
+            Keyword: row.Keyword,
+            URL: row.URL,
+          },
+          hasValidData: { hasValidCompany, hasValidKeyword, hasValidURL },
+        });
+      }
 
       data.push(row);
     }

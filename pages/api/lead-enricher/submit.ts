@@ -140,9 +140,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Validate data structure
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
-      if (!row.Company || !row.Keyword || !row.URL) {
+      const missingFields = [];
+
+      if (!row.Company || String(row.Company).trim() === '') missingFields.push('Company');
+      if (!row.Keyword || String(row.Keyword).trim() === '') missingFields.push('Keyword');
+      if (!row.URL || String(row.URL).trim() === '') missingFields.push('URL');
+
+      if (missingFields.length > 0) {
+        console.log(`Row ${i + 2} validation failed:`, {
+          rowData: row,
+          missingFields,
+          Company: row.Company,
+          Keyword: row.Keyword,
+          URL: row.URL,
+        });
+
         return res.status(400).json({
-          message: `Invalid data at row ${i + 1}. Company, Keyword, and URL are required.`,
+          message: `Invalid data at row ${i + 2}. Missing fields: ${missingFields.join(', ')}. Company: "${row.Company}", Keyword: "${row.Keyword}", URL: "${row.URL}"`,
         });
       }
     }
