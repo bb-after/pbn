@@ -17,10 +17,17 @@ import {
   TablePagination,
   CircularProgress,
   Tooltip,
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Alert,
 } from '@mui/material';
 import useValidateUserToken from '../hooks/useValidateUserToken';
 import Image from 'next/image';
 import { useRouter } from 'next/router';
+import UnauthorizedAccess from './UnauthorizedAccess';
 
 const handleDeleteSubmission = async (
   submissionId: number,
@@ -231,11 +238,7 @@ const SuperstarSiteSubmissionsTable = () => {
   }
 
   if (!isValidUser) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
-        <Typography variant="h6">Unauthorized access. Please log in.</Typography>
-      </Box>
-    );
+    return <UnauthorizedAccess />;
   }
 
   return (

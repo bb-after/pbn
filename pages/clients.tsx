@@ -29,6 +29,10 @@ import {
   MenuItem,
   Tooltip,
   Autocomplete,
+  Alert,
+  Snackbar,
+  SelectChangeEvent,
+  Stack,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -41,6 +45,7 @@ import LayoutContainer from '../components/LayoutContainer';
 import StyledHeader from '../components/StyledHeader';
 import useValidateUserToken from 'hooks/useValidateUserToken';
 import Link from 'next/link';
+import UnauthorizedAccess from 'components/UnauthorizedAccess';
 
 interface Industry {
   industry_id: number;
@@ -232,11 +237,7 @@ export default function ClientsPage() {
     });
 
   if (!isValidUser) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
-        <Typography variant="h6">Unauthorized access. Please log in.</Typography>
-      </Box>
-    );
+    return <UnauthorizedAccess />;
   }
 
   return (

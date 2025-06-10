@@ -1,8 +1,10 @@
+import React from 'react';
 import { useRouter } from 'next/router';
-import { Container, Paper, Typography } from '@mui/material';
+import { Container, Paper, Typography, Box } from '@mui/material';
 import LayoutContainer from '../../components/LayoutContainer';
 import StyledHeader from '../../components/StyledHeader';
 import ClientForm from '../../components/ClientForm';
+import UnauthorizedAccess from 'components/UnauthorizedAccess';
 import useValidateUserToken from 'hooks/useValidateUserToken';
 
 export default function AddClientPage() {
@@ -18,13 +20,7 @@ export default function AddClientPage() {
   };
 
   if (!isValidUser) {
-    return (
-      <div
-        style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}
-      >
-        <Typography variant="h6">Unauthorized access. Please log in.</Typography>
-      </div>
-    );
+    return <UnauthorizedAccess />;
   }
 
   return (

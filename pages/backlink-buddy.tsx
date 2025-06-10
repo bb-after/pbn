@@ -47,6 +47,8 @@ import axios from 'axios';
 import { useRouter } from 'next/router';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import Image from 'next/image';
+import UnauthorizedAccess from 'components/UnauthorizedAccess';
+import PbnSubmissionForm from 'components/PbnSubmissionForm';
 
 // Import ReactQuill dynamically to avoid SSR issues
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
@@ -1180,11 +1182,7 @@ export default function BacklinkBuddyPage() {
   };
 
   if (!isValidUser) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
-        <Typography variant="h6">Unauthorized access. Please log in.</Typography>
-      </Box>
-    );
+    return <UnauthorizedAccess />;
   }
 
   return (

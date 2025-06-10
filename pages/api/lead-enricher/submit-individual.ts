@@ -2,14 +2,18 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import mysql from 'mysql2/promise';
 import { google } from 'googleapis';
 
-interface CSVRowData {
-  Company: string;
-  Keyword: string;
+interface IndividualCSVRowData {
   URL: string;
+  keyword: string;
+  negativeURLTitle: string;
+  firstName: string;
+  lastName: string;
+  email?: string;
+  linkedinURL?: string;
 }
 
 interface RequestBody {
-  data: CSVRowData[];
+  data: IndividualCSVRowData[];
   userToken: string;
   fieldMapping?: { [key: string]: string }; // Original CSV header -> Our field name
   csvHeaders?: string[]; // Original CSV headers in order
@@ -24,16 +28,16 @@ const dbConfig = {
   connectionLimit: 10,
 };
 
-// Google Sheets configuration
-const SPREADSHEET_ID = '1O15b50dX2qF9vSRdhLj1tOMXnRdLuNfYWnJtVUhrqK8';
-const RANGE = 'A:E'; // Use columns A-E including user name
+// Google Sheets configuration for individual lists
+const INDIVIDUAL_SPREADSHEET_ID = '1wL2UKP7DlEqSeX3mztL4W3SodGbP55-CH_Pbgg4kRmM';
+const RANGE = 'A:I'; // Use columns A-I for all fields including user name
 
 // Initialize Google Sheets client
 const getGoogleSheetsClient = async () => {
   const auth = new google.auth.GoogleAuth({
     credentials: {
       type: 'service_account',
-      project_id: '170711728338', // Use the project ID from the error
+      project_id: '170711728338',
       private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
       client_email: process.env.GOOGLE_CLIENT_EMAIL,
     },
@@ -61,14 +65,14 @@ const getUserFromToken = async (
   }
 };
 
-// Save submission to database
+// Save submission to database with list_type
 const saveSubmissionToDatabase = async (userId: number, rowCount: number) => {
   const connection = await mysql.createConnection(dbConfig);
 
   try {
     const [result] = await connection.execute(
       'INSERT INTO user_partial_list_submissions (user_id, rows_submitted, list_type, created_at) VALUES (?, ?, ?, NOW())',
-      [userId, rowCount, 'company']
+      [userId, rowCount, 'individual']
     );
 
     return result;
@@ -78,20 +82,20 @@ const saveSubmissionToDatabase = async (userId: number, rowCount: number) => {
 };
 
 // Add data to Google Sheets
-const addDataToGoogleSheets = async (data: CSVRowData[], userName: string) => {
+const addDataToGoogleSheets = async (data: IndividualCSVRowData[], userName: string) => {
   const sheets = await getGoogleSheetsClient();
 
   // First, read the existing headers to understand the sheet structure
   let existingHeaders: string[] = [];
   try {
     const headerResponse = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
+      spreadsheetId: INDIVIDUAL_SPREADSHEET_ID,
       range: 'A1:Z1', // Get first row to check headers
     });
 
     if (headerResponse.data.values && headerResponse.data.values[0]) {
       existingHeaders = headerResponse.data.values[0] as string[];
-      console.log('Existing Google Sheet headers:', existingHeaders);
+      console.log('Existing Individual Google Sheet headers:', existingHeaders);
     }
   } catch (headerError) {
     console.log('Could not read existing headers, assuming new sheet');
@@ -99,13 +103,23 @@ const addDataToGoogleSheets = async (data: CSVRowData[], userName: string) => {
 
   // If no headers exist, create the default structure
   if (existingHeaders.length === 0) {
-    // Default column order for company data
-    existingHeaders = ['Company', 'Keyword', 'URL', 'Timestamp', 'User Name'];
-    console.log('Adding headers to Google Sheet:', existingHeaders);
+    // Use the user's preferred column order
+    existingHeaders = [
+      'First Name',
+      'Last Name',
+      'Keyword',
+      'URL',
+      'Negative URL Title',
+      'Owner',
+      'Email',
+      'LinkedIn URL',
+      'Upload Date',
+    ];
+    console.log('Adding headers to Individual Google Sheet:', existingHeaders);
     try {
       await sheets.spreadsheets.values.update({
-        spreadsheetId: SPREADSHEET_ID,
-        range: 'A1:E1',
+        spreadsheetId: INDIVIDUAL_SPREADSHEET_ID,
+        range: 'A1:I1',
         valueInputOption: 'RAW',
         requestBody: {
           values: [existingHeaders],
@@ -124,25 +138,36 @@ const addDataToGoogleSheets = async (data: CSVRowData[], userName: string) => {
     const normalizedHeader = header.toLowerCase().replace(/[^a-z]/g, '');
 
     switch (normalizedHeader) {
-      case 'company':
-      case 'companyname':
-        fieldToColumnMap['Company'] = index;
+      case 'firstname':
+        fieldToColumnMap['firstName'] = index;
+        break;
+      case 'lastname':
+        fieldToColumnMap['lastName'] = index;
         break;
       case 'keyword':
-        fieldToColumnMap['Keyword'] = index;
+        fieldToColumnMap['keyword'] = index;
         break;
       case 'url':
-      case 'website':
         fieldToColumnMap['URL'] = index;
         break;
-      case 'timestamp':
+      case 'negativeurltitle':
+        fieldToColumnMap['negativeURLTitle'] = index;
+        break;
+      case 'owner':
+      case 'username':
+        fieldToColumnMap['userName'] = index;
+        break;
+      case 'email':
+        fieldToColumnMap['email'] = index;
+        break;
+      case 'linkedinurl':
+      case 'linkedin':
+        fieldToColumnMap['linkedinURL'] = index;
+        break;
       case 'uploaddate':
+      case 'timestamp':
       case 'date':
         fieldToColumnMap['timestamp'] = index;
-        break;
-      case 'username':
-      case 'owner':
-        fieldToColumnMap['userName'] = index;
         break;
     }
   });
@@ -155,15 +180,23 @@ const addDataToGoogleSheets = async (data: CSVRowData[], userName: string) => {
     const rowData = new Array(existingHeaders.length).fill('');
 
     // Map each of our fields to the correct column position
-    if (fieldToColumnMap['Company'] !== undefined)
-      rowData[fieldToColumnMap['Company']] = row.Company;
-    if (fieldToColumnMap['Keyword'] !== undefined)
-      rowData[fieldToColumnMap['Keyword']] = row.Keyword;
+    if (fieldToColumnMap['firstName'] !== undefined)
+      rowData[fieldToColumnMap['firstName']] = row.firstName;
+    if (fieldToColumnMap['lastName'] !== undefined)
+      rowData[fieldToColumnMap['lastName']] = row.lastName;
+    if (fieldToColumnMap['keyword'] !== undefined)
+      rowData[fieldToColumnMap['keyword']] = row.keyword;
     if (fieldToColumnMap['URL'] !== undefined) rowData[fieldToColumnMap['URL']] = row.URL;
-    if (fieldToColumnMap['timestamp'] !== undefined)
-      rowData[fieldToColumnMap['timestamp']] = new Date().toISOString();
+    if (fieldToColumnMap['negativeURLTitle'] !== undefined)
+      rowData[fieldToColumnMap['negativeURLTitle']] = row.negativeURLTitle;
+    if (fieldToColumnMap['email'] !== undefined)
+      rowData[fieldToColumnMap['email']] = row.email || '';
+    if (fieldToColumnMap['linkedinURL'] !== undefined)
+      rowData[fieldToColumnMap['linkedinURL']] = row.linkedinURL || '';
     if (fieldToColumnMap['userName'] !== undefined)
       rowData[fieldToColumnMap['userName']] = userName;
+    if (fieldToColumnMap['timestamp'] !== undefined)
+      rowData[fieldToColumnMap['timestamp']] = new Date().toISOString();
 
     return rowData;
   });
@@ -172,7 +205,7 @@ const addDataToGoogleSheets = async (data: CSVRowData[], userName: string) => {
 
   try {
     const response = await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID,
+      spreadsheetId: INDIVIDUAL_SPREADSHEET_ID,
       range: RANGE,
       valueInputOption: 'RAW',
       insertDataOption: 'INSERT_ROWS',
@@ -188,8 +221,8 @@ const addDataToGoogleSheets = async (data: CSVRowData[], userName: string) => {
     if (error.message?.includes('range')) {
       console.log('Retrying with Sheet1 range...');
       const response = await sheets.spreadsheets.values.append({
-        spreadsheetId: SPREADSHEET_ID,
-        range: 'Sheet1!A:E',
+        spreadsheetId: INDIVIDUAL_SPREADSHEET_ID,
+        range: 'Sheet1!A:I',
         valueInputOption: 'RAW',
         insertDataOption: 'INSERT_ROWS',
         requestBody: {
@@ -224,21 +257,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const row = data[i];
       const missingFields = [];
 
-      if (!row.Company || String(row.Company).trim() === '') missingFields.push('Company');
-      if (!row.Keyword || String(row.Keyword).trim() === '') missingFields.push('Keyword');
+      // Required fields
       if (!row.URL || String(row.URL).trim() === '') missingFields.push('URL');
+      if (!row.keyword || String(row.keyword).trim() === '') missingFields.push('keyword');
+      if (!row.negativeURLTitle || String(row.negativeURLTitle).trim() === '')
+        missingFields.push('negativeURLTitle');
+      if (!row.firstName || String(row.firstName).trim() === '') missingFields.push('firstName');
+      if (!row.lastName || String(row.lastName).trim() === '') missingFields.push('lastName');
 
       if (missingFields.length > 0) {
         console.log(`Row ${i + 2} validation failed:`, {
           rowData: row,
           missingFields,
-          Company: row.Company,
-          Keyword: row.Keyword,
-          URL: row.URL,
         });
 
         return res.status(400).json({
-          message: `Invalid data at row ${i + 2}. Missing fields: ${missingFields.join(', ')}. Company: "${row.Company}", Keyword: "${row.Keyword}", URL: "${row.URL}"`,
+          message: `Invalid data at row ${i + 2}. Missing required fields: ${missingFields.join(', ')}`,
         });
       }
     }
@@ -250,21 +284,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Save submission to database
-    console.log(`Saving submission for user ${userInfo.id} with ${data.length} rows`);
+    console.log(
+      `Saving individual partial list submission for user ${userInfo.id} with ${data.length} rows`
+    );
     await saveSubmissionToDatabase(userInfo.id, data.length);
 
     // Add data to Google Sheets
-    console.log(`Adding ${data.length} rows to Google Sheets`);
+    console.log(`Adding ${data.length} rows to individual partial list Google Sheets`);
     await addDataToGoogleSheets(data, userInfo.name);
 
-    console.log('Lead enricher submission completed successfully');
+    console.log('Individual partial list submission completed successfully');
 
     res.status(200).json({
-      message: 'Data submitted successfully',
+      message: 'Individual partial list data submitted successfully',
       rowsProcessed: data.length,
     });
   } catch (error: any) {
-    console.error('Error in lead enricher submit:', error);
+    console.error('Error in individual partial list submit:', error);
 
     // Return more specific error messages
     if (error.message?.includes('Google Sheets')) {

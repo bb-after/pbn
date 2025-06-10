@@ -31,6 +31,7 @@ import StyledHeader from '../../components/StyledHeader';
 import { useRouter } from 'next/router';
 import useValidateUserToken from 'hooks/useValidateUserToken';
 import axios from 'axios';
+import UnauthorizedAccess from 'components/UnauthorizedAccess';
 
 // Define approval request interface
 interface ApprovalRequest {
@@ -600,11 +601,7 @@ export default function ClientApprovalPage() {
   }
 
   if (!isValidUser) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
-        <Typography variant="h6">Unauthorized access. Please log in.</Typography>
-      </Box>
-    );
+    return <UnauthorizedAccess />;
   }
 
   return (
