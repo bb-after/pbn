@@ -4,6 +4,7 @@ import LayoutContainer from '../../components/LayoutContainer';
 import StyledHeader from '../../components/StyledHeader';
 import ClientForm from '../../components/ClientForm';
 import { useRouter } from 'next/router';
+import UnauthorizedAccess from '../../components/UnauthorizedAccess';
 import useValidateUserToken from 'hooks/useValidateUserToken';
 
 export default function NewClientPage() {
@@ -19,11 +20,7 @@ export default function NewClientPage() {
   };
 
   if (!isValidUser) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
-        <Typography variant="h6">Unauthorized access. Please log in.</Typography>
-      </Box>
-    );
+    return <UnauthorizedAccess />;
   }
 
   return (
