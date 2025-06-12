@@ -203,35 +203,53 @@ const addDataToGoogleSheets = async (data: IndividualCSVRowData[], userName: str
 
   console.log('Sample mapped row data:', values[0]);
 
-  try {
-    const response = await sheets.spreadsheets.values.append({
-      spreadsheetId: INDIVIDUAL_SPREADSHEET_ID,
-      range: RANGE,
-      valueInputOption: 'RAW',
-      insertDataOption: 'INSERT_ROWS',
-      requestBody: {
-        values: values,
-      },
-    });
-
-    return response;
-  } catch (error: any) {
-    console.error('Google Sheets API Error:', error);
-    // If range fails, try with a more specific range
-    if (error.message?.includes('range')) {
-      console.log('Retrying with Sheet1 range...');
+  const maxRetries = 3;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
       const response = await sheets.spreadsheets.values.append({
         spreadsheetId: INDIVIDUAL_SPREADSHEET_ID,
-        range: 'Sheet1!A:I',
+        range: RANGE,
         valueInputOption: 'RAW',
         insertDataOption: 'INSERT_ROWS',
         requestBody: {
           values: values,
         },
       });
+
       return response;
+    } catch (error: any) {
+      console.error(`Google Sheets API Error (attempt ${i + 1}/${maxRetries}):`, error);
+
+      // If range fails, try with a more specific range and then re-throw if it still fails.
+      if (error.message?.includes('range')) {
+        console.log('Retrying with Sheet1 range...');
+        try {
+          const response = await sheets.spreadsheets.values.append({
+            spreadsheetId: INDIVIDUAL_SPREADSHEET_ID,
+            range: 'Sheet1!A:I',
+            valueInputOption: 'RAW',
+            insertDataOption: 'INSERT_ROWS',
+            requestBody: {
+              values: values,
+            },
+          });
+          return response;
+        } catch (retryError) {
+          console.error('Google Sheets API error on range retry:', retryError);
+          throw retryError; // Throw the error from the retry attempt
+        }
+      }
+
+      // For transient errors, wait and retry
+      if (i < maxRetries - 1) {
+        const delay = Math.pow(2, i) * 1000; // Exponential backoff
+        console.log(`Waiting ${delay}ms before retrying...`);
+        await new Promise(res => setTimeout(res, delay));
+      } else {
+        // If this was the last attempt, re-throw the error
+        throw error;
+      }
     }
-    throw error;
   }
 };
 
@@ -309,7 +327,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    if (error.message?.includes('database') || error.code?.includes('ER_')) {
+    if (error.message?.includes('database') || String(error.code)?.includes('ER_')) {
       return res.status(500).json({
         message: 'Database error. Please try again.',
       });

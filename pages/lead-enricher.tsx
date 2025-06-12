@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   Container,
   Paper,
@@ -49,6 +49,7 @@ interface CSVRow {
   Company: string;
   Keyword: string;
   URL: string;
+  owner?: string;
   rowNumber: number;
 }
 
@@ -60,6 +61,7 @@ interface IndividualCSVRow {
   lastName: string;
   email?: string;
   linkedinURL?: string;
+  owner?: string;
   rowNumber: number;
 }
 
@@ -72,11 +74,16 @@ interface FieldMapping {
   [requiredField: string]: string; // required field -> CSV column
 }
 
+interface User {
+  id: number;
+  name: string;
+}
+
 type ListType = 'company' | 'individual';
 
 export default function LeadEnricherPage() {
   const router = useRouter();
-  const { isValidUser, token } = useValidateUserToken();
+  const { isValidUser, token, user } = useValidateUserToken();
   const [listType, setListType] = useState<ListType>('company');
   const [csvData, setCsvData] = useState<CSVRow[]>([]);
   const [individualCsvData, setIndividualCsvData] = useState<IndividualCSVRow[]>([]);
@@ -90,6 +97,10 @@ export default function LeadEnricherPage() {
   const [fieldMapping, setFieldMapping] = useState<FieldMapping>({});
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [rawCsvData, setRawCsvData] = useState<any[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [selectedOwner, setSelectedOwner] = useState<number | null>(null);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [modalOwner, setModalOwner] = useState<number | null>(null);
 
   // Auto-match field names with fuzzy matching
   const autoMatchFields = (csvHeaders: string[], requiredFields: string[]): FieldMapping => {
@@ -111,6 +122,7 @@ export default function LeadEnricherPage() {
       email: ['email', 'emailaddress', 'mail'],
       linkedinURL: ['linkedin', 'linkedinurl', 'linkedinprofile', 'profile'],
       negativeURLTitle: ['negativeurltitle', 'negativetitle', 'excludetitle', 'badtitle'],
+      owner: ['owner', 'assignedto', 'user', 'assignee', 'responsible'],
     };
 
     requiredFields.forEach(requiredField => {
@@ -150,6 +162,50 @@ export default function LeadEnricherPage() {
     return mapping;
   };
 
+  // Fetch users for owner selection
+  const fetchUsers = useCallback(async () => {
+    if (!token) return;
+
+    setLoadingUsers(true);
+    try {
+      const response = await axios.get('/api/lead-enricher/users', {
+        headers: {
+          'x-auth-token': token,
+        },
+      });
+
+      setUsers(response.data.users || []);
+
+      // Auto-select current user if available
+      if (user?.id && response.data.users) {
+        const currentUser = response.data.users.find((u: User) => u.id === Number(user.id));
+        if (currentUser) {
+          setSelectedOwner(currentUser.id);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    } finally {
+      setLoadingUsers(false);
+    }
+  }, [token, user?.id]);
+
+  // Fetch users on component mount
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  useEffect(() => {
+    if (users.length > 0) {
+      if (user?.id) {
+        const found = users.find(u => u.id === Number(user.id));
+        setModalOwner(found ? found.id : users[0].id);
+      } else {
+        setModalOwner(users[0].id);
+      }
+    }
+  }, [users, user?.id]);
+
   const validateCSVData = (
     data: any[],
     type: ListType,
@@ -160,6 +216,8 @@ export default function LeadEnricherPage() {
       type === 'company'
         ? ['Company', 'Keyword', 'URL']
         : ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName'];
+
+    // Note: owner is optional in CSV since it can be set via dropdown
 
     data.forEach((row, index) => {
       const missingFields: string[] = [];
@@ -352,18 +410,20 @@ export default function LeadEnricherPage() {
     // Validate data with mapping
     const validation = validateCSVData(data, listType, mapping);
 
+    let ownerIdToUse = modalOwner || selectedOwner;
+    let ownerNameToUse = users.find(u => u.id === ownerIdToUse)?.name || '';
+
     if (listType === 'company') {
-      // Transform data to include row numbers for company data
       const transformedData: CSVRow[] = data.map((row, index) => ({
         Company: row[mapping['Company']] || '',
         Keyword: row[mapping['Keyword']] || '',
         URL: row[mapping['URL']] || '',
-        rowNumber: index + 2, // +2 for header row and 1-based indexing
+        owner: ownerNameToUse,
+        rowNumber: index + 2,
       }));
       setCsvData(transformedData);
       setIndividualCsvData([]);
     } else {
-      // Transform data to include row numbers for individual data
       const transformedIndividualData: IndividualCSVRow[] = data.map((row, index) => ({
         URL: row[mapping['URL']] || '',
         keyword: row[mapping['keyword']] || '',
@@ -372,7 +432,8 @@ export default function LeadEnricherPage() {
         lastName: row[mapping['lastName']] || '',
         email: row[mapping['email']] || '',
         linkedinURL: row[mapping['linkedinURL']] || '',
-        rowNumber: index + 2, // +2 for header row and 1-based indexing
+        owner: ownerNameToUse,
+        rowNumber: index + 2,
       }));
       setIndividualCsvData(transformedIndividualData);
       setCsvData([]);
@@ -403,6 +464,7 @@ export default function LeadEnricherPage() {
       return;
     }
 
+    // Owner field is optional in CSV mapping
     setError(null);
     processDataWithMapping(rawCsvData, fieldMapping);
   };
@@ -413,6 +475,18 @@ export default function LeadEnricherPage() {
       (listType === 'company' ? csvData.length === 0 : individualCsvData.length === 0)
     )
       return;
+
+    // Check if owner is selected
+    if (!selectedOwner) {
+      setError('Please select an owner for this submission');
+      return;
+    }
+
+    const selectedUser = users.find(u => u.id === selectedOwner);
+    if (!selectedUser) {
+      setError('Selected owner not found');
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -430,6 +504,7 @@ export default function LeadEnricherPage() {
                 Company: row.Company,
                 Keyword: row.Keyword,
                 URL: row.URL,
+                owner: selectedUser.name, // Use selected owner name
               }))
             : individualCsvData.map(row => ({
                 URL: row.URL,
@@ -439,10 +514,12 @@ export default function LeadEnricherPage() {
                 lastName: row.lastName,
                 email: row.email,
                 linkedinURL: row.linkedinURL,
+                owner: selectedUser.name, // Use selected owner name
               })),
         userToken: token,
         fieldMapping: fieldMapping,
         csvHeaders: csvHeaders,
+        ownerId: selectedOwner, // Also send owner ID
       });
 
       setSubmitted(true);
@@ -465,6 +542,13 @@ export default function LeadEnricherPage() {
     setFieldMapping({});
     setCsvHeaders([]);
     setRawCsvData([]);
+    // Reset owner selection to current user
+    if (user?.id) {
+      const resetCurrentUser = users.find(u => u.id === Number(user.id));
+      if (resetCurrentUser) {
+        setSelectedOwner(resetCurrentUser.id);
+      }
+    }
     // Reset file input
     const fileInput = document.getElementById('csv-upload') as HTMLInputElement;
     if (fileInput) fileInput.value = '';
@@ -673,72 +757,6 @@ export default function LeadEnricherPage() {
               </Alert>
             )}
 
-            {/* Debug: Force Modal Button */}
-            <Button
-              variant="outlined"
-              color="info"
-              onClick={() => {
-                console.log('Manually triggering field mapping modal');
-                // Set up some test data
-                const testHeaders =
-                  listType === 'company'
-                    ? ['Company Name', 'Search Term', 'Website URL']
-                    : [
-                        'Website',
-                        'Search Query',
-                        'Bad Title',
-                        'First',
-                        'Last',
-                        'Email Address',
-                        'LinkedIn Profile',
-                      ];
-
-                const testData =
-                  listType === 'company'
-                    ? [
-                        {
-                          'Company Name': 'Test Co',
-                          'Search Term': 'test keyword',
-                          'Website URL': 'https://test.com',
-                        },
-                      ]
-                    : [
-                        {
-                          Website: 'https://example.com',
-                          'Search Query': 'test',
-                          'Bad Title': 'exclude this',
-                          First: 'John',
-                          Last: 'Doe',
-                          'Email Address': 'john@example.com',
-                          'LinkedIn Profile': 'https://linkedin.com/in/john',
-                        },
-                      ];
-
-                setCsvHeaders(testHeaders);
-                setRawCsvData(testData);
-
-                // Set up partial mapping to force modal
-                const partialMapping: FieldMapping =
-                  listType === 'company'
-                    ? { Company: 'Company Name', Keyword: '', URL: 'Website URL' } // Missing Keyword mapping
-                    : {
-                        URL: 'Website',
-                        keyword: '',
-                        negativeURLTitle: 'Bad Title',
-                        firstName: 'First',
-                        lastName: 'Last',
-                        email: '',
-                        linkedinURL: '',
-                      }; // Missing keyword mapping
-
-                setFieldMapping(partialMapping);
-                setShowMapping(true);
-              }}
-              sx={{ mb: 3 }}
-            >
-              🔧 Test Field Mapping Modal
-            </Button>
-
             {listType === 'company' ? (
               csvData.length === 0 ? (
                 <Card variant="outlined" sx={{ mb: 3 }}>
@@ -819,6 +837,7 @@ export default function LeadEnricherPage() {
                               <TableCell>Company</TableCell>
                               <TableCell>Keyword</TableCell>
                               <TableCell>URL</TableCell>
+                              <TableCell>Owner</TableCell>
                               <TableCell>Status</TableCell>
                             </TableRow>
                           </TableHead>
@@ -850,6 +869,7 @@ export default function LeadEnricherPage() {
                                   >
                                     {row.URL}
                                   </TableCell>
+                                  <TableCell>{row.owner}</TableCell>
                                   <TableCell>
                                     {hasError ? (
                                       <Chip label="Error" color="error" size="small" />
@@ -976,6 +996,7 @@ export default function LeadEnricherPage() {
                             <TableCell>Last Name</TableCell>
                             <TableCell>Email</TableCell>
                             <TableCell>LinkedIn URL</TableCell>
+                            <TableCell>Owner</TableCell>
                             <TableCell>Status</TableCell>
                           </TableRow>
                         </TableHead>
@@ -1011,6 +1032,7 @@ export default function LeadEnricherPage() {
                                 <TableCell>{row.lastName}</TableCell>
                                 <TableCell>{row.email}</TableCell>
                                 <TableCell>{row.linkedinURL}</TableCell>
+                                <TableCell>{row.owner}</TableCell>
                                 <TableCell>
                                   {hasError ? (
                                     <Chip label="Error" color="error" size="small" />
@@ -1082,7 +1104,8 @@ export default function LeadEnricherPage() {
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
             Map each required field to the appropriate column from your CSV file. We&apos;ve
-            auto-matched what we could detect.
+            auto-matched what we could detect. The owner field is optional - you can set it using
+            the dropdown above.
           </Typography>
 
           <TableContainer>
@@ -1096,7 +1119,7 @@ export default function LeadEnricherPage() {
               </TableHead>
               <TableBody>
                 {(listType === 'company'
-                  ? ['Company', 'Keyword', 'URL']
+                  ? ['Company', 'Keyword', 'URL', 'owner']
                   : [
                       'URL',
                       'keyword',
@@ -1105,29 +1128,49 @@ export default function LeadEnricherPage() {
                       'lastName',
                       'email',
                       'linkedinURL',
+                      'owner',
                     ]
                 ).map(requiredField => {
                   const isRequired =
-                    listType === 'company' || !['email', 'linkedinURL'].includes(requiredField);
+                    listType === 'company'
+                      ? true // All required for company, including owner
+                      : !['email', 'linkedinURL'].includes(requiredField); // All except email/linkedin for individual
                   return (
                     <TableRow key={requiredField}>
                       <TableCell sx={{ minWidth: 200 }}>
-                        <FormControl fullWidth size="small">
-                          <Select
-                            value={fieldMapping[requiredField] || ''}
-                            onChange={e => handleMappingChange(requiredField, e.target.value)}
-                            displayEmpty
-                          >
-                            <MenuItem value="">
-                              <em>Select CSV column...</em>
-                            </MenuItem>
-                            {csvHeaders.map(header => (
-                              <MenuItem key={header} value={header}>
-                                {header}
+                        {requiredField === 'owner' ? (
+                          <FormControl fullWidth size="small" required>
+                            <Select
+                              value={modalOwner || ''}
+                              onChange={e => setModalOwner(Number(e.target.value))}
+                              displayEmpty
+                            >
+                              {users.map(userItem => (
+                                <MenuItem key={userItem.id} value={userItem.id}>
+                                  {userItem.name}
+                                  {userItem.id === Number(user?.id) && ' (You)'}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        ) : (
+                          <FormControl fullWidth size="small">
+                            <Select
+                              value={fieldMapping[requiredField] || ''}
+                              onChange={e => handleMappingChange(requiredField, e.target.value)}
+                              displayEmpty
+                            >
+                              <MenuItem value="">
+                                <em>Select CSV column...</em>
                               </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
+                              {csvHeaders.map(header => (
+                                <MenuItem key={header} value={header}>
+                                  {header}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2" fontWeight="medium">
@@ -1153,10 +1196,12 @@ export default function LeadEnricherPage() {
           <Button
             variant="contained"
             onClick={applyMapping}
-            disabled={(listType === 'company'
-              ? ['Company', 'Keyword', 'URL']
-              : ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName']
-            ).some(field => !fieldMapping[field])}
+            disabled={
+              (listType === 'company'
+                ? ['Company', 'Keyword', 'URL']
+                : ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName']
+              ).some(field => !fieldMapping[field]) || !modalOwner
+            }
           >
             Apply Mapping
           </Button>
