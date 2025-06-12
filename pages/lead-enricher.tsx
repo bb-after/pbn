@@ -467,6 +467,10 @@ export default function LeadEnricherPage() {
     // Owner field is optional in CSV mapping
     setError(null);
     processDataWithMapping(rawCsvData, fieldMapping);
+    // Sync modalOwner to selectedOwner after mapping is applied
+    if (modalOwner) {
+      setSelectedOwner(modalOwner);
+    }
   };
 
   const handleSubmit = async () => {

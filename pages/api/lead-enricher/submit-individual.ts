@@ -10,6 +10,7 @@ interface IndividualCSVRowData {
   lastName: string;
   email?: string;
   linkedinURL?: string;
+  owner?: string;
 }
 
 interface RequestBody {
@@ -82,7 +83,7 @@ const saveSubmissionToDatabase = async (userId: number, rowCount: number) => {
 };
 
 // Add data to Google Sheets
-const addDataToGoogleSheets = async (data: IndividualCSVRowData[], userName: string) => {
+const addDataToGoogleSheets = async (data: IndividualCSVRowData[], fallbackUserName: string) => {
   const sheets = await getGoogleSheetsClient();
 
   // First, read the existing headers to understand the sheet structure
@@ -194,7 +195,7 @@ const addDataToGoogleSheets = async (data: IndividualCSVRowData[], userName: str
     if (fieldToColumnMap['linkedinURL'] !== undefined)
       rowData[fieldToColumnMap['linkedinURL']] = row.linkedinURL || '';
     if (fieldToColumnMap['userName'] !== undefined)
-      rowData[fieldToColumnMap['userName']] = userName;
+      rowData[fieldToColumnMap['userName']] = row.owner || fallbackUserName;
     if (fieldToColumnMap['timestamp'] !== undefined)
       rowData[fieldToColumnMap['timestamp']] = new Date().toISOString();
 

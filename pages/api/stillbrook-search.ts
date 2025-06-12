@@ -14,10 +14,7 @@ interface SearchResponse {
   error?: string;
 }
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse<SearchResponse>
-) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse<SearchResponse>) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
@@ -55,6 +52,11 @@ export default async function handler(
       waitUntil: 'networkidle2',
     });
 
+    console.log(
+      'Navigated to Google search',
+      `https://www.google.com/search?q=${encodeURIComponent(keyword)}`
+    );
+
     let found = false;
     let pageIndex = 1;
 
@@ -74,13 +76,13 @@ export default async function handler(
     while (pageIndex <= maxPages) {
       // Scroll to the bottom of the page to ensure all results are loaded
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       // Extract search results
       const searchResults = await page.evaluate(() => {
         const results: { link: string; text: string }[] = [];
         const items = document.querySelectorAll('div.g'); // Google search results
-        items.forEach((item) => {
+        items.forEach(item => {
           const linkElement = item.querySelector('a');
           const textElement = item.querySelector('div.IsZvec');
           if (linkElement) {
@@ -94,13 +96,10 @@ export default async function handler(
 
       if (screenshotType === 'exact_url_match') {
         // Domain Match logic
-        const matchIndex = searchResults.findIndex((result) => {
+        const matchIndex = searchResults.findIndex(result => {
           try {
             const resultDomain = new URL(result.link).hostname.replace(/^www\./, '');
-            return (
-              resultDomain === userDomain ||
-              resultDomain.endsWith('.' + userDomain)
-            );
+            return resultDomain === userDomain || resultDomain.endsWith('.' + userDomain);
           } catch (e) {
             return false;
           }
@@ -144,7 +143,7 @@ export default async function handler(
             });
           }, negativeIndices);
 
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 1000));
           const screenshot = await takeScreenshot(page);
           found = true;
           return res.status(200).json({ screenshot });
@@ -176,7 +175,7 @@ export default async function handler(
             });
           }, matchIndices);
 
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 1000));
           const screenshot = await takeScreenshot(page);
           found = true;
           return res.status(200).json({ screenshot });
@@ -217,7 +216,7 @@ async function highlightResult(page: Page, index: number) {
     });
   }, index);
 
-  await new Promise((resolve) => setTimeout(resolve, 1000));
+  await new Promise(resolve => setTimeout(resolve, 1000));
 }
 
 async function takeScreenshot(page: Page) {
