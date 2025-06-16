@@ -27,24 +27,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // Log validation result for debugging
   console.log('User validation result:', { isValid: userInfo.isValid, userId: userInfo.user_id });
 
-  // Temporarily bypass strict validation if needed - REMOVE THIS IN PRODUCTION
-  /*
-  if (!userInfo.isValid) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  if (!userInfo.user_id) {
-    console.error('Valid token but missing user_id - this should not happen');
-    return res.status(500).json({ error: 'Authentication error: Valid token but missing user_id' });
-  }
-
-  // Ensure userInfo.user_id is a valid value, not the placeholder
-  if (userInfo.user_id === 'staff-user-id-from-token') {
-    console.error('Using placeholder user ID instead of actual user ID');
-    return res.status(500).json({ error: 'Server configuration error: Using placeholder user ID' });
-  }
-  */
-
   // If validation failed, use a default user ID for testing purposes - REMOVE THIS IN PRODUCTION
   if (!userInfo.isValid || !userInfo.user_id) {
     console.warn('Using temporary default user ID for testing - REMOVE IN PRODUCTION');
@@ -424,7 +406,7 @@ async function createApprovalRequest(req: NextApiRequest, res: NextApiResponse, 
     //    - Add required_approvals field
     const createRequestQuery = `
       INSERT INTO client_approval_requests
-        (client_id, title, description, file_url, file_type, inline_content, content_type, google_doc_id, created_by_id, required_approvals)
+        (client_id, title, description, file_url, file_type, inline_content, content_type, google_doc_id, created_by_id, required_approvals, status)
       VALUES
         (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
@@ -440,6 +422,7 @@ async function createApprovalRequest(req: NextApiRequest, res: NextApiResponse, 
       googleDocId || null, // The Google Doc ID if applicable
       userInfo.user_id, // Use the actual user ID from validation/session
       requiredApprovalsCount, // Add the required approvals count
+      'pending', // Default status is 'pending'
     ];
 
     console.log('Inserting request with values:', {
