@@ -195,11 +195,11 @@ async function getApprovalRequests(req: NextApiRequest, res: NextApiResponse, us
     // Order by created_at
     query += ' ORDER BY ar.created_at DESC';
 
-    console.log('SQL Query:', query);
-    console.log('Query params:', queryParams);
+    // console.log('SQL Query:', query);
+    // console.log('Query params:', queryParams);
 
     const [rows] = await pool.query(query, queryParams);
-    console.log('Query returned', (rows as any[]).length, 'results');
+    // console.log('Query returned', (rows as any[]).length, 'results');
 
     // If we're filtering by user_id and got zero results, try a direct query approach
     if (user_id && user_id !== 'all' && (rows as any[]).length === 0) {

@@ -683,7 +683,7 @@ async function updateApprovalRequest(
       // Handle archiving (staff only)
       if (isArchived !== undefined && !isClientPortal) {
         const query = `
-          UPDATE client_approval_requests SET is_archived = ? WHERE request_id = ?
+          UPDATE client_approval_requests SET is_archived = ?, updated_at = NOW() WHERE request_id = ?
         `;
         await connection.query(query, [isArchived ? 1 : 0, requestId]);
         console.log(`Archive status updated for request ${requestId}`);
