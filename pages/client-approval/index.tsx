@@ -127,6 +127,9 @@ export default function ClientApprovalPage() {
     }
   }, [tabValue]);
 
+  // Helper to determine if archived tab is selected
+  const isArchivedTab = tabValue === 2;
+
   // Fetch all approval requests
   const fetchApprovalRequests = async () => {
     setLoading(true);
@@ -158,6 +161,11 @@ export default function ClientApprovalPage() {
       // Add status filter if selected
       if (statusFilter !== 'all') {
         params.append('status', statusFilter);
+      }
+
+      // Add include_archived if archived tab is selected
+      if (isArchivedTab) {
+        params.append('include_archived', 'true');
       }
 
       if (params.toString()) {
@@ -291,11 +299,20 @@ export default function ClientApprovalPage() {
   const filteredRequests = getFilteredRequests();
 
   // Generate status chip with appropriate color
-  const getStatusChip = (status: string) => {
+  const getStatusChip = (request: ApprovalRequest) => {
+    if (request.is_archived) {
+      return (
+        <Chip
+          label="Archived"
+          color="default"
+          size="small"
+          sx={{ bgcolor: 'grey.400', color: 'white' }}
+        />
+      );
+    }
     let color: 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' =
       'default';
-
-    switch (status) {
+    switch (request.status) {
       case 'pending':
         color = 'warning';
         break;
@@ -306,9 +323,12 @@ export default function ClientApprovalPage() {
         color = 'error';
         break;
     }
-
     return (
-      <Chip label={status.charAt(0).toUpperCase() + status.slice(1)} color={color} size="small" />
+      <Chip
+        label={request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+        color={color}
+        size="small"
+      />
     );
   };
 
@@ -372,6 +392,11 @@ export default function ClientApprovalPage() {
       // Add status filter if selected
       if (statusFilter !== 'all') {
         params.append('status', statusFilter);
+      }
+
+      // Add include_archived if archived tab is selected
+      if (isArchivedTab) {
+        params.append('include_archived', 'true');
       }
 
       if (params.toString()) {
@@ -487,6 +512,11 @@ export default function ClientApprovalPage() {
         params.append('status', statusFilter);
       }
 
+      // Add include_archived if archived tab is selected
+      if (isArchivedTab) {
+        params.append('include_archived', 'true');
+      }
+
       if (params.toString()) {
         url += `?${params.toString()}`;
       }
@@ -555,6 +585,11 @@ export default function ClientApprovalPage() {
       // Add status filter if selected - use passed value
       if (currentStatusFilter !== 'all') {
         params.append('status', currentStatusFilter);
+      }
+
+      // Add include_archived if archived tab is selected
+      if (isArchivedTab) {
+        params.append('include_archived', 'true');
       }
 
       if (params.toString()) {
@@ -776,7 +811,7 @@ export default function ClientApprovalPage() {
                         <Typography variant="h6" noWrap sx={{ maxWidth: '70%' }}>
                           {request.title}
                         </Typography>
-                        {getStatusChip(request.status)}
+                        {getStatusChip(request)}
                       </Box>
 
                       <Typography variant="body2" color="textSecondary" gutterBottom>

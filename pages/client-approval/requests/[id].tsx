@@ -399,9 +399,18 @@ export default function ApprovalRequestDetailPage() {
     setUpdatingUrl(true);
 
     try {
-      await axios.put(`/api/approval-requests/${id}`, {
-        publishedUrl: publishedUrl.trim(),
-      });
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['x-auth-token'] = token;
+      }
+
+      await axios.put(
+        `/api/approval-requests/${id}`,
+        {
+          publishedUrl: publishedUrl.trim(),
+        },
+        { headers }
+      );
 
       fetchRequestDetails();
     } catch (error) {
@@ -449,9 +458,12 @@ export default function ApprovalRequestDetailPage() {
   // Handle archiving the request
   const handleArchiveRequest = async () => {
     try {
-      await axios.put(`/api/approval-requests/${id}`, {
-        isArchived: true,
-      });
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['x-auth-token'] = token;
+      }
+
+      await axios.put(`/api/approval-requests/${id}`, { isArchived: true }, { headers });
 
       router.push('/client-approval');
     } catch (error) {
