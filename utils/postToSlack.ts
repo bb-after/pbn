@@ -1,4 +1,5 @@
 export const postToSlack = async (message: string, channel?: string, webhookUrl?: string) => {
+  console.log('!!!!!postToSlack', message, channel, webhookUrl);
   const slackUrl = webhookUrl || process.env.SLACK_WEBHOOK_URL;
 
   if (!slackUrl) {

@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import mysql from 'mysql2/promise';
 import { validateUserToken } from '../validate-user-token';
+import { postToSlack } from '../../../utils/postToSlack';
 
 // Create a connection pool
 const pool = mysql.createPool({
@@ -521,6 +522,34 @@ async function createApprovalRequest(req: NextApiRequest, res: NextApiResponse, 
           emailError
         );
         // Log this error but don't fail the request creation itself
+      }
+    }
+
+    // Send Slack notification for new approval request
+    if (process.env.SLACK_WEBHOOK_URL) {
+      try {
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+        const requestUrl = `${appUrl}/client-approval/requests/${requestId}`;
+
+        // Get client name for the notification
+        const clientQuery = `SELECT client_name FROM clients WHERE client_id = ?`;
+        const [clientResult] = await pool.query(clientQuery, [clientId]);
+        const clientName = (clientResult as any[])[0]?.client_name || 'Unknown Client';
+
+        const slackMessage =
+          `📝 *New Approval Request Submitted*\n\n` +
+          `*Request:* ${title}\n` +
+          `*Client:* ${clientName}\n` +
+          `*Contacts:* ${contactsToSend.length} contact(s) to approve\n` +
+          `*Required Approvals:* ${requiredApprovalsCount}\n` +
+          `*Content Type:* ${contentType || 'HTML'}\n\n` +
+          `<${requestUrl}|View Request>`;
+
+        await postToSlack(slackMessage);
+        console.log('Slack notification sent for new approval request');
+      } catch (slackError) {
+        console.error('Error sending Slack notification for new request:', slackError);
+        // Don't fail the request creation if Slack fails
       }
     }
 
