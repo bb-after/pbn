@@ -27,13 +27,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // Log validation result for debugging
   console.log('User validation result:', { isValid: userInfo.isValid, userId: userInfo.user_id });
 
-  // If validation failed, use a default user ID for testing purposes - REMOVE THIS IN PRODUCTION
-  if (!userInfo.isValid || !userInfo.user_id) {
-    console.warn('Using temporary default user ID for testing - REMOVE IN PRODUCTION');
-    userInfo.isValid = true;
-    userInfo.user_id = 1; // Use a valid user ID from your database
-    userInfo.role = 'admin'; // Assume admin for testing
-  }
+  // // If validation failed, use a default user ID for testing purposes - REMOVE THIS IN PRODUCTION
+  // if (!userInfo.isValid || !userInfo.user_id) {
+  //   console.warn('Using temporary default user ID for testing - REMOVE IN PRODUCTION');
+  //   userInfo.isValid = true;
+  //   userInfo.user_id = 1; // Use a valid user ID from your database
+  //   userInfo.role = 'admin'; // Assume admin for testing
+  // }
 
   switch (req.method) {
     case 'GET':
@@ -50,11 +50,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 // Get approval requests with filtering options
 async function getApprovalRequests(req: NextApiRequest, res: NextApiResponse, userInfo: any) {
-  const { client_id, status, contact_id, user_id } = req.query;
+  const { status, user_id } = req.query;
   const isClientPortal = req.headers['x-client-portal'] === 'true';
+  const contactId = req.headers['x-client-contact-id'];
 
   // Debug request parameters
-  console.log('Request query params:', { client_id, status, contact_id, user_id });
+  console.log('Request query params:', { status, contactId, user_id });
   console.log('Request query raw:', req.query);
 
   try {
@@ -94,79 +95,53 @@ async function getApprovalRequests(req: NextApiRequest, res: NextApiResponse, us
     const queryParams: any[] = [];
     const conditions: string[] = [];
 
-    // Add filters
-    if (client_id) {
-      conditions.push(`ar.client_id = ?`);
-      queryParams.push(client_id);
-    }
-
-    if (status) {
-      conditions.push(`ar.status = ?`);
-      queryParams.push(status);
-    }
-
-    // For client portal, filter by contact_id
-    if (isClientPortal && contact_id) {
+    if (isClientPortal) {
+      // Harden: require x-client-contact-id
+      if (!contactId) {
+        return res.status(401).json({ error: 'Missing contact ID' });
+      }
+      // Only return requests this contact is associated with
       conditions.push(`
         ar.request_id IN (
           SELECT request_id FROM approval_request_contacts 
           WHERE contact_id = ?
         )
       `);
-      queryParams.push(contact_id);
-    }
-    // For staff users, check role first
-    else if (userInfo && userInfo.user_id) {
-      // Check if user is an admin
-      const isAdmin = userInfo.role === 'admin';
-      console.log('User role check:', { userId: userInfo.user_id, isAdmin });
-
-      // If user is not an admin, filter by their user ID
-      if (!isAdmin) {
-        // Regular staff only see their own requests
-        conditions.push(`ar.created_by_id = ?`);
-        queryParams.push(userInfo.user_id);
+      queryParams.push(contactId);
+      // Optionally allow status filter
+      if (status) {
+        conditions.push(`ar.status = ?`);
+        queryParams.push(status);
       }
-      // If admin and specific user_id is provided, filter by that user
-      else if (user_id && user_id !== 'all') {
-        // Admin filtering by a specific user
-        console.log('Admin filtering by user ID:', user_id, 'type:', typeof user_id);
-
-        // Convert user_id to a number if it's a string to ensure type consistency
-        const numericUserId = parseInt(user_id as string, 10);
-        console.log('Converted user ID to number:', numericUserId);
-
-        // Use CAST to ensure consistent type comparison in SQL
-        conditions.push(`CAST(ar.created_by_id AS CHAR) = CAST(? AS CHAR)`);
-        queryParams.push(user_id);
-
-        // Also log the raw created_by_id value type in the database for debugging
-        console.log('Running test query to check created_by_id type in database');
-        const testQuery = `
-          SELECT created_by_id, typeof(created_by_id) as id_type 
-          FROM client_approval_requests 
-          WHERE created_by_id = ? 
-          LIMIT 1
-        `;
-
-        try {
-          const [testResult]: any = await pool.query(testQuery, [user_id]);
-          if (testResult && testResult.length > 0) {
-            console.log('Database created_by_id sample:', testResult[0]);
-          } else {
-            console.log('No records found in test query');
-          }
-        } catch (error) {
-          console.log('Error in test query (typeof might not be supported in MySQL):', error);
+      // Optionally allow archived filter
+      if (req.query.include_archived !== 'true') {
+        conditions.push(`ar.is_archived = 0`);
+      }
+      // Ignore client_id for client portal requests!
+    } else {
+      // Staff/admin logic as before
+      const { client_id } = req.query;
+      if (client_id) {
+        conditions.push(`ar.client_id = ?`);
+        queryParams.push(client_id);
+      }
+      if (status) {
+        conditions.push(`ar.status = ?`);
+        queryParams.push(status);
+      }
+      if (userInfo && userInfo.user_id) {
+        const isAdmin = userInfo.role === 'admin';
+        if (!isAdmin) {
+          conditions.push(`ar.created_by_id = ?`);
+          queryParams.push(userInfo.user_id);
+        } else if (user_id && user_id !== 'all') {
+          conditions.push(`CAST(ar.created_by_id AS CHAR) = CAST(? AS CHAR)`);
+          queryParams.push(user_id);
         }
-      } else {
-        console.log('Admin viewing all requests - no user_id filter applied');
       }
-    }
-
-    // Exclude archived requests by default unless specified otherwise
-    if (req.query.include_archived !== 'true') {
-      conditions.push(`ar.is_archived = 0`);
+      if (req.query.include_archived !== 'true') {
+        conditions.push(`ar.is_archived = 0`);
+      }
     }
 
     // Apply conditions
