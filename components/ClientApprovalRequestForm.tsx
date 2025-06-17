@@ -103,7 +103,7 @@ export default function ClientApprovalRequestForm({
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
 
   // Add this state for storing the required approvals
-  const [requiredApprovals, setRequiredApprovals] = useState<number | null>(null);
+  const [requiredApprovals, setRequiredApprovals] = useState<number>(1);
 
   // Load clients on component mount
   useEffect(() => {
@@ -127,6 +127,16 @@ export default function ClientApprovalRequestForm({
       setGoogleDocId(null);
     }
   }, [selectedClient, title, googleDocId]);
+
+  // When selectedContacts changes, reset requiredApprovals to 1 if needed
+  useEffect(() => {
+    if (
+      selectedContacts.length > 0 &&
+      (requiredApprovals < 1 || requiredApprovals > selectedContacts.length)
+    ) {
+      setRequiredApprovals(1);
+    }
+  }, [selectedContacts]);
 
   // Fetch clients
   const fetchClients = async () => {
@@ -853,8 +863,8 @@ export default function ClientApprovalRequestForm({
                 </FormControl>
               </Grid>
 
-              {/* Required Approvals */}
-              {selectedContacts.length > 0 && (
+              {/* Required Approvals: Only show if more than one contact is selected */}
+              {selectedContacts.length > 1 && (
                 <Grid item xs={12} mt={2}>
                   <FormControl fullWidth>
                     <FormLabel component="legend">Required Approvals</FormLabel>
@@ -862,20 +872,15 @@ export default function ClientApprovalRequestForm({
                       <TextField
                         type="number"
                         label="Number of approvals required"
-                        value={requiredApprovals || ''}
+                        value={requiredApprovals}
                         onChange={e => {
-                          const value = e.target.value;
-                          if (value === '') {
-                            setRequiredApprovals(null);
-                          } else {
-                            const numValue = parseInt(value, 10);
-                            if (
-                              !isNaN(numValue) &&
-                              numValue >= 1 &&
-                              numValue <= selectedContacts.length
-                            ) {
-                              setRequiredApprovals(numValue);
-                            }
+                          const numValue = parseInt(e.target.value, 10);
+                          if (
+                            !isNaN(numValue) &&
+                            numValue >= 1 &&
+                            numValue <= selectedContacts.length
+                          ) {
+                            setRequiredApprovals(numValue);
                           }
                         }}
                         InputProps={{
@@ -888,19 +893,14 @@ export default function ClientApprovalRequestForm({
                       />
                       <Box ml={2} flex={1}>
                         <Typography variant="body2" color="text.secondary">
-                          {requiredApprovals
-                            ? requiredApprovals === 1
-                              ? 'Only 1 contact must approve for content to be considered approved.'
-                              : requiredApprovals === selectedContacts.length
-                                ? 'All contacts must approve for content to be considered approved.'
-                                : `At least ${requiredApprovals} out of ${selectedContacts.length} contacts must approve.`
-                            : 'All contacts must approve for content to be considered approved.'}
+                          {requiredApprovals === selectedContacts.length
+                            ? selectedContacts.length === 2
+                              ? 'Both selected contacts must approve for content to be considered approved.'
+                              : `All ${selectedContacts.length} selected contacts must approve for content to be considered approved.`
+                            : `At least ${requiredApprovals} out of ${selectedContacts.length} selected contacts must approve for content to be considered approved.`}
                         </Typography>
                       </Box>
                     </Box>
-                    <FormHelperText>
-                      Leave empty to require approval from all selected contacts.
-                    </FormHelperText>
                   </FormControl>
                 </Grid>
               )}

@@ -18,6 +18,7 @@ import {
   Button,
   Alert,
   CircularProgress,
+  Tooltip,
 } from '@mui/material';
 import {
   Check as CheckIcon,
@@ -159,22 +160,41 @@ const ViewLogModal: React.FC<ViewLogModalProps> = ({
       </DialogContent>
       <DialogActions sx={{ p: 3 }}>
         {contactViews && (
-          <Button
-            startIcon={
-              resendingContactId === contactViews.contact_id ? (
-                <CircularProgress size={20} />
-              ) : (
-                <EmailIcon />
-              )
+          <Tooltip
+            title={
+              contactViews.has_approved
+                ? 'Cannot send notification - this contact has already approved the content'
+                : 'Send a new notification email to this contact'
             }
-            color="primary"
-            variant="contained"
-            onClick={() => contactViews && onResendNotification(contactViews.contact_id)}
-            disabled={resendingContactId === contactViews?.contact_id}
-            sx={{ mr: 'auto' }}
+            arrow
           >
-            Send Notification
-          </Button>
+            <span>
+              <Button
+                startIcon={
+                  resendingContactId === contactViews.contact_id ? (
+                    <CircularProgress size={20} />
+                  ) : (
+                    <EmailIcon />
+                  )
+                }
+                color={contactViews.has_approved ? 'inherit' : 'primary'}
+                variant={contactViews.has_approved ? 'outlined' : 'contained'}
+                onClick={() => contactViews && onResendNotification(contactViews.contact_id)}
+                disabled={
+                  resendingContactId === contactViews?.contact_id || contactViews.has_approved
+                }
+                sx={{
+                  mr: 'auto',
+                  ...(contactViews.has_approved && {
+                    color: 'text.disabled',
+                    borderColor: 'action.disabled',
+                  }),
+                }}
+              >
+                Send Notification
+              </Button>
+            </span>
+          </Tooltip>
         )}
         <Button onClick={onClose}>Close</Button>
       </DialogActions>

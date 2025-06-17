@@ -41,6 +41,7 @@ import {
   FormControlLabel,
   ListItemButton,
   Checkbox,
+  Snackbar,
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
@@ -179,65 +180,34 @@ interface ContactWithViews {
 //   to making suggestions rather than direct edits
 const getEmbeddableGoogleDocUrl = (
   url: string,
-  isStaffView: boolean = true,
+  status: string,
   useMinimalMode: boolean = true
 ): string => {
   try {
-    // Check if it's a Google Doc URL
     if (!url.includes('docs.google.com')) return url;
-
-    // Extract the document ID from the URL
     const docIdMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
     const docId = docIdMatch ? docIdMatch[1] : '';
-
+    let finalUrl = url;
     if (docId) {
-      // For staff view allow editing, for client view use comment-only mode
-      if (isStaffView) {
-        // Staff view - full editing capabilities with full Google Docs UI
-        // Create a clean URL without any restrictive parameters
-        return `https://docs.google.com/document/d/${docId}/edit?usp=sharing&embedded=true${useMinimalMode ? '&rm=minimal' : ''}`;
+      if (status !== 'pending') {
+        finalUrl = `https://docs.google.com/document/d/${docId}/view?embedded=true${useMinimalMode ? '&rm=minimal' : ''}&usp=sharing`;
       } else {
-        // Client view - comment-only mode (force view mode with commenting enabled)
-        // This is the critical part - mode=comment in Google Docs means users can only comment, not edit
-        return `https://docs.google.com/document/d/${docId}/edit?usp=sharing&embedded=true&rm=minimal&mode=comment`;
+        finalUrl = `https://docs.google.com/document/d/${docId}/edit?embedded=true${useMinimalMode ? '&rm=minimal' : ''}&usp=sharing`;
       }
+      console.log('[GoogleDocEmbed] status:', status, 'docId:', docId, 'finalUrl:', finalUrl);
+      return finalUrl;
     }
-
-    // If no document ID found, try to modify the original URL
-    try {
-      const urlObj = new URL(url);
-
-      // Set parameters based on view type
-      if (isStaffView) {
-        // For staff, remove any parameters that might restrict editing
-        if (urlObj.searchParams.has('mode')) urlObj.searchParams.delete('mode');
-        urlObj.searchParams.set('embedded', 'true');
-        // Apply minimal mode based on state
-        if (useMinimalMode) {
-          urlObj.searchParams.set('rm', 'minimal');
-        } else if (urlObj.searchParams.has('rm')) {
-          urlObj.searchParams.delete('rm');
-        }
-      } else {
-        // For clients, enforce comment-only mode
-        urlObj.searchParams.set('mode', 'comment');
-        urlObj.searchParams.set('embedded', 'true');
-        urlObj.searchParams.set('rm', 'minimal');
-      }
-
-      // Remove parameters that might interfere with proper display
-      if (urlObj.searchParams.has('chrome')) urlObj.searchParams.delete('chrome');
-      if (urlObj.searchParams.has('headers')) urlObj.searchParams.delete('headers');
-
-      return urlObj.toString();
-    } catch (error) {
-      console.error('Error modifying URL:', error);
-      // If we can't modify the URL, return original
-      return url;
-    }
-  } catch (error) {
-    console.error('Error processing Google Doc URL:', error);
-    return url; // Return original URL on error
+    // Fallback for non-standard URLs
+    const urlObj = new URL(url);
+    urlObj.pathname = urlObj.pathname.replace(/\/edit$/, status !== 'pending' ? '/view' : '/edit');
+    urlObj.searchParams.set('embedded', 'true');
+    if (useMinimalMode) urlObj.searchParams.set('rm', 'minimal');
+    finalUrl = urlObj.toString();
+    console.log('[GoogleDocEmbed] status:', status, 'fallback finalUrl:', finalUrl);
+    return finalUrl;
+  } catch (err) {
+    console.error('[GoogleDocEmbed] Error:', err, 'url:', url, 'status:', status);
+    return url;
   }
 };
 
@@ -271,6 +241,13 @@ export default function ApprovalRequestDetailPage() {
   const [removingContactId, setRemovingContactId] = useState<number | null>(null);
   const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
   const [contactToRemove, setContactToRemove] = useState<{ id: number; name: string } | null>(null);
+
+  // State for toast notifications
+  const [toastOpen, setToastOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastSeverity, setToastSeverity] = useState<'success' | 'error' | 'warning' | 'info'>(
+    'success'
+  );
 
   // --- Add State for View Log Modal ---
   const [viewLogModalOpen, setViewLogModalOpen] = useState(false);
@@ -491,11 +468,16 @@ export default function ApprovalRequestDetailPage() {
         { headers }
       );
 
-      // Optionally show a success message (e.g., using a Snackbar)
-      console.log(`Notification resent successfully to contact ${contactId}`);
+      // Find the contact name for the success message
+      const contact = request?.contacts.find(c => c.contact_id === contactId);
+      const contactName = contact?.name || `Contact ${contactId}`;
+
+      showToast(`Notification sent successfully to ${contactName}`, 'success');
     } catch (err: any) {
       console.error('Error resending notification:', err);
-      setError(err.response?.data?.error || 'Failed to resend notification');
+      const errorMessage = err.response?.data?.error || 'Failed to send notification';
+      setError(errorMessage);
+      showToast(errorMessage, 'error');
     } finally {
       setResendingContactId(null);
     }
@@ -718,6 +700,21 @@ export default function ApprovalRequestDetailPage() {
     } finally {
       setIsSubmittingApproval(false);
     }
+  };
+
+  // Helper function to show toast messages
+  const showToast = (
+    message: string,
+    severity: 'success' | 'error' | 'warning' | 'info' = 'success'
+  ) => {
+    setToastMessage(message);
+    setToastSeverity(severity);
+    setToastOpen(true);
+  };
+
+  // Handle closing the toast
+  const handleCloseToast = () => {
+    setToastOpen(false);
   };
 
   if (isLoading || (loading && !request)) {
@@ -999,12 +996,12 @@ export default function ApprovalRequestDetailPage() {
                                   const docUrl = request.google_doc_id
                                     ? getEmbeddableGoogleDocUrl(
                                         `https://docs.google.com/document/d/${request.google_doc_id}`,
-                                        true,
+                                        request.status,
                                         isMinimalMode
                                       )
                                     : getEmbeddableGoogleDocUrl(
                                         request.inline_content,
-                                        true,
+                                        request.status,
                                         isMinimalMode
                                       );
 
@@ -1564,6 +1561,18 @@ export default function ApprovalRequestDetailPage() {
           </DialogActions>
         </Dialog>
         {/* --- End Approval Confirmation Dialog --- */}
+
+        {/* Toast Notification */}
+        <Snackbar
+          open={toastOpen}
+          autoHideDuration={6000}
+          onClose={handleCloseToast}
+          anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        >
+          <Alert onClose={handleCloseToast} severity={toastSeverity} sx={{ width: '100%' }}>
+            {toastMessage}
+          </Alert>
+        </Snackbar>
       </LayoutContainer>
     </>
   );

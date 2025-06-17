@@ -168,63 +168,37 @@ interface ApprovalRequest {
 // IMPORTANT: Client portal users should ONLY have comment/suggestion capabilities,
 // never direct edit access to Google Docs. This function ensures all Google Doc URLs
 // use comment-only mode (mode=comment parameter).
-const getEmbeddableGoogleDocUrl = (url: string): string => {
+const getEmbeddableGoogleDocUrl = (url: string, status: string): string => {
   try {
-    // Check if it's a Google Doc URL
     if (!url.includes('docs.google.com')) return url;
-
-    console.log(
-      '%c GOOGLE DOCS URL PROCESSING ',
-      'background: #ff0000; color: #ffffff; font-size: 16px'
-    );
-    console.log('%c INPUT URL:', 'color: blue; font-weight: bold', url);
 
     // Extract document ID from the URL
     const docIdMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
     const docId = docIdMatch ? docIdMatch[1] : '';
-
-    let finalUrl = url;
-
-    if (docId) {
-      // We've found a Google Doc ID, so let's create a clean URL with comment-only mode
-      // Always force comment-only mode regardless of what other parameters might be present in the original URL
-      finalUrl = `https://docs.google.com/document/d/${docId}/edit?mode=comment&embedded=true&rm=minimal&usp=sharing`;
-      console.log('DOC ID FOUND:', docId);
-      console.log('CREATED NEW URL:', finalUrl);
-      return finalUrl;
+    let mode = 'comment';
+    if (status !== 'pending') {
+      mode = 'view';
     }
-
-    // If we couldn't extract a document ID, try to modify the existing URL
-    // This is a fallback option in case the URL format changes in the future
+    if (docId) {
+      return `https://docs.google.com/document/d/${docId}/edit?mode=${mode}&embedded=true&rm=minimal&usp=sharing`;
+    }
     try {
       const urlObj = new URL(url);
-
-      // Always force comment-only mode
-      urlObj.searchParams.set('mode', 'comment');
+      urlObj.searchParams.set('mode', mode);
       urlObj.searchParams.set('embedded', 'true');
       urlObj.searchParams.set('rm', 'minimal');
-
-      // Remove any parameters that might interfere with comment mode
       if (urlObj.searchParams.has('chrome')) urlObj.searchParams.delete('chrome');
       if (urlObj.searchParams.has('headers')) urlObj.searchParams.delete('headers');
-
-      finalUrl = urlObj.toString();
-      console.log('MODIFIED EXISTING URL:', finalUrl);
-      return finalUrl;
+      return urlObj.toString();
     } catch (error) {
-      console.error('Error modifying URL:', error);
-      // If URL manipulation fails, add the comment mode parameter directly
       if (url.includes('?')) {
-        finalUrl = `${url}&mode=comment&rm=minimal`;
+        return `${url}&mode=${mode}&rm=minimal`;
       } else {
-        finalUrl = `${url}?mode=comment&rm=minimal`;
+        return `${url}?mode=${mode}&rm=minimal`;
       }
-      console.log('FALLBACK URL:', finalUrl);
-      return finalUrl;
     }
   } catch (error) {
-    console.error('Error processing Google Doc URL:', error);
-    return url; // Return original URL on error
+    return url;
   }
 };
 
@@ -340,11 +314,25 @@ export default function ClientRequestDetailPage() {
     setLoading(true);
     setError(null);
 
+    // Defensive logging
+    console.log('fetchRequestDetails called with:', { id, clientInfo });
+
+    // Only proceed if clientInfo.contact_id is a valid number
+    if (!clientInfo || typeof clientInfo.contact_id !== 'number' || isNaN(clientInfo.contact_id)) {
+      console.warn(
+        'Aborting fetch: clientInfo.contact_id is not a valid number',
+        clientInfo?.contact_id
+      );
+      setLoading(false);
+      return;
+    }
+
     try {
       const headers = {
         'x-client-portal': 'true',
-        'x-client-contact-id': clientInfo?.contact_id.toString(),
+        'x-client-contact-id': clientInfo.contact_id.toString(),
       };
+      console.log('Fetching approval request with headers:', headers, 'id:', id);
 
       const response = await axios.get(`/api/approval-requests/${id}`, { headers });
 
@@ -504,8 +492,18 @@ export default function ClientRequestDetailPage() {
 
   // Load request data when component mounts or ID changes
   useEffect(() => {
-    if (id && clientInfo) {
+    if (
+      id &&
+      clientInfo &&
+      typeof clientInfo.contact_id === 'number' &&
+      !isNaN(clientInfo.contact_id)
+    ) {
       fetchRequestDetails();
+    } else {
+      console.warn('Skipping fetchRequestDetails: id or valid clientInfo.contact_id not ready', {
+        id,
+        clientInfo,
+      });
     }
   }, [id, clientInfo, fetchRequestDetails]);
 
@@ -1418,52 +1416,8 @@ export default function ClientRequestDetailPage() {
                             >
                               <iframe
                                 src={getEmbeddableGoogleDocUrl(
-                                  (() => {
-                                    // Extract document ID from the URL
-                                    const docIdMatch =
-                                      request.inline_content.match(/\/d\/([a-zA-Z0-9_-]+)/);
-                                    const docId = docIdMatch ? docIdMatch[1] : '';
-
-                                    if (docId) {
-                                      console.log('USING GOOGLE DOCS EDIT MODE WITH ID:', docId);
-
-                                      // Use edit mode with suggestions enabled through the UI
-                                      return `https://docs.google.com/document/d/${docId}/edit?embedded=true${isMinimalMode ? '&rm=minimal' : ''}`;
-                                    } else {
-                                      // Fallback to URL manipulation if no ID found
-                                      try {
-                                        const urlObj = new URL(request.inline_content);
-
-                                        // Use the correct "suggest" mode parameter
-                                        urlObj.searchParams.set('mode', 'suggest');
-                                        urlObj.searchParams.delete('forcedMode'); // Remove any existing forcedMode
-                                        urlObj.searchParams.set('embedded', 'true');
-                                        urlObj.searchParams.set('rm', 'minimal');
-
-                                        // Remove any parameters that might interfere
-                                        if (urlObj.searchParams.has('chrome'))
-                                          urlObj.searchParams.delete('chrome');
-                                        if (urlObj.searchParams.has('headers'))
-                                          urlObj.searchParams.delete('headers');
-
-                                        console.log('USING SUGGEST MODE URL:', urlObj.toString());
-                                        return urlObj.toString();
-                                      } catch (error) {
-                                        console.error('URL parsing error:', error);
-                                        // Force suggest mode by appending parameters directly
-                                        const url = request.inline_content;
-                                        console.log(
-                                          'USING SUGGEST MODE PARAMETERS:',
-                                          url.includes('?')
-                                            ? `${url}&mode=suggest&rm=minimal`
-                                            : `${url}?mode=suggest&rm=minimal`
-                                        );
-                                        return url.includes('?')
-                                          ? `${url}&mode=suggest&rm=minimal`
-                                          : `${url}?mode=suggest&rm=minimal`;
-                                      }
-                                    }
-                                  })()
+                                  request.inline_content,
+                                  request.status
                                 )}
                                 width="100%"
                                 height="100%"
@@ -1683,59 +1637,7 @@ export default function ClientRequestDetailPage() {
                               }}
                             >
                               <iframe
-                                src={(() => {
-                                  // Extract document ID from the URL
-                                  const docIdMatch = versionContent?.match(/\/d\/([a-zA-Z0-9_-]+)/);
-                                  const docId = docIdMatch ? docIdMatch[1] : '';
-
-                                  if (docId) {
-                                    console.log(
-                                      'VERSION VIEW: USING GOOGLE DOCS EDIT MODE WITH ID:',
-                                      docId
-                                    );
-
-                                    // Use edit mode for versions too
-                                    return `https://docs.google.com/document/d/${docId}/edit?embedded=true${isMinimalMode ? '&rm=minimal' : ''}`;
-                                  } else if (versionContent) {
-                                    // Fallback to URL manipulation if no ID found
-                                    try {
-                                      const urlObj = new URL(versionContent);
-
-                                      // Use the correct "suggest" mode parameter
-                                      urlObj.searchParams.set('mode', 'suggest');
-                                      urlObj.searchParams.delete('forcedMode'); // Remove any existing forcedMode
-                                      urlObj.searchParams.set('embedded', 'true');
-                                      urlObj.searchParams.set('rm', 'minimal');
-
-                                      // Remove any parameters that might interfere
-                                      if (urlObj.searchParams.has('chrome'))
-                                        urlObj.searchParams.delete('chrome');
-                                      if (urlObj.searchParams.has('headers'))
-                                        urlObj.searchParams.delete('headers');
-
-                                      console.log(
-                                        'VERSION VIEW: USING SUGGEST MODE URL:',
-                                        urlObj.toString()
-                                      );
-                                      return urlObj.toString();
-                                    } catch (error) {
-                                      console.error('VERSION VIEW: URL parsing error:', error);
-                                      // Force suggest mode by appending parameters directly
-                                      const url = versionContent;
-                                      console.log(
-                                        'VERSION VIEW: USING SUGGEST MODE PARAMETERS:',
-                                        url.includes('?')
-                                          ? `${url}&mode=suggest&rm=minimal`
-                                          : `${url}?mode=suggest&rm=minimal`
-                                      );
-                                      return url.includes('?')
-                                        ? `${url}&mode=suggest&rm=minimal`
-                                        : `${url}?mode=suggest&rm=minimal`;
-                                    }
-                                  } else {
-                                    return '';
-                                  }
-                                })()}
+                                src={getEmbeddableGoogleDocUrl(versionContent, request.status)}
                                 width="100%"
                                 height="100%"
                                 frameBorder="0"

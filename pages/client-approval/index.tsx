@@ -129,6 +129,8 @@ export default function ClientApprovalPage() {
 
   // Helper to determine if archived tab is selected
   const isArchivedTab = tabValue === 2;
+  const isActiveTab = tabValue === 0;
+  const isApprovedTab = tabValue === 1;
 
   // Fetch all approval requests
   const fetchApprovalRequests = async () => {
@@ -158,13 +160,12 @@ export default function ClientApprovalPage() {
         params.append('client_id', clientFilter.toString());
       }
 
-      // Add status filter if selected
-      if (statusFilter !== 'all') {
-        params.append('status', statusFilter);
-      }
-
-      // Add include_archived if archived tab is selected
-      if (isArchivedTab) {
+      // Add tab-based filters
+      if (isActiveTab) {
+        params.append('status', 'pending');
+      } else if (isApprovedTab) {
+        params.append('status', 'approved');
+      } else if (isArchivedTab) {
         params.append('include_archived', 'true');
       }
 
@@ -262,41 +263,14 @@ export default function ClientApprovalPage() {
     router.push(`/client-approval/requests/${requestId}`);
   };
 
-  // Calculate filtered requests based on current filters
-  const getFilteredRequests = () => {
-    // Only apply client-side filtering for search term and archive status
-    // Let the server handle user_id, client_id, and status filtering
-
-    return requests.filter(request => {
-      // Filter by search term (title or client name)
-      const matchesSearch =
-        searchTerm === '' ||
-        request.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        request.client_name.toLowerCase().includes(searchTerm.toLowerCase());
-
-      // Handle the three tab states:
-      // 0: Active Requests - not archived
-      // 1: Approved Requests - approved and not archived
-      // 2: Archived Requests - archived
-      let matchesTab = false;
-
-      if (tabValue === 0) {
-        // Active Requests tab - show only pending and non-archived requests
-        matchesTab = !request.is_archived && request.status === 'pending';
-      } else if (tabValue === 1) {
-        // Approved Requests tab - show only approved and non-archived requests
-        matchesTab = !request.is_archived && request.status === 'approved';
-      } else if (tabValue === 2) {
-        // Archived Requests tab - show only archived requests
-        matchesTab = request.is_archived;
-      }
-
-      return matchesSearch && matchesTab;
-    });
-  };
-
-  // Get the filtered requests
-  const filteredRequests = getFilteredRequests();
+  // Get the filtered requests (only filter by search term, backend handles tab filtering)
+  const filteredRequests = requests.filter(request => {
+    return (
+      searchTerm === '' ||
+      request.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      request.client_name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  });
 
   // Generate status chip with appropriate color
   const getStatusChip = (request: ApprovalRequest) => {
@@ -389,13 +363,12 @@ export default function ClientApprovalPage() {
         params.append('client_id', clientFilter.toString());
       }
 
-      // Add status filter if selected
-      if (statusFilter !== 'all') {
-        params.append('status', statusFilter);
-      }
-
-      // Add include_archived if archived tab is selected
-      if (isArchivedTab) {
+      // Add tab-based filters
+      if (isActiveTab) {
+        params.append('status', 'pending');
+      } else if (isApprovedTab) {
+        params.append('status', 'approved');
+      } else if (isArchivedTab) {
         params.append('include_archived', 'true');
       }
 
@@ -507,13 +480,12 @@ export default function ClientApprovalPage() {
         params.append('client_id', clientFilterStr);
       }
 
-      // Add status filter if selected
-      if (statusFilter !== 'all') {
-        params.append('status', statusFilter);
-      }
-
-      // Add include_archived if archived tab is selected
-      if (isArchivedTab) {
+      // Add tab-based filters
+      if (isActiveTab) {
+        params.append('status', 'pending');
+      } else if (isApprovedTab) {
+        params.append('status', 'approved');
+      } else if (isArchivedTab) {
         params.append('include_archived', 'true');
       }
 
@@ -582,13 +554,12 @@ export default function ClientApprovalPage() {
         params.append('client_id', clientFilter.toString());
       }
 
-      // Add status filter if selected - use passed value
-      if (currentStatusFilter !== 'all') {
-        params.append('status', currentStatusFilter);
-      }
-
-      // Add include_archived if archived tab is selected
-      if (isArchivedTab) {
+      // Add tab-based filters
+      if (isActiveTab) {
+        params.append('status', 'pending');
+      } else if (isApprovedTab) {
+        params.append('status', 'approved');
+      } else if (isArchivedTab) {
         params.append('include_archived', 'true');
       }
 
