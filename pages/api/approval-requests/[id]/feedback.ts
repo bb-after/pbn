@@ -2,7 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import mysql from 'mysql2/promise';
 import { validateUserToken } from '../../validate-user-token';
 import nodemailer from 'nodemailer';
-import axios from 'axios';
+import { postToSlack } from '../../../../utils/postToSlack';
 
 // Create a connection pool
 const pool = mysql.createPool({
@@ -193,17 +193,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       // 6. Send Slack notification if webhook URL is configured
-      if (process.env.SLACK_APPROVAL_WEBHOOK) {
-        await sendSlackNotification({
-          ownerName: requestData.owner_name || 'Content Owner',
-          ownerId: requestData.owner_id,
-          clientName: requestData.client_name,
-          requestTitle: requestData.title,
-          requestId: requestId,
-          feedback: feedback,
-          senderName: isClientPortal ? contactName : 'Internal Team',
-          isClientPortal: isClientPortal,
-        });
+      if (process.env.SLACK_WEBHOOK_URL) {
+        try {
+          const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+          const requestUrl = `${appUrl}/client-approval/requests/${requestId}`;
+
+          const slackMessage =
+            `📝 *${isClientPortal ? 'Client' : 'Internal'} Feedback Received*\n\n` +
+            `*Request:* ${requestData.title}\n` +
+            `*Client:* ${requestData.client_name}\n` +
+            `*From:* ${isClientPortal ? contactName : 'Internal Team'}\n` +
+            `*Owner:* ${requestData.owner_name || 'Content Owner'}\n\n` +
+            `*Feedback:*\n${feedback}\n\n` +
+            `<${requestUrl}|View Request>`;
+
+          await postToSlack(slackMessage);
+          console.log('Slack feedback notification sent');
+        } catch (slackError) {
+          console.error('Error sending Slack notification:', slackError);
+          // Don't let Slack errors affect the database transaction
+        }
       }
 
       return res.status(200).json({
@@ -304,117 +313,5 @@ async function sendFeedbackEmail(params: {
   } catch (error) {
     console.error('Error sending feedback email:', error);
     // Don't throw - allow the API to complete even if email fails
-  }
-}
-
-// Slack notification for feedback
-async function sendSlackNotification(params: {
-  ownerName: string;
-  ownerId: string;
-  clientName: string;
-  requestTitle: string;
-  requestId: number;
-  feedback: string;
-  senderName: string;
-  isClientPortal: boolean;
-}) {
-  const {
-    ownerName,
-    ownerId,
-    clientName,
-    requestTitle,
-    requestId,
-    feedback,
-    senderName,
-    isClientPortal,
-  } = params;
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  const requestUrl = `${appUrl}/approval-requests/${requestId}`;
-
-  try {
-    // Create Slack message
-    const message = {
-      blocks: [
-        {
-          type: 'header',
-          text: {
-            type: 'plain_text',
-            text: 'Content Feedback Received 📝',
-            emoji: true,
-          },
-        },
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `*${isClientPortal ? 'Client' : 'Internal'}* feedback has been submitted for *${requestTitle}*`,
-          },
-        },
-        {
-          type: 'divider',
-        },
-        {
-          type: 'section',
-          fields: [
-            {
-              type: 'mrkdwn',
-              text: `*Client:*\n${clientName}`,
-            },
-            {
-              type: 'mrkdwn',
-              text: `*Submitted by:*\n${senderName}`,
-            },
-            {
-              type: 'mrkdwn',
-              text: `*Owner:*\n${ownerName}`,
-            },
-          ],
-        },
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `*Feedback:*\n${feedback}`,
-          },
-        },
-        {
-          type: 'divider',
-        },
-        {
-          type: 'actions',
-          elements: [
-            {
-              type: 'button',
-              text: {
-                type: 'plain_text',
-                text: 'View Request',
-                emoji: true,
-              },
-              url: requestUrl,
-              style: 'primary',
-            },
-          ],
-        },
-      ],
-    };
-
-    // Add user mention if we have owner ID
-    if (ownerId) {
-      message.blocks.unshift({
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `<@${ownerId}> You have received feedback on a content approval request`,
-        },
-      });
-    }
-
-    // Send to Slack
-    await axios.post(process.env.SLACK_APPROVAL_WEBHOOK as string, message);
-    console.log('Slack notification sent');
-  } catch (error) {
-    console.error('Error sending Slack notification:', error);
-    // Don't throw - allow the API to complete even if Slack notification fails
   }
 }

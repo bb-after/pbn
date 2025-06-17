@@ -5,6 +5,7 @@ import { URL } from 'url';
 import { validateUserToken } from '../validate-user-token'; // Ensure this import is present
 import * as nodemailer from 'nodemailer';
 import axios from 'axios';
+import { postToSlack } from '../../../utils/postToSlack';
 
 // Configure AWS (ensure region is set, credentials should be auto-loaded from env)
 AWS.config.update({ region: 'us-east-2' }); // Force us-east-2 based on bucket URL
@@ -401,6 +402,7 @@ async function updateApprovalRequest(
       console.log('isClientPortal', isClientPortal);
       console.log('contactId', contactId);
       if (isClientPortal && contactId) {
+        console.log('🔍 CLIENT PORTAL APPROVAL ATTEMPT');
         // Additional check: Verify the contact is associated with this request
         const hasAccess = await checkContactAccess(requestId, contactId);
         if (!hasAccess) {
@@ -414,6 +416,7 @@ async function updateApprovalRequest(
 
         // Mark contact as having approved the request if status is provided
         if (status === 'approved') {
+          console.log('🔍 STATUS IS APPROVED - PROCESSING CLIENT APPROVAL');
           // First, check if the contact association exists
           const checkAssociationQuery = `
             SELECT * FROM approval_request_contacts 
@@ -520,6 +523,7 @@ async function updateApprovalRequest(
 
           // If notifyOwner is true, send email and Slack notifications
           if (notifyOwner) {
+            console.log('🔍 NOTIFY OWNER IS TRUE - PREPARING NOTIFICATIONS');
             // Get request details for notification
             const requestDetailsQuery = `
               SELECT ar.*, c.client_name, u.name as owner_name, u.email as owner_email, u.id as owner_id
@@ -560,22 +564,39 @@ async function updateApprovalRequest(
               }
 
               // Send Slack notification if configured
-              if (process.env.SLACK_APPROVAL_WEBHOOK) {
+              console.log('🔍 CHECKING SLACK WEBHOOK URL:', !!process.env.SLACK_WEBHOOK_URL);
+              if (process.env.SLACK_WEBHOOK_URL) {
+                console.log('🔍 SLACK WEBHOOK FOUND - SENDING NOTIFICATION');
                 try {
-                  await sendApprovalSlackNotification({
-                    ownerName: requestData.owner_name || 'Content Owner',
-                    ownerId: requestData.owner_id,
-                    clientName: requestData.client_name,
-                    requestTitle: requestData.title,
-                    requestId: requestId,
-                    note: note || null,
-                    approverName: contactData?.name || 'Client',
-                    isFullyApproved: approvedContacts >= requiredApprovals,
-                    approvedCount: approvedContacts,
-                    totalCount: totalContacts,
-                    requiredApprovals: requiredApprovals,
-                    isStaffApproval: false,
-                  });
+                  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+                  const requestUrl = `${appUrl}/client-approval/requests/${requestId}`;
+
+                  const isFullyApproved = approvedContacts >= requiredApprovals;
+                  const approvalEmoji = isFullyApproved ? '🎉' : '✅';
+
+                  let slackMessage =
+                    `${approvalEmoji} *${isFullyApproved ? 'Content Fully Approved!' : 'Content Approval Update'}*\n\n` +
+                    `*${contactData?.name || 'Client'}* has approved your content`;
+
+                  if (!isFullyApproved) {
+                    slackMessage += ` (${approvedContacts}/${totalContacts} approvals received, ${requiredApprovals} required)`;
+                  } else {
+                    slackMessage += `, completing the approval process!`;
+                  }
+
+                  slackMessage +=
+                    `\n\n*Request:* ${requestData.title}\n` +
+                    `*Client:* ${requestData.client_name}\n` +
+                    `*Owner:* ${requestData.owner_name || 'Content Owner'}`;
+
+                  if (note) {
+                    slackMessage += `\n\n*Approval Note:*\n${note}`;
+                  }
+
+                  slackMessage += `\n\n<${requestUrl}|View Request>`;
+
+                  await postToSlack(slackMessage, '#quote-requests-v2');
+                  console.log('Client approval Slack notification sent');
                 } catch (slackError) {
                   console.error('Error sending Slack notification:', slackError);
                   // Don't let Slack errors affect the database transaction
@@ -607,11 +628,14 @@ async function updateApprovalRequest(
 
           // If this is a staff approval and status is 'approved', record staff member
           if (status === 'approved') {
+            console.log('🔍 STAFF APPROVAL - STATUS IS APPROVED');
             const validationResult = await validateUserToken({
               headers: { 'x-auth-token': req.headers.authorization?.split(' ')[1] || '' },
             } as unknown as NextApiRequest);
+            console.log('🔍 STAFF VALIDATION RESULT:', validationResult.isValid);
 
             if (validationResult.isValid) {
+              console.log('🔍 STAFF VALIDATION PASSED - PROCESSING MANUAL APPROVAL');
               updateQuery += `, approved_by_user_id = ?`;
               queryParams.push(validationResult.user_id);
 
@@ -644,61 +668,27 @@ async function updateApprovalRequest(
 
               if ((requestDetails as any[]).length > 0) {
                 const requestData = (requestDetails as any[])[0];
-
+                console.log('SLACK_WEBHOOK_URL', process.env.SLACK_WEBHOOK_URL);
+                console.log(
+                  '🔍 STAFF APPROVAL - CHECKING SLACK WEBHOOK URL:',
+                  !!process.env.SLACK_WEBHOOK_URL
+                );
                 // Send Slack notification for staff approval
                 if (process.env.SLACK_WEBHOOK_URL) {
+                  console.log('🔍 STAFF APPROVAL - SLACK WEBHOOK FOUND - SENDING NOTIFICATION');
                   try {
                     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
                     const requestUrl = `${appUrl}/client-approval/requests/${requestId}`;
 
-                    await axios.post(process.env.SLACK_WEBHOOK_URL, {
-                      text: `🚨 Content for ${requestData.client_name} manually approved by staff: ${requestData.staff_name || 'Unknown'}`,
-                      blocks: [
-                        {
-                          type: 'header',
-                          text: {
-                            type: 'plain_text',
-                            text: '🚨 Content Manually Approved by Staff 🚨',
-                            emoji: true,
-                          },
-                        },
-                        {
-                          type: 'section',
-                          text: {
-                            type: 'mrkdwn',
-                            text: `*${requestData.staff_name || 'Staff member'}* has manually approved content`,
-                          },
-                        },
-                        {
-                          type: 'section',
-                          fields: [
-                            {
-                              type: 'mrkdwn',
-                              text: `*Title:*\n${requestData.title}`,
-                            },
-                            {
-                              type: 'mrkdwn',
-                              text: `*Client:*\n${requestData.client_name}`,
-                            },
-                          ],
-                        },
-                        {
-                          type: 'actions',
-                          elements: [
-                            {
-                              type: 'button',
-                              text: {
-                                type: 'plain_text',
-                                text: 'View Request',
-                                emoji: true,
-                              },
-                              style: 'primary',
-                              url: requestUrl,
-                            },
-                          ],
-                        },
-                      ],
-                    });
+                    const slackMessage =
+                      `🚨 *Content Manually Approved by Staff*\n\n` +
+                      `*${requestData.staff_name || 'Staff member'}* has manually approved content\n\n` +
+                      `*Request:* ${requestData.title}\n` +
+                      `*Client:* ${requestData.client_name}\n` +
+                      `*Owner:* ${requestData.owner_name || 'Content Owner'}\n\n` +
+                      `<${requestUrl}|View Request>`;
+
+                    await postToSlack(slackMessage);
                     console.log('Staff approval Slack notification sent');
                   } catch (slackError) {
                     console.error(
@@ -894,137 +884,5 @@ async function sendApprovalEmail(params: {
   } catch (error) {
     console.error('Error sending approval email:', error);
     // Don't throw - allow the API to complete even if email fails
-  }
-}
-
-// Slack notification for approvals
-async function sendApprovalSlackNotification(params: {
-  ownerName: string;
-  ownerId: string;
-  clientName: string;
-  requestTitle: string;
-  requestId: number;
-  note: string | null;
-  approverName: string;
-  isFullyApproved: boolean;
-  approvedCount: number;
-  totalCount: number;
-  requiredApprovals: number;
-  isStaffApproval: boolean;
-}) {
-  const {
-    ownerName,
-    ownerId,
-    clientName,
-    requestTitle,
-    requestId,
-    note,
-    approverName,
-    isFullyApproved,
-    approvedCount,
-    totalCount,
-    requiredApprovals,
-    isStaffApproval,
-  } = params;
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  const requestUrl = `${appUrl}/approval-requests/${requestId}`;
-
-  try {
-    // Create Slack message with properly defined types
-    const message: any = {
-      blocks: [
-        {
-          type: 'header',
-          text: {
-            type: 'plain_text',
-            text: isStaffApproval
-              ? '🚨 Content Manually Approved by Staff 🚨'
-              : isFullyApproved
-                ? 'Content Fully Approved! 🎉'
-                : 'Content Approval Update ✅',
-            emoji: true,
-          },
-        },
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: isStaffApproval
-              ? `*${approverName}* has manually approved this content as staff`
-              : isFullyApproved
-                ? `*${approverName}* has approved your content, completing the approval process!`
-                : `*${approverName}* has approved your content (${approvedCount}/${totalCount} approvals received, ${requiredApprovals} required)`,
-          },
-        },
-        {
-          type: 'divider',
-        },
-        {
-          type: 'section',
-          fields: [
-            {
-              type: 'mrkdwn',
-              text: `*Client:*\n${clientName}`,
-            },
-            {
-              type: 'mrkdwn',
-              text: `*Request:*\n${requestTitle}`,
-            },
-          ],
-        },
-      ],
-    };
-
-    // Add note if provided
-    if (note) {
-      message.blocks.push({
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*Approval Note:*\n${note}`,
-        },
-      });
-    }
-
-    // Add footer
-    message.blocks.push(
-      {
-        type: 'divider',
-      },
-      {
-        type: 'actions',
-        elements: [
-          {
-            type: 'button',
-            text: {
-              type: 'plain_text',
-              text: 'View Request',
-              emoji: true,
-            },
-            url: requestUrl,
-            style: 'primary',
-          },
-        ],
-      }
-    );
-
-    // Add user mention if we have owner ID
-    if (ownerId) {
-      message.blocks.unshift({
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `<@${ownerId}> Your content has received an approval`,
-        },
-      });
-    }
-
-    // Send to Slack
-    await axios.post(process.env.SLACK_APPROVAL_WEBHOOK as string, message);
-    console.log('Slack approval notification sent');
-  } catch (error) {
-    console.error('Error sending Slack approval notification:', error);
-    // Don't throw - allow the API to complete even if Slack notification fails
   }
 }
