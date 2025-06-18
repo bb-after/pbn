@@ -230,11 +230,7 @@ async function processWebhook(body: any) {
 
   const slackMessage = createSlackMessage(assistantReply, dealData, screenshotSection);
 
-  await postToSlack(
-    slackMessage,
-    '#quote-requests-v2',
-    process.env.SLACK_QUOTE_REQUESTS_WEBHOOK_URL!
-  );
+  await postToSlack(slackMessage, '#quote-requests-v2');
   console.log('Quote request processed and sent to Slack successfully');
 }
 

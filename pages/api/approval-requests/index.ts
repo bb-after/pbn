@@ -384,7 +384,7 @@ async function createApprovalRequest(req: NextApiRequest, res: NextApiResponse, 
       INSERT INTO client_approval_requests
         (client_id, title, description, file_url, file_type, inline_content, content_type, google_doc_id, created_by_id, required_approvals, status)
       VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const requestValues = [
@@ -545,7 +545,7 @@ async function createApprovalRequest(req: NextApiRequest, res: NextApiResponse, 
           `*Content Type:* ${contentType || 'HTML'}\n\n` +
           `<${requestUrl}|View Request>`;
 
-        await postToSlack(slackMessage);
+        await postToSlack(slackMessage, process.env.SLACK_APPROVAL_UPDATES_CHANNEL);
         console.log('Slack notification sent for new approval request');
       } catch (slackError) {
         console.error('Error sending Slack notification for new request:', slackError);

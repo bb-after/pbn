@@ -198,16 +198,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
           const requestUrl = `${appUrl}/client-approval/requests/${requestId}`;
 
+          // Get contact info for notification
+          const contactQuery = `
+            SELECT name, email FROM client_contacts WHERE contact_id = ?
+          `;
+          const [contactRows] = await connection.query(contactQuery, [contactId]);
+          const contactData = (contactRows as any[])[0];
+
           const slackMessage =
-            `📝 *${isClientPortal ? 'Client' : 'Internal'} Feedback Received*\n\n` +
+            `💬 *New Client Feedback Submitted*\n\n` +
+            `*${contactData?.name || 'Client'}* (${contactData?.email || 'No email'}) has provided feedback on your content\n\n` +
             `*Request:* ${requestData.title}\n` +
             `*Client:* ${requestData.client_name}\n` +
-            `*From:* ${isClientPortal ? contactName : 'Internal Team'}\n` +
             `*Owner:* ${requestData.owner_name || 'Content Owner'}\n\n` +
             `*Feedback:*\n${feedback}\n\n` +
             `<${requestUrl}|View Request>`;
 
-          await postToSlack(slackMessage);
+          await postToSlack(slackMessage, process.env.SLACK_APPROVAL_UPDATES_CHANNEL);
           console.log('Slack feedback notification sent');
         } catch (slackError) {
           console.error('Error sending Slack notification:', slackError);

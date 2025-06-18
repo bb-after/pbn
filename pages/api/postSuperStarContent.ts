@@ -7,9 +7,9 @@ import { getOrCreateCategory } from 'utils/categoryUtils';
 
 // This function can run for a maximum of 5 minutes (max on pro plan)
 export const config = {
-    maxDuration: 300,
-  };
-  
+  maxDuration: 300,
+};
+
 const dbConfig = {
   host: process.env.DB_HOST_NAME,
   user: process.env.DB_USER_NAME,
@@ -25,9 +25,8 @@ const pool = mysql.createPool({
   database: process.env.DB_DATABASE,
   waitForConnections: true,
   connectionLimit: 200, // Set an appropriate limit based on your application's needs
-  queueLimit: 0
+  queueLimit: 0,
 });
-
 
 const SLACK_CHANNEL = 'superstar-alerts';
 
@@ -56,11 +55,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     console.log('Fetching active superstar sites...');
     const [sites]: [SuperstarSite[], any] = await connection.query(
-      'SELECT * FROM superstar_sites WHERE active = 1 ORDER BY RAND() limit 25'
+      'SELECT * FROM superstar_sites WHERE active = 1 ORDER BY RAND()'
     );
     console.log(`Fetched ${sites.length} active sites.`);
 
-    const tasks = sites.map(async (site) => {
+    const tasks = sites.map(async site => {
       console.log(`Processing site: ${site.domain}`);
 
       const auth = { username: site.login, password: site.password };
@@ -103,7 +102,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           [site.id, response.title.rendered, content, response.link, 1, wordpressPostId]
         );
 
-        await postToSlack(`Successfully posted content to WordPress for site ${site.domain} on topic "${randomTopic}".`, SLACK_CHANNEL);
+        await postToSlack(
+          `Successfully posted content to WordPress for site ${site.domain} on topic "${randomTopic}".`,
+          SLACK_CHANNEL
+        );
       } catch (error: any) {
         const errorMessage = `Failed to post content to WordPress for site ${site.domain} on topic "${randomTopic}": ${error.message} using auth ${auth.username}`;
         await postToSlack(errorMessage, SLACK_CHANNEL);
@@ -122,5 +124,3 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     connection.release(); // Release the connection back to the pool
   }
 }
-
-
