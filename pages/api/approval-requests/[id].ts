@@ -576,7 +576,7 @@ async function updateApprovalRequest(
 
                   let slackMessage =
                     `${approvalEmoji} *${isFullyApproved ? 'Content Fully Approved!' : 'Content Approval Update'}*\n\n` +
-                    `*${contactData?.name || 'Client'}* has approved your content`;
+                    `*${contactData?.name || 'Client'}* (${contactData?.email || 'No email'}) has approved your content`;
 
                   if (!isFullyApproved) {
                     slackMessage += ` (${approvedContacts}/${totalContacts} approvals received, ${requiredApprovals} required)`;
@@ -595,7 +595,7 @@ async function updateApprovalRequest(
 
                   slackMessage += `\n\n<${requestUrl}|View Request>`;
 
-                  await postToSlack(slackMessage, '#quote-requests-v2');
+                  await postToSlack(slackMessage, process.env.SLACK_APPROVAL_UPDATES_CHANNEL);
                   console.log('Client approval Slack notification sent');
                 } catch (slackError) {
                   console.error('Error sending Slack notification:', slackError);
@@ -652,19 +652,14 @@ async function updateApprovalRequest(
               ]);
 
               const requestDetailsQuery = `
-                SELECT ar.*, c.client_name, u.name as owner_name, u.email as owner_email, u.id as owner_id,
-                su.name as staff_name
+                SELECT ar.*, c.client_name, u.name as owner_name, u.email as owner_email, u.id as owner_id
                 FROM client_approval_requests ar
                 JOIN clients c ON ar.client_id = c.client_id
                 LEFT JOIN users u ON ar.created_by_id = u.id
-                LEFT JOIN users su ON su.id = ?
                 WHERE ar.request_id = ?
               `;
 
-              const [requestDetails] = await connection.query(requestDetailsQuery, [
-                validationResult.user_id,
-                requestId,
-              ]);
+              const [requestDetails] = await connection.query(requestDetailsQuery, [requestId]);
 
               if ((requestDetails as any[]).length > 0) {
                 const requestData = (requestDetails as any[])[0];
@@ -682,13 +677,13 @@ async function updateApprovalRequest(
 
                     const slackMessage =
                       `🚨 *Content Manually Approved by Staff*\n\n` +
-                      `*${requestData.staff_name || 'Staff member'}* has manually approved content\n\n` +
+                      `*${requestData.staff_name || 'Staff member'}* (${requestData.staff_email || 'No email'}) has manually approved content\n\n` +
                       `*Request:* ${requestData.title}\n` +
                       `*Client:* ${requestData.client_name}\n` +
                       `*Owner:* ${requestData.owner_name || 'Content Owner'}\n\n` +
                       `<${requestUrl}|View Request>`;
 
-                    await postToSlack(slackMessage);
+                    await postToSlack(slackMessage, process.env.SLACK_APPROVAL_UPDATES_CHANNEL);
                     console.log('Staff approval Slack notification sent');
                   } catch (slackError) {
                     console.error(

@@ -2,6 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import mysql from 'mysql2/promise';
 import { validateUserToken } from '../../validate-user-token'; // Import validation function
 import { sendNewStaffCommentEmail } from '../../../../utils/email'; // Import the new utility function
+import { postToSlack } from '../../../../utils/postToSlack';
 
 // Create a connection pool
 const pool = mysql.createPool({
@@ -264,6 +265,55 @@ async function addComment(
       } catch (emailError) {
         console.error('Error fetching data for notification emails:', emailError);
         // Log error but don't fail the comment creation
+      }
+    }
+
+    // Send Slack notification for new comment
+    if (process.env.SLACK_WEBHOOK_URL) {
+      try {
+        // Get request details for Slack notification
+        const [requestDetailsRows]: any = await pool.query(
+          `SELECT ar.title, ar.client_id, c.client_name, u.name as owner_name
+           FROM client_approval_requests ar
+           JOIN clients c ON ar.client_id = c.client_id
+           LEFT JOIN users u ON ar.created_by_id = u.id
+           WHERE ar.request_id = ?`,
+          [requestId]
+        );
+
+        if (requestDetailsRows.length > 0) {
+          const requestDetails = requestDetailsRows[0];
+          const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+          const requestUrl = `${appUrl}/client-approval/requests/${requestId}`;
+
+          // Get commenter info for notification
+          let commenterInfo = '';
+          if (isClientPortal && contactId) {
+            const contactQuery = `SELECT name, email FROM client_contacts WHERE contact_id = ?`;
+            const [contactRows] = await pool.query(contactQuery, [contactId]);
+            const contactData = (contactRows as any[])[0];
+            commenterInfo = `*${contactData?.name || 'Client'}* (${contactData?.email || 'No email'})`;
+          } else if (createdById) {
+            const userQuery = `SELECT name, email FROM users WHERE id = ?`;
+            const [userRows] = await pool.query(userQuery, [createdById]);
+            const userData = (userRows as any[])[0];
+            commenterInfo = `*${userData?.name || 'Staff member'}* (${userData?.email || 'No email'})`;
+          }
+
+          const slackMessage =
+            `💬 *New Comment Posted*\n\n` +
+            `${commenterInfo} has added a comment to your content\n\n` +
+            `*Request:* ${requestDetails.title}\n` +
+            `*Client:* ${requestDetails.client_name}\n\n` +
+            `*Comment:*\n${comment}\n\n` +
+            `<${requestUrl}|View Request>`;
+
+          await postToSlack(slackMessage, process.env.SLACK_APPROVAL_UPDATES_CHANNEL);
+          console.log('Slack comment notification sent');
+        }
+      } catch (slackError) {
+        console.error('Error sending Slack notification for comment:', slackError);
+        // Don't let Slack errors affect the comment creation
       }
     }
 
