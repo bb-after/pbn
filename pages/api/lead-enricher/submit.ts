@@ -6,6 +6,7 @@ interface CSVRowData {
   Company: string;
   Keyword: string;
   URL: string;
+  OwnerUserId: number;
 }
 
 interface RequestBody {
@@ -25,7 +26,7 @@ const dbConfig = {
 };
 
 // Google Sheets configuration
-const SPREADSHEET_ID = '1O15b50dX2qF9vSRdhLj1tOMXnRdLuNfYWnJtVUhrqK8';
+const SPREADSHEET_ID = process.env.CLAY_COMPANY_ENRICHER_GOOGLE_SHEET_ID;
 const RANGE = 'A:E'; // Use columns A-E including user name
 
 // Initialize Google Sheets client
@@ -33,7 +34,7 @@ const getGoogleSheetsClient = async () => {
   const auth = new google.auth.GoogleAuth({
     credentials: {
       type: 'service_account',
-      project_id: '170711728338', // Use the project ID from the error
+      project_id: process.env.GOOGLE_PROJECT_ID,
       private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
       client_email: process.env.GOOGLE_CLIENT_EMAIL,
     },
@@ -61,6 +62,20 @@ const getUserFromToken = async (
   }
 };
 
+// Get user name from user ID
+const getUserNameFromId = async (userId: number): Promise<string | null> => {
+  const connection = await mysql.createConnection(dbConfig);
+
+  try {
+    const [rows] = await connection.execute('SELECT name FROM users WHERE id = ?', [userId]);
+
+    const users = rows as any[];
+    return users.length > 0 ? users[0].name : null;
+  } finally {
+    await connection.end();
+  }
+};
+
 // Save submission to database
 const saveSubmissionToDatabase = async (userId: number, rowCount: number) => {
   const connection = await mysql.createConnection(dbConfig);
@@ -78,7 +93,7 @@ const saveSubmissionToDatabase = async (userId: number, rowCount: number) => {
 };
 
 // Add data to Google Sheets
-const addDataToGoogleSheets = async (data: CSVRowData[], userName: string) => {
+const addDataToGoogleSheets = async (data: CSVRowData[]) => {
   const sheets = await getGoogleSheetsClient();
 
   // First, read the existing headers to understand the sheet structure
@@ -150,23 +165,29 @@ const addDataToGoogleSheets = async (data: CSVRowData[], userName: string) => {
   console.log('Field to column mapping:', fieldToColumnMap);
 
   // Prepare data for Google Sheets - map each field to the correct column position
-  const values = data.map(row => {
-    // Create an array with the same length as headers, filled with empty strings
-    const rowData = new Array(existingHeaders.length).fill('');
+  const values = await Promise.all(
+    data.map(async row => {
+      // Create an array with the same length as headers, filled with empty strings
+      const rowData = new Array(existingHeaders.length).fill('');
 
-    // Map each of our fields to the correct column position
-    if (fieldToColumnMap['Company'] !== undefined)
-      rowData[fieldToColumnMap['Company']] = row.Company;
-    if (fieldToColumnMap['Keyword'] !== undefined)
-      rowData[fieldToColumnMap['Keyword']] = row.Keyword;
-    if (fieldToColumnMap['URL'] !== undefined) rowData[fieldToColumnMap['URL']] = row.URL;
-    if (fieldToColumnMap['timestamp'] !== undefined)
-      rowData[fieldToColumnMap['timestamp']] = new Date().toISOString();
-    if (fieldToColumnMap['userName'] !== undefined)
-      rowData[fieldToColumnMap['userName']] = userName;
+      // Get the owner's name from their user ID
+      const ownerName = await getUserNameFromId(row.OwnerUserId);
 
-    return rowData;
-  });
+      // Map each of our fields to the correct column position
+      if (fieldToColumnMap['Company'] !== undefined)
+        rowData[fieldToColumnMap['Company']] = row.Company;
+      if (fieldToColumnMap['Keyword'] !== undefined)
+        rowData[fieldToColumnMap['Keyword']] = row.Keyword;
+      if (fieldToColumnMap['URL'] !== undefined) rowData[fieldToColumnMap['URL']] = row.URL;
+      if (fieldToColumnMap['timestamp'] !== undefined)
+        rowData[fieldToColumnMap['timestamp']] = new Date().toISOString();
+      if (fieldToColumnMap['userName'] !== undefined)
+        rowData[fieldToColumnMap['userName']] =
+          ownerName || `Unknown User (ID: ${row.OwnerUserId})`;
+
+      return rowData;
+    })
+  );
 
   console.log('Sample mapped row data:', values[0]);
 
@@ -227,6 +248,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!row.Company || String(row.Company).trim() === '') missingFields.push('Company');
       if (!row.Keyword || String(row.Keyword).trim() === '') missingFields.push('Keyword');
       if (!row.URL || String(row.URL).trim() === '') missingFields.push('URL');
+      if (!row.OwnerUserId || !Number.isInteger(row.OwnerUserId)) missingFields.push('OwnerUserId');
 
       if (missingFields.length > 0) {
         console.log(`Row ${i + 2} validation failed:`, {
@@ -235,15 +257,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           Company: row.Company,
           Keyword: row.Keyword,
           URL: row.URL,
+          OwnerUserId: row.OwnerUserId,
         });
 
         return res.status(400).json({
-          message: `Invalid data at row ${i + 2}. Missing fields: ${missingFields.join(', ')}. Company: "${row.Company}", Keyword: "${row.Keyword}", URL: "${row.URL}"`,
+          message: `Invalid data at row ${i + 2}. Missing fields: ${missingFields.join(', ')}. Company: "${row.Company}", Keyword: "${row.Keyword}", URL: "${row.URL}", OwnerUserId: "${row.OwnerUserId}"`,
         });
       }
     }
 
-    // Get user ID and name from token
+    // Get user ID and name from token (submitter info)
     const userInfo = await getUserFromToken(userToken);
     if (!userInfo) {
       return res.status(401).json({ message: 'Invalid user token' });
@@ -253,9 +276,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log(`Saving submission for user ${userInfo.id} with ${data.length} rows`);
     await saveSubmissionToDatabase(userInfo.id, data.length);
 
-    // Add data to Google Sheets
-    console.log(`Adding ${data.length} rows to Google Sheets`);
-    await addDataToGoogleSheets(data, userInfo.name);
+    // Add data to Google Sheets (now uses per-row owners)
+    console.log(`Adding ${data.length} rows to Google Sheets with individual owners`);
+    await addDataToGoogleSheets(data);
 
     console.log('Lead enricher submission completed successfully');
 

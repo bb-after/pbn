@@ -49,7 +49,7 @@ interface CSVRow {
   Company: string;
   Keyword: string;
   URL: string;
-  owner?: string;
+  OwnerUserId?: number;
   rowNumber: number;
 }
 
@@ -61,7 +61,7 @@ interface IndividualCSVRow {
   lastName: string;
   email?: string;
   linkedinURL?: string;
-  owner?: string;
+  OwnerUserId?: number;
   rowNumber: number;
 }
 
@@ -410,7 +410,7 @@ export default function LeadEnricherPage() {
     // Validate data with mapping
     const validation = validateCSVData(data, listType, mapping);
 
-    let ownerIdToUse = modalOwner || selectedOwner;
+    let ownerIdToUse = modalOwner || selectedOwner || null;
     let ownerNameToUse = users.find(u => u.id === ownerIdToUse)?.name || '';
 
     if (listType === 'company') {
@@ -418,7 +418,7 @@ export default function LeadEnricherPage() {
         Company: row[mapping['Company']] || '',
         Keyword: row[mapping['Keyword']] || '',
         URL: row[mapping['URL']] || '',
-        owner: ownerNameToUse,
+        OwnerUserId: ownerIdToUse || undefined,
         rowNumber: index + 2,
       }));
       setCsvData(transformedData);
@@ -432,7 +432,7 @@ export default function LeadEnricherPage() {
         lastName: row[mapping['lastName']] || '',
         email: row[mapping['email']] || '',
         linkedinURL: row[mapping['linkedinURL']] || '',
-        owner: ownerNameToUse,
+        OwnerUserId: ownerIdToUse || undefined,
         rowNumber: index + 2,
       }));
       setIndividualCsvData(transformedIndividualData);
@@ -508,7 +508,7 @@ export default function LeadEnricherPage() {
                 Company: row.Company,
                 Keyword: row.Keyword,
                 URL: row.URL,
-                owner: selectedUser.name, // Use selected owner name
+                OwnerUserId: selectedOwner, // Use selected owner ID
               }))
             : individualCsvData.map(row => ({
                 URL: row.URL,
@@ -518,12 +518,11 @@ export default function LeadEnricherPage() {
                 lastName: row.lastName,
                 email: row.email,
                 linkedinURL: row.linkedinURL,
-                owner: selectedUser.name, // Use selected owner name
+                OwnerUserId: selectedOwner, // Use selected owner ID
               })),
         userToken: token,
         fieldMapping: fieldMapping,
         csvHeaders: csvHeaders,
-        ownerId: selectedOwner, // Also send owner ID
       });
 
       setSubmitted(true);
@@ -873,7 +872,12 @@ export default function LeadEnricherPage() {
                                   >
                                     {row.URL}
                                   </TableCell>
-                                  <TableCell>{row.owner}</TableCell>
+                                  <TableCell>
+                                    {row.OwnerUserId
+                                      ? users.find(u => u.id === row.OwnerUserId)?.name ||
+                                        'Unknown User'
+                                      : 'No Owner'}
+                                  </TableCell>
                                   <TableCell>
                                     {hasError ? (
                                       <Chip label="Error" color="error" size="small" />
@@ -1036,7 +1040,12 @@ export default function LeadEnricherPage() {
                                 <TableCell>{row.lastName}</TableCell>
                                 <TableCell>{row.email}</TableCell>
                                 <TableCell>{row.linkedinURL}</TableCell>
-                                <TableCell>{row.owner}</TableCell>
+                                <TableCell>
+                                  {row.OwnerUserId
+                                    ? users.find(u => u.id === row.OwnerUserId)?.name ||
+                                      'Unknown User'
+                                    : 'No Owner'}
+                                </TableCell>
                                 <TableCell>
                                   {hasError ? (
                                     <Chip label="Error" color="error" size="small" />
