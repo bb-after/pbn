@@ -10,7 +10,7 @@ interface IndividualCSVRowData {
   lastName: string;
   email?: string;
   linkedinURL?: string;
-  owner?: string;
+  OwnerUserId: number;
 }
 
 interface RequestBody {
@@ -66,6 +66,20 @@ const getUserFromToken = async (
   }
 };
 
+// Get user name from user ID
+const getUserNameFromId = async (userId: number): Promise<string | null> => {
+  const connection = await mysql.createConnection(dbConfig);
+
+  try {
+    const [rows] = await connection.execute('SELECT name FROM users WHERE id = ?', [userId]);
+
+    const users = rows as any[];
+    return users.length > 0 ? users[0].name : null;
+  } finally {
+    await connection.end();
+  }
+};
+
 // Save submission to database with list_type
 const saveSubmissionToDatabase = async (userId: number, rowCount: number) => {
   const connection = await mysql.createConnection(dbConfig);
@@ -83,7 +97,7 @@ const saveSubmissionToDatabase = async (userId: number, rowCount: number) => {
 };
 
 // Add data to Google Sheets
-const addDataToGoogleSheets = async (data: IndividualCSVRowData[], fallbackUserName: string) => {
+const addDataToGoogleSheets = async (data: IndividualCSVRowData[]) => {
   const sheets = await getGoogleSheetsClient();
 
   // First, read the existing headers to understand the sheet structure
@@ -176,31 +190,37 @@ const addDataToGoogleSheets = async (data: IndividualCSVRowData[], fallbackUserN
   console.log('Field to column mapping:', fieldToColumnMap);
 
   // Prepare data for Google Sheets - map each field to the correct column position
-  const values = data.map(row => {
-    // Create an array with the same length as headers, filled with empty strings
-    const rowData = new Array(existingHeaders.length).fill('');
+  const values = await Promise.all(
+    data.map(async row => {
+      // Create an array with the same length as headers, filled with empty strings
+      const rowData = new Array(existingHeaders.length).fill('');
 
-    // Map each of our fields to the correct column position
-    if (fieldToColumnMap['firstName'] !== undefined)
-      rowData[fieldToColumnMap['firstName']] = row.firstName;
-    if (fieldToColumnMap['lastName'] !== undefined)
-      rowData[fieldToColumnMap['lastName']] = row.lastName;
-    if (fieldToColumnMap['keyword'] !== undefined)
-      rowData[fieldToColumnMap['keyword']] = row.keyword;
-    if (fieldToColumnMap['URL'] !== undefined) rowData[fieldToColumnMap['URL']] = row.URL;
-    if (fieldToColumnMap['negativeURLTitle'] !== undefined)
-      rowData[fieldToColumnMap['negativeURLTitle']] = row.negativeURLTitle;
-    if (fieldToColumnMap['email'] !== undefined)
-      rowData[fieldToColumnMap['email']] = row.email || '';
-    if (fieldToColumnMap['linkedinURL'] !== undefined)
-      rowData[fieldToColumnMap['linkedinURL']] = row.linkedinURL || '';
-    if (fieldToColumnMap['userName'] !== undefined)
-      rowData[fieldToColumnMap['userName']] = row.owner || fallbackUserName;
-    if (fieldToColumnMap['timestamp'] !== undefined)
-      rowData[fieldToColumnMap['timestamp']] = new Date().toISOString();
+      // Get the owner's name from their user ID
+      const ownerName = await getUserNameFromId(row.OwnerUserId);
 
-    return rowData;
-  });
+      // Map each of our fields to the correct column position
+      if (fieldToColumnMap['firstName'] !== undefined)
+        rowData[fieldToColumnMap['firstName']] = row.firstName;
+      if (fieldToColumnMap['lastName'] !== undefined)
+        rowData[fieldToColumnMap['lastName']] = row.lastName;
+      if (fieldToColumnMap['keyword'] !== undefined)
+        rowData[fieldToColumnMap['keyword']] = row.keyword;
+      if (fieldToColumnMap['URL'] !== undefined) rowData[fieldToColumnMap['URL']] = row.URL;
+      if (fieldToColumnMap['negativeURLTitle'] !== undefined)
+        rowData[fieldToColumnMap['negativeURLTitle']] = row.negativeURLTitle;
+      if (fieldToColumnMap['email'] !== undefined)
+        rowData[fieldToColumnMap['email']] = row.email || '';
+      if (fieldToColumnMap['linkedinURL'] !== undefined)
+        rowData[fieldToColumnMap['linkedinURL']] = row.linkedinURL || '';
+      if (fieldToColumnMap['userName'] !== undefined)
+        rowData[fieldToColumnMap['userName']] =
+          ownerName || `Unknown User (ID: ${row.OwnerUserId})`;
+      if (fieldToColumnMap['timestamp'] !== undefined)
+        rowData[fieldToColumnMap['timestamp']] = new Date().toISOString();
+
+      return rowData;
+    })
+  );
 
   console.log('Sample mapped row data:', values[0]);
 
@@ -283,6 +303,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         missingFields.push('negativeURLTitle');
       if (!row.firstName || String(row.firstName).trim() === '') missingFields.push('firstName');
       if (!row.lastName || String(row.lastName).trim() === '') missingFields.push('lastName');
+      if (!row.OwnerUserId || !Number.isInteger(row.OwnerUserId)) missingFields.push('OwnerUserId');
 
       if (missingFields.length > 0) {
         console.log(`Row ${i + 2} validation failed:`, {
@@ -296,7 +317,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    // Get user ID and name from token
+    // Get user ID and name from token (submitter info)
     const userInfo = await getUserFromToken(userToken);
     if (!userInfo) {
       return res.status(401).json({ message: 'Invalid user token' });
@@ -308,9 +329,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     );
     await saveSubmissionToDatabase(userInfo.id, data.length);
 
-    // Add data to Google Sheets
-    console.log(`Adding ${data.length} rows to individual partial list Google Sheets`);
-    await addDataToGoogleSheets(data, userInfo.name);
+    // Add data to Google Sheets (now uses per-row owners)
+    console.log(
+      `Adding ${data.length} rows to individual partial list Google Sheets with individual owners`
+    );
+    await addDataToGoogleSheets(data);
 
     console.log('Individual partial list submission completed successfully');
 
