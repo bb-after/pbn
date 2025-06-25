@@ -53,8 +53,8 @@ const getOpenAIClient = (() => {
 
   return () => {
     if (!openAIClient) {
-      const apiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
-      const organization = process.env.NEXT_PUBLIC_OPENAI_ORGANIZATION_ID;
+      const apiKey = process.env.OPENAI_API_KEY;
+      const organization = process.env.OPENAI_ORGANIZATION_ID;
 
       if (!apiKey || !organization) {
         throw new Error('Missing OpenAI API Key or Organization ID in environment variables.');
