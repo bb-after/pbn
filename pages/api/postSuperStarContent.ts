@@ -29,6 +29,8 @@ const pool = mysql.createPool({
 });
 
 const SLACK_CHANNEL = 'superstar-alerts';
+const BATCH_SIZE = 10; // Process 10 sites at a time
+const CONTENT_COOLDOWN_HOURS = 6; // Don't generate content for the same site within 6 hours
 
 interface SuperstarSite extends RowDataPacket {
   id: number;
@@ -40,6 +42,7 @@ interface SuperstarSite extends RowDataPacket {
   manual_count: number;
   topics: string[];
   custom_prompt?: string;
+  last_submission?: Date;
 }
 
 interface SuperstarSiteTopic extends RowDataPacket {
@@ -53,36 +56,84 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const connection = await pool.getConnection();
   try {
-    console.log('Fetching active superstar sites...');
+    console.log(`Fetching up to ${BATCH_SIZE} eligible superstar sites...`);
+
+    // Get sites that haven't had content generated in the last X hours
+    // Prioritize sites that have never had content or haven't had content in the longest time
     const [sites]: [SuperstarSite[], any] = await connection.query(
-      'SELECT * FROM superstar_sites WHERE active = 1 ORDER BY RAND()'
+      `
+      SELECT s.*, 
+             MAX(sub.created) as last_submission
+      FROM superstar_sites s
+      LEFT JOIN superstar_site_submissions sub ON s.id = sub.superstar_site_id
+      WHERE s.active = 1
+      GROUP BY s.id
+      HAVING (
+        last_submission IS NULL 
+        OR last_submission < DATE_SUB(NOW(), INTERVAL ? HOUR)
+      )
+      ORDER BY RAND()
+      LIMIT ?
+    `,
+      [CONTENT_COOLDOWN_HOURS, BATCH_SIZE]
     );
-    console.log(`Fetched ${sites.length} active sites.`);
+
+    console.log(`Found ${sites.length} eligible sites (out of max ${BATCH_SIZE})`);
+
+    if (sites.length === 0) {
+      console.log('No sites eligible for content generation at this time');
+      return res.status(200).json({
+        message: 'No sites eligible for content generation',
+        reason: `All active sites have had content generated within the last ${CONTENT_COOLDOWN_HOURS} hours`,
+      });
+    }
+
+    const results = {
+      processed: 0,
+      successful: 0,
+      failed: 0,
+      sites: [] as any[],
+    };
 
     const tasks = sites.map(async site => {
-      console.log(`Processing site: ${site.domain}`);
-
-      const auth = { username: site.login, password: site.password };
-
-      const [topics]: [SuperstarSiteTopic[], any] = await connection.query(
-        'SELECT topic FROM superstar_site_topics WHERE superstar_site_id = ?',
-        [site.id]
+      console.log(
+        `Processing site: ${site.domain} (last content: ${site.last_submission || 'never'})`
       );
+      results.processed++;
 
-      if (topics.length === 0) {
-        console.log(`No topics found for site ID ${site.id}`);
-        return;
-      }
-
-      const randomTopic = topics[Math.floor(Math.random() * topics.length)].topic;
-      console.log(`Selected topic: ${randomTopic}`);
-
-      const { title, body: content } = await generateSuperStarContent(randomTopic, site);
-      console.log(`Generated content for topic "${randomTopic}": ${title}`);
-
-      const categoryId = await getOrCreateCategory(site.domain, randomTopic, auth);
+      const siteResult = {
+        domain: site.domain,
+        status: 'processing',
+        error: null as string | null,
+        contentTitle: null as string | null,
+        wordpressUrl: null as string | null,
+      };
 
       try {
+        const auth = { username: site.login, password: site.password };
+
+        const [topics]: [SuperstarSiteTopic[], any] = await connection.query(
+          'SELECT topic FROM superstar_site_topics WHERE superstar_site_id = ?',
+          [site.id]
+        );
+
+        if (topics.length === 0) {
+          console.log(`No topics found for site ID ${site.id}`);
+          siteResult.status = 'failed';
+          siteResult.error = 'No topics configured';
+          results.failed++;
+          return siteResult;
+        }
+
+        const randomTopic = topics[Math.floor(Math.random() * topics.length)].topic;
+        console.log(`Selected topic: ${randomTopic}`);
+
+        const { title, body: content } = await generateSuperStarContent(randomTopic, site);
+        console.log(`Generated content for topic "${randomTopic}": ${title}`);
+        siteResult.contentTitle = title;
+
+        const categoryId = await getOrCreateCategory(site.domain, randomTopic, auth);
+
         console.log(`Posting content to WordPress for site ${site.domain}`);
         const response = await postToWordpress({
           title,
@@ -93,7 +144,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
 
         console.log(`Posted content to WordPress: ${response.link}`);
-        console.log('response looks like...', response.title);
+        siteResult.wordpressUrl = response.link;
+        siteResult.status = 'success';
 
         // Insert into database with wordpress_post_id
         const wordpressPostId = response.id;
@@ -103,22 +155,59 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         );
 
         await postToSlack(
-          `Successfully posted content to WordPress for site ${site.domain} on topic "${randomTopic}".`,
+          `✅ Successfully posted content to WordPress for site ${site.domain} on topic "${randomTopic}".`,
           SLACK_CHANNEL
         );
+
+        results.successful++;
       } catch (error: any) {
-        const errorMessage = `Failed to post content to WordPress for site ${site.domain} on topic "${randomTopic}": ${error.message} using auth ${auth.username}`;
-        await postToSlack(errorMessage, SLACK_CHANNEL);
+        const errorMessage = `Failed to post content to WordPress for site ${site.domain}: ${error.message}`;
+        siteResult.status = 'failed';
+        siteResult.error = error.message;
+        results.failed++;
+
+        await postToSlack(`❌ ${errorMessage}`, SLACK_CHANNEL);
         console.error('Error posting content to WordPress:', error);
       }
+
+      results.sites.push(siteResult);
+      return siteResult;
     });
 
     await Promise.all(tasks);
 
-    res.status(200).json({ message: 'Content posted successfully' });
+    console.log(`Batch processing complete: ${results.successful}/${results.processed} successful`);
+
+    // Send summary to Slack if there were any results
+    if (results.processed > 0) {
+      await postToSlack(
+        `🚀 Batch content generation complete:\n` +
+          `• Processed: ${results.processed} sites\n` +
+          `• Successful: ${results.successful}\n` +
+          `• Failed: ${results.failed}\n` +
+          `• Next batch available in ${CONTENT_COOLDOWN_HOURS} hours`,
+        SLACK_CHANNEL
+      );
+    }
+
+    res.status(200).json({
+      message: 'Batch content generation completed',
+      ...results,
+      config: {
+        batchSize: BATCH_SIZE,
+        cooldownHours: CONTENT_COOLDOWN_HOURS,
+      },
+    });
   } catch (error: any) {
-    console.error('Error fetching sites or posting content:', error);
-    res.status(500).json({ message: 'Failed to post content', details: error.message });
+    console.error('Error in batch content generation:', error);
+    await postToSlack(
+      `💥 Critical error in superstar content generation: ${error.message}`,
+      SLACK_CHANNEL
+    );
+    res.status(500).json({
+      message: 'Failed to generate content',
+      details: error.message,
+    });
   } finally {
     console.log('Releasing database connection.');
     connection.release(); // Release the connection back to the pool
