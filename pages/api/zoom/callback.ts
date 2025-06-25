@@ -3,17 +3,21 @@ import { NextApiRequest, NextApiResponse } from 'next';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { code } = req.query;
-  const clientID = process.env.NEXT_PUBLIC_ZOOM_CLIENT_ID;
-  const clientSecret = process.env.NEXT_PUBLIC_ZOOM_CLIENT_SECRET;
-  const redirectUri = `${process.env.NEXT_PUBLIC_BASE_URL}/zoom/callback`;
+  const clientId = process.env.NEXT_PUBLIC_ZOOM_CLIENT_ID;
+  const clientSecret = process.env.ZOOM_CLIENT_SECRET;
+  const redirectUri = process.env.NEXT_PUBLIC_ZOOM_REDIRECT_URI;
 
-  const authHeader = Buffer.from(`${clientID}:${clientSecret}`).toString('base64');
+  if (!clientId || !clientSecret || !redirectUri) {
+    return res.status(500).json({ error: 'Missing required environment variables' });
+  }
+
+  const authHeader = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
   try {
     const response = await fetch('https://zoom.us/oauth/token', {
       method: 'POST',
       headers: {
-        'Authorization': `Basic ${authHeader}`,
+        Authorization: `Basic ${authHeader}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
@@ -31,12 +35,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Store the access token in a cookie or send it back as part of the response
     res.status(200).json({
-        access_token: data.access_token,  // Send the access token to the frontend
-        refresh_token: data.refresh_token,
+      access_token: data.access_token, // Send the access token to the frontend
+      refresh_token: data.refresh_token,
     });
-      
   } catch (error: unknown) {
-    console.error('Error fetching Zoom access token:', error instanceof Error ? error.message : String(error));
-    res.status(500).json({ error: 'Failed to get Zoom access token' + (error instanceof Error ? error.message : String(error)) });
+    console.error(
+      'Error fetching Zoom access token:',
+      error instanceof Error ? error.message : String(error)
+    );
+    res
+      .status(500)
+      .json({
+        error:
+          'Failed to get Zoom access token' +
+          (error instanceof Error ? error.message : String(error)),
+      });
   }
 }

@@ -1,15 +1,15 @@
 // pages/api/setZoomBackground.ts
-import type { NextApiRequest, NextApiResponse } from "next";
+import type { NextApiRequest, NextApiResponse } from 'next';
 
 const refreshAccessToken = async (refreshToken: string) => {
   const clientId = process.env.NEXT_PUBLIC_ZOOM_CLIENT_ID;
-  const clientSecret = process.env.NEXT_PUBLIC_ZOOM_CLIENT_SECRET;
+  const clientSecret = process.env.ZOOM_CLIENT_SECRET;
   const authHeader = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
   const response = await fetch('https://zoom.us/oauth/token', {
     method: 'POST',
     headers: {
-      'Authorization': `Basic ${authHeader}`,
+      Authorization: `Basic ${authHeader}`,
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: new URLSearchParams({
@@ -28,7 +28,7 @@ const refreshAccessToken = async (refreshToken: string) => {
     const data = await response.json();
     return {
       accessToken: data.access_token,
-      refreshToken: data.refresh_token 
+      refreshToken: data.refresh_token,
     };
   } catch (e) {
     console.error('Error parsing refresh token response:', e);
@@ -38,12 +38,12 @@ const refreshAccessToken = async (refreshToken: string) => {
 
 const setZoomBackground = async (imageBuffer: Buffer, fileName: string, accessToken: string) => {
   const formData = new FormData();
-  formData.append("file", new Blob([imageBuffer]), fileName);
-  formData.append("type", "image");
-  formData.append("is_default", "true");
+  formData.append('file', new Blob([imageBuffer]), fileName);
+  formData.append('type', 'image');
+  formData.append('is_default', 'true');
 
-  const response = await fetch("https://api.zoom.us/v2/users/me/settings/virtual_backgrounds", {
-    method: "POST",
+  const response = await fetch('https://api.zoom.us/v2/users/me/settings/virtual_backgrounds', {
+    method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -56,10 +56,10 @@ const setZoomBackground = async (imageBuffer: Buffer, fileName: string, accessTo
   }
 
   // Check if there's content to parse
-  const contentType = response.headers.get("content-type");
+  const contentType = response.headers.get('content-type');
   let responseData = null;
 
-  if (contentType && contentType.includes("application/json")) {
+  if (contentType && contentType.includes('application/json')) {
     try {
       responseData = await response.json();
     } catch (e) {
@@ -73,39 +73,40 @@ const setZoomBackground = async (imageBuffer: Buffer, fileName: string, accessTo
     console.error('Zoom API Error Response:', {
       status: response.status,
       statusText: response.statusText,
-      error: responseData
+      error: responseData,
     });
     throw new Error(
-      responseData?.error?.message || 
-      `Failed to update Zoom background (Status: ${response.status})`
+      responseData?.error?.message ||
+        `Failed to update Zoom background (Status: ${response.status})`
     );
   }
 
   return responseData || { success: true };
 };
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  if (req.method === "POST") {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method === 'POST') {
     try {
       const { imageUrl, accessToken, refreshToken } = req.body;
 
       if (!imageUrl) {
-        return res.status(400).json({ error: "Image URL is required" });
+        return res.status(400).json({ error: 'Image URL is required' });
       }
 
       try {
         // First attempt with current access token
         // Fetch image as buffer
         const imageResponse = await fetch(imageUrl);
-        if (!imageResponse.ok) throw new Error("Failed to fetch image");
+        if (!imageResponse.ok) throw new Error('Failed to fetch image');
         const imageBuffer = await imageResponse.arrayBuffer();
 
-        const result = await setZoomBackground(Buffer.from(imageBuffer), "background.png", accessToken);
+        const result = await setZoomBackground(
+          Buffer.from(imageBuffer),
+          'background.png',
+          accessToken
+        );
         return res.status(200).json({
-          message: "Successfully set as Zoom background!",
+          message: 'Successfully set as Zoom background!',
           result,
         });
       } catch (error: unknown) {
@@ -117,18 +118,22 @@ export default async function handler(
             console.log('Token refreshed successfully, retrying background update...');
             // Retry with new access token
 
-                    // Fetch image as buffer
-        const imageResponse = await fetch(imageUrl);
-        if (!imageResponse.ok) throw new Error("Failed to fetch image");
-        const imageBuffer = await imageResponse.arrayBuffer();
+            // Fetch image as buffer
+            const imageResponse = await fetch(imageUrl);
+            if (!imageResponse.ok) throw new Error('Failed to fetch image');
+            const imageBuffer = await imageResponse.arrayBuffer();
 
-        // First attempt with current access token
-        const result = await setZoomBackground(Buffer.from(imageBuffer), "background.png", tokens.accessToken);
+            // First attempt with current access token
+            const result = await setZoomBackground(
+              Buffer.from(imageBuffer),
+              'background.png',
+              tokens.accessToken
+            );
             // const result = await setZoomBackground(imageUrl, tokens.accessToken);
             return res.status(200).json({
-              message: "Successfully set as Zoom background!",
+              message: 'Successfully set as Zoom background!',
               result,
-              newTokens: tokens // Send back new tokens to update in frontend
+              newTokens: tokens, // Send back new tokens to update in frontend
             });
           } catch (refreshError) {
             console.error('Token refresh failed:', refreshError);
@@ -138,11 +143,11 @@ export default async function handler(
         throw error; // Re-throw if it's not a token error or we can't refresh
       }
     } catch (error: unknown) {
-      console.error("Error setting Zoom background:", error);
-      const errorMessage = error instanceof Error ? error.message : "An error occurred.";
+      console.error('Error setting Zoom background:', error);
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred.';
       return res.status(500).json({ error: errorMessage });
     }
   } else {
-    res.status(405).json({ error: "Method Not Allowed" });
+    res.status(405).json({ error: 'Method Not Allowed' });
   }
 }

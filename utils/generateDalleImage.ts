@@ -5,7 +5,7 @@ function getRandomStyle() {
   const styles = [
     'cartoon style',
     'black and white',
-    'sketch',   
+    'sketch',
     'watercolor',
     'surreal',
     'abstract',
@@ -17,7 +17,7 @@ function getRandomStyle() {
     'fantasy',
     'pixel art',
     'line art',
-    'steampunk'
+    'steampunk',
   ];
 
   const randomIndex = Math.floor(Math.random() * styles.length);
@@ -26,9 +26,9 @@ function getRandomStyle() {
 
 function getRandomSize() {
   const sizes = [
-    '1024x1024',  // Square
-    '1792x1024',  // Landscape/Horizontal
-    '1024x1792',  // Portrait/Vertical
+    '1024x1024', // Square
+    '1792x1024', // Landscape/Horizontal
+    '1024x1792', // Portrait/Vertical
   ];
   const randomIndex = Math.floor(Math.random() * sizes.length);
   return sizes[randomIndex];
@@ -37,9 +37,9 @@ function getRandomSize() {
 function getRandomCustomSize(): string {
   // Define min and max dimensions while keeping aspect ratios
   const aspectRatios = [
-    { type: 'square', ratio: 1 },     // 1:1
+    { type: 'square', ratio: 1 }, // 1:1
     { type: 'landscape', ratio: 1.75 }, // 1792:1024 ≈ 1.75:1
-    { type: 'portrait', ratio: 0.57 }  // 1024:1792 ≈ 1:1.75
+    { type: 'portrait', ratio: 0.57 }, // 1024:1792 ≈ 1:1.75
   ];
 
   // Random width between 512 and 2048 (must be multiple of 8 for most image processors)
@@ -49,7 +49,7 @@ function getRandomCustomSize(): string {
   };
 
   const selectedRatio = aspectRatios[Math.floor(Math.random() * aspectRatios.length)];
-  
+
   let width: number;
   let height: number;
 
@@ -75,14 +75,14 @@ function getRandomCustomSize(): string {
 }
 
 export async function generateDalleImage(
-  topic: string, 
+  topic: string,
   dalleVersion: 'dall-e-2' | 'dall-e-3',
   useCustomSize: boolean = false
 ): Promise<string> {
   const style = getRandomStyle();
   const size = useCustomSize ? getRandomCustomSize() : getRandomSize();
   const prompt = `${topic}, textless, ${getRandomStyle()}`;
-  
+
   const requestData = {
     prompt: prompt,
     n: 1,
@@ -91,16 +91,12 @@ export async function generateDalleImage(
   };
 
   try {
-    const response = await axios.post(
-      `https://api.openai.com/v1/images/generations`,
-      requestData,
-      {
-        headers: {
-          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_OPENAI_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    const response = await axios.post(`https://api.openai.com/v1/images/generations`, requestData, {
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    });
 
     if (response.data && response.data.data && response.data.data.length > 0) {
       return response.data.data[0].url;
