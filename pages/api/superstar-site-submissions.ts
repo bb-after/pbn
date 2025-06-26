@@ -64,8 +64,14 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
 
     // Add filter for client ID
     if (clientId) {
-      whereClauses.push('superstar_site_submissions.client_id = ?');
-      queryConfig.push(clientId);
+      if (clientId === 'unassigned') {
+        whereClauses.push(
+          '(superstar_site_submissions.client_id IS NULL OR superstar_site_submissions.client_id = 0)'
+        );
+      } else {
+        whereClauses.push('superstar_site_submissions.client_id = ?');
+        queryConfig.push(clientId);
+      }
     }
 
     // Add filter for site ID
