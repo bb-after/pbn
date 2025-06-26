@@ -1,0 +1,15 @@
+name: Check Untracked Posts
+
+on:
+  schedule:
+    # Enhanced Untracked Posts Check - Twice daily
+    - cron: '0 8,20 * * *' # 8:00 AM and 8:00 PM UTC
+
+jobs:
+  untracked-posts-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for Untracked Posts
+        run: |
+          echo "Triggering untracked posts check..."
+          curl -X POST https://ai.statuscrawl.io/api/checkUntrackedPosts
