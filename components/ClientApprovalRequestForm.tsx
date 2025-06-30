@@ -745,6 +745,11 @@ export default function ClientApprovalRequestForm({
                         <Typography variant="body2" gutterBottom>
                           Please sign in with Google to create the document:
                         </Typography>
+                        <Alert severity="info" sx={{ mb: 2, fontSize: '0.8rem' }}>
+                          Debug: accessToken={accessToken ? 'exists' : 'null'}, googleAccessToken=
+                          {googleAccessToken ? 'exists' : 'null'}, googleClientId=
+                          {googleClientId ? 'exists' : 'null'}, showLoginPrompt={showLoginPrompt}
+                        </Alert>
                         {googleClientId && (
                           <GoogleOAuthProvider clientId={googleClientId}>
                             <GoogleLoginButton />

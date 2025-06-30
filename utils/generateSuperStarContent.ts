@@ -1,31 +1,41 @@
 import { callOpenAISuperstarVersion } from '../utils/openai';
 import { formatSuperstarContent } from './formatSuperstarContent';
 import { uploadImageToWordpress } from './uploadImageToWordpress';
-import { generateDalleImage } from './generateDalleImage'; // Import the generateDalleImage function
-import { fetchNews, NewsArticle } from './newsApi'; // Import the fetchNews function and type
+import { ImageGenerationService } from './imageGenerationService';
+import { fetchNews, NewsArticle } from './newsApi';
 
 interface SuperStarContent {
   title: string;
   body: string;
 }
 
-export const generateSuperStarContent = async (topic: string, site: any): Promise<SuperStarContent> => {
+/**
+ * Generate image using the standalone image generation service
+ */
+async function generateImageWithFallback(topic: string): Promise<string> {
+  return await ImageGenerationService.generateImageWithFallback(topic);
+}
+
+export const generateSuperStarContent = async (
+  topic: string,
+  site: any
+): Promise<SuperStarContent> => {
   const language = 'English';
   console.log('Generating content for topic:', topic);
 
   // Fetch recent news about the topic
   console.log('Fetching news for topic:', topic);
   const newsArticles = await fetchNews(topic);
-  
+
   // Prepare the prompt for OpenAI
-  let prompt = site.custom_prompt 
-    ? `${site.custom_prompt} The topic is: ${topic}.` 
+  let prompt = site.custom_prompt
+    ? `${site.custom_prompt} The topic is: ${topic}.`
     : `Write a detailed article, between 400-700 words, about anything of current or general interest related to ${topic}.`;
-  
+
   // Add recent news context if available
   if (newsArticles.length > 0) {
     console.log(`Found ${newsArticles.length} news articles related to the topic`, newsArticles);
-    
+
     // Select random articles (between 2-4 articles) if we have enough
     let selectedArticles: NewsArticle[] = [];
     if (newsArticles.length <= 4) {
@@ -37,29 +47,35 @@ export const generateSuperStarContent = async (topic: string, site: any): Promis
         const j = Math.floor(Math.random() * (i + 1));
         [shuffledArticles[i], shuffledArticles[j]] = [shuffledArticles[j], shuffledArticles[i]];
       }
-      
+
       // Take 2-4 random articles
       const numArticles = Math.floor(Math.random() * 3) + 2; // Random number between 2-4
       selectedArticles = shuffledArticles.slice(0, numArticles);
     }
-    
+
     // Format articles in a structured way
-    const formattedArticles = selectedArticles.map((article, index) => {
-      const date = article.publishedAt ? new Date(article.publishedAt).toLocaleDateString() : 'recent';
-      return `Article ${index + 1}:
+    const formattedArticles = selectedArticles
+      .map((article, index) => {
+        const date = article.publishedAt
+          ? new Date(article.publishedAt).toLocaleDateString()
+          : 'recent';
+        return `Article ${index + 1}:
 Title: ${article.title}
 Date: ${date}
 Summary: ${article.description}
 ${article.url ? `Source: ${article.url}` : ''}`;
-    }).join('\n\n');
-    
+      })
+      .join('\n\n');
+
     prompt += `\n\nHere are some recent news about this topic that you can reference or incorporate into your article:\n\n${formattedArticles}`;
   } else {
     console.log('No recent news found for the topic');
   }
-  
+
   const initialGptMessage = [
-    { role: "system", content: `Write content in the style of a proficient SEO and copywriter who speaks and writes fluent ${language}. 
+    {
+      role: 'system',
+      content: `Write content in the style of a proficient SEO and copywriter who speaks and writes fluent ${language}. 
 Today's date is ${new Date().toLocaleDateString()}. Write with current, up-to-date information relevant to today.
 
 IMPORTANT: 
@@ -71,8 +87,9 @@ IMPORTANT:
 - Never mention AI, writing models, or content generation in the article
 - Don't introduce yourself or explain your capabilities
 - Write naturally as if a human expert wrote the content directly
-` },
-    { role: "user", content: prompt },
+`,
+    },
+    { role: 'user', content: prompt },
   ];
 
   const inputData = {
@@ -89,11 +106,10 @@ IMPORTANT:
 
   let uploadedImageUrl: string | null = null;
   try {
-    // Generate a DALL·E image
-    const imageUrl = await generateDalleImage(topic, 'dall-e-3');
+    const imageUrl = await generateImageWithFallback(topic);
     if (imageUrl) {
       const auth = { username: site.login, password: site.password };
-      
+
       // uploadImageToWordpress now returns null on failure instead of throwing
       uploadedImageUrl = await uploadImageToWordpress(imageUrl, topic, site.domain, auth);
       if (uploadedImageUrl) {
@@ -103,19 +119,28 @@ IMPORTANT:
       }
     }
   } catch (error: any) {
-    console.error('Failed to generate image:', error);
+    console.error('Failed to generate image with all providers:', error);
   }
 
   // Insert the image into the content
   let modifiedContent = content;
-  if (uploadedImageUrl) {  
+  if (uploadedImageUrl) {
     const lines = modifiedContent.split('<br>');
     if (lines.length > 3) {
-        //choose a width between 50 - 100%
-        const randomWidth = Math.floor(Math.random() * 50) + 50;
-        const randomIndex = Math.floor(Math.random() * (lines.length - 1)) + 1;
-        lines.splice(randomIndex, 0, `<br><br><img width="${randomWidth}%" src="${uploadedImageUrl}" alt="${topic} image"><br><br>`);
-        modifiedContent = lines.join('<br>');
+      // Choose a more reasonable width between 25-40% for embedded article images
+      const randomWidth = Math.floor(Math.random() * 16) + 25; // 25-40%
+
+      // Randomly choose left or right alignment for text wrapping
+      const alignment = Math.random() > 0.5 ? 'left' : 'right';
+      const marginStyle = alignment === 'left' ? 'margin: 0 15px 10px 0' : 'margin: 0 0 10px 15px';
+
+      const randomIndex = Math.floor(Math.random() * (lines.length - 1)) + 1;
+      lines.splice(
+        randomIndex,
+        0,
+        `<br><br><img width="${randomWidth}%" style="float: ${alignment}; ${marginStyle}; border-radius: 8px;" src="${uploadedImageUrl}" alt="${topic} image"><br><br>`
+      );
+      modifiedContent = lines.join('<br>');
     }
   }
 
