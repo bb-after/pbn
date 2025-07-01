@@ -4,6 +4,7 @@ import { postToWordpress } from '../../utils/postToWordpress';
 import { postToSlack } from '../../utils/postToSlack';
 import { generateSuperStarContent } from '../../utils/generateSuperStarContent';
 import { getOrCreateCategory } from 'utils/categoryUtils';
+import axios from 'axios';
 
 // This function can run for a maximum of 5 minutes (max on pro plan)
 export const config = {
@@ -49,6 +50,60 @@ interface SuperstarSiteTopic extends RowDataPacket {
   topic: string;
 }
 
+/**
+ * Check if a WordPress site is accessible and responsive before generating content
+ * This prevents wasting API credits on unreachable sites
+ */
+async function checkWordPressSiteHealth(
+  domain: string,
+  auth: { username: string; password: string }
+): Promise<{ healthy: boolean; error?: string }> {
+  try {
+    // Ensure domain has protocol
+    const siteUrl = domain.startsWith('http') ? domain : `https://${domain}`;
+
+    // Try to access the WordPress REST API posts endpoint
+    const testUrl = `${siteUrl}/wp-json/wp/v2/posts?per_page=1`;
+
+    console.log(`Health checking WordPress site: ${testUrl}`);
+
+    const response = await axios.get(testUrl, {
+      auth: {
+        username: auth.username,
+        password: auth.password,
+      },
+      timeout: 10000, // 10 second timeout
+      validateStatus: status => status < 500, // Don't throw on 4xx errors, only 5xx
+    });
+
+    if (response.status >= 200 && response.status < 300) {
+      console.log(`✅ Site ${domain} is healthy (${response.status})`);
+      return { healthy: true };
+    } else if (response.status === 401) {
+      console.log(`❌ Site ${domain} authentication failed (${response.status})`);
+      return { healthy: false, error: `Authentication failed (401) - Invalid credentials` };
+    } else if (response.status === 404) {
+      console.log(`❌ Site ${domain} not found (${response.status})`);
+      return { healthy: false, error: `Site not found (404) - WordPress REST API not accessible` };
+    } else {
+      console.log(`⚠️ Site ${domain} returned status ${response.status}`);
+      return { healthy: false, error: `Site returned status ${response.status}` };
+    }
+  } catch (error: any) {
+    console.log(`❌ Health check failed for ${domain}:`, error.message);
+
+    if (error.code === 'ENOTFOUND') {
+      return { healthy: false, error: 'Domain not found (DNS resolution failed)' };
+    } else if (error.code === 'ECONNREFUSED') {
+      return { healthy: false, error: 'Connection refused (server not responding)' };
+    } else if (error.code === 'ETIMEDOUT') {
+      return { healthy: false, error: 'Connection timeout (server too slow to respond)' };
+    } else {
+      return { healthy: false, error: `Connection error: ${error.message}` };
+    }
+  }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method not allowed' });
@@ -92,6 +147,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       processed: 0,
       successful: 0,
       failed: 0,
+      skipped: 0, // Add counter for skipped unhealthy sites
       sites: [] as any[],
     };
 
@@ -107,10 +163,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         error: null as string | null,
         contentTitle: null as string | null,
         wordpressUrl: null as string | null,
+        healthCheck: null as string | null,
       };
 
       try {
         const auth = { username: site.login, password: site.password };
+
+        // 🔍 HEALTH CHECK: Verify site is accessible BEFORE generating expensive content
+        console.log(`⚕️ Health checking site ${site.domain} before content generation...`);
+        const healthResult = await checkWordPressSiteHealth(site.domain, auth);
+
+        if (!healthResult.healthy) {
+          console.log(
+            `❌ Skipping content generation for unhealthy site ${site.domain}: ${healthResult.error}`
+          );
+          siteResult.status = 'skipped';
+          siteResult.error = `Site health check failed: ${healthResult.error}`;
+          siteResult.healthCheck = 'failed';
+          results.skipped++;
+          results.failed++; // Also count as failed for backwards compatibility
+
+          // Send specific Slack notification for unhealthy sites
+          await postToSlack(
+            `⚕️❌ Skipped content generation for unhealthy site ${site.domain}: ${healthResult.error}`,
+            SLACK_CHANNEL
+          );
+
+          return siteResult;
+        }
+
+        siteResult.healthCheck = 'passed';
+        console.log(
+          `✅ Site ${site.domain} passed health check, proceeding with content generation...`
+        );
 
         const [topics]: [SuperstarSiteTopic[], any] = await connection.query(
           'SELECT topic FROM superstar_site_topics WHERE superstar_site_id = ?',
@@ -180,11 +265,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Send summary to Slack if there were any results
     if (results.processed > 0) {
+      const actualFailures = results.failed - results.skipped;
       await postToSlack(
         `🚀 Batch content generation complete:\n` +
           `• Processed: ${results.processed} sites\n` +
           `• Successful: ${results.successful}\n` +
-          `• Failed: ${results.failed}\n` +
+          `• Failed: ${actualFailures}\n` +
+          `• Skipped (unhealthy): ${results.skipped}\n` +
+          `• Credits saved by skipping unhealthy sites 💰\n` +
           `• Next batch available in ${CONTENT_COOLDOWN_HOURS} hours`,
         SLACK_CHANNEL
       );
@@ -193,6 +281,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.status(200).json({
       message: 'Batch content generation completed',
       ...results,
+      summary: {
+        healthChecksEnabled: true,
+        creditsSavedBySkipping: results.skipped,
+        actualFailures: results.failed - results.skipped,
+      },
       config: {
         batchSize: BATCH_SIZE,
         cooldownHours: CONTENT_COOLDOWN_HOURS,
