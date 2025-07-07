@@ -45,37 +45,48 @@ function formatForSlack(text: string): string {
 /**
  * 1. HubSpot Files API: Retrieve Private File Paths - optimized parallel version
  */
-async function getHubSpotFilePaths(fileIds: string[]): Promise<string[]> {
-  console.log(`Fetching ${fileIds.length} HubSpot files in parallel...`);
+async function getHubSpotFilePaths(fileIds: string[], dealId: string): Promise<string[]> {
+  const fetchStartTime = Date.now();
+  console.log(`[${dealId}] Fetching ${fileIds.length} HubSpot files in parallel...`);
 
   // Fetch all files in parallel for better performance
   const filePromises = fileIds.map(async fileId => {
+    const fileStartTime = Date.now();
     try {
-      console.log(`Attempting to fetch HubSpot file: ${fileId}`);
+      console.log(`[${dealId}] Attempting to fetch HubSpot file: ${fileId}`);
 
-      const response = await fetch(`https://api.hubapi.com/files/v3/files/${fileId}`, {
+      // Use FileManager API v2 instead - more reliable than Files API v3
+      const response = await fetch(`https://api.hubapi.com/filemanager/api/v2/files/${fileId}`, {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${process.env.HUBSPOT_QUOTE_REQUEST_ACCESS_TOKEN}`,
           'Content-Type': 'application/json',
         },
-        // Add timeout to prevent hanging requests
-        signal: AbortSignal.timeout(30000), // 30 second timeout per file
+        signal: AbortSignal.timeout(10000), // Reduced from 30s to 10s
       });
 
+      const fileTime = Date.now() - fileStartTime;
+
       if (!response.ok) {
-        console.log(`HubSpot API error for file ${fileId}: ${response.status}`);
+        console.log(
+          `[${dealId}] HubSpot API error for file ${fileId}: ${response.status} (took ${fileTime}ms)`
+        );
         return null;
       }
 
       const fileData = await response.json();
       if (fileData.url) {
-        console.log(`Successfully fetched file URL for ${fileId}`);
+        console.log(`[${dealId}] Successfully fetched file URL for ${fileId} (took ${fileTime}ms)`);
         return fileData.url;
       }
+      console.log(`[${dealId}] No URL found for file ${fileId} (took ${fileTime}ms)`);
       return null;
     } catch (err: any) {
-      console.log(`Error processing HubSpot file ${fileId}:`, err.message);
+      const fileTime = Date.now() - fileStartTime;
+      console.log(
+        `[${dealId}] Error processing HubSpot file ${fileId} after ${fileTime}ms:`,
+        err.message
+      );
       return null;
     }
   });
@@ -84,7 +95,10 @@ async function getHubSpotFilePaths(fileIds: string[]): Promise<string[]> {
   const results = await Promise.all(filePromises);
   const filePaths = results.filter((url): url is string => url !== null);
 
-  console.log(`Successfully retrieved ${filePaths.length} out of ${fileIds.length} file paths`);
+  const totalFetchTime = Date.now() - fetchStartTime;
+  console.log(
+    `[${dealId}] Successfully retrieved ${filePaths.length} out of ${fileIds.length} file paths in ${totalFetchTime}ms`
+  );
   return filePaths;
 }
 
@@ -116,11 +130,14 @@ function createSlackMessage(
 async function createThreadRun({
   threadId,
   assistantId,
+  dealId,
 }: {
   threadId: string;
   assistantId: string;
+  dealId: string;
 }): Promise<string> {
-  console.log('Creating OpenAI thread run...');
+  const runStartTime = Date.now();
+  console.log(`[${dealId}] Creating OpenAI thread run...`);
 
   // Create the run
   const createRunResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs`, {
@@ -141,21 +158,29 @@ async function createThreadRun({
 
   const runData = await createRunResponse.json();
   const runId = runData.id;
-  console.log(`Created run ${runId}, now polling for completion...`);
+  const createTime = Date.now() - runStartTime;
+  console.log(`[${dealId}] Created run ${runId} in ${createTime}ms, now polling for completion...`);
 
   // Poll until completed with timeout protection
   const maxPollTime = 10 * 60 * 1000; // 10 minutes max polling time
-  const startTime = Date.now();
+  const pollStartTime = Date.now();
   let pollCount = 0;
 
   while (true) {
     // Check if we've exceeded max polling time
-    if (Date.now() - startTime > maxPollTime) {
+    const pollElapsed = Date.now() - pollStartTime;
+    if (pollElapsed > maxPollTime) {
+      console.log(
+        `[${dealId}] 🚨 OpenAI polling timeout after ${(pollElapsed / 1000).toFixed(2)}s`
+      );
       throw new Error(`OpenAI assistant run timed out after 10 minutes. Run ID: ${runId}`);
     }
 
     pollCount++;
-    console.log(`Polling attempt ${pollCount} for run ${runId}...`);
+    const pollIterationStart = Date.now();
+    console.log(
+      `[${dealId}] Polling attempt ${pollCount} for run ${runId} (elapsed: ${(pollElapsed / 1000).toFixed(2)}s)...`
+    );
 
     const runStatusResponse = await fetch(
       `https://api.openai.com/v1/threads/${threadId}/runs/${runId}`,
@@ -168,10 +193,14 @@ async function createThreadRun({
     );
 
     const runStatus = await runStatusResponse.json();
-    console.log(`Run status: ${runStatus.status}`);
+    const pollIterationTime = Date.now() - pollIterationStart;
+    console.log(`[${dealId}] Run status: ${runStatus.status} (poll took ${pollIterationTime}ms)`);
 
     if (runStatus.status === 'completed') {
-      console.log(`Run completed successfully after ${pollCount} polls`);
+      const totalRunTime = Date.now() - runStartTime;
+      console.log(
+        `[${dealId}] Run completed successfully after ${pollCount} polls in ${(totalRunTime / 1000).toFixed(2)}s`
+      );
 
       // Get messages
       const messagesResponse = await fetch(
@@ -191,6 +220,8 @@ async function createThreadRun({
 
       return lastAssistantMessage?.content[0]?.text?.value || 'No response received';
     } else if (runStatus.status === 'failed') {
+      const totalRunTime = Date.now() - runStartTime;
+      console.log(`[${dealId}] Run failed after ${(totalRunTime / 1000).toFixed(2)}s`);
       throw new Error(`Run failed: ${runStatus.last_error?.message || 'Unknown error'}`);
     }
 
@@ -199,7 +230,7 @@ async function createThreadRun({
   }
 }
 
-async function processWebhook(body: any) {
+async function processWebhook(body: any, dealId: string, startTime: number) {
   const dealData: DealData = {
     hs_object_id: body.hs_object_id,
     keyword: body.keyword,
@@ -211,7 +242,7 @@ async function processWebhook(body: any) {
     budget_discussed: body.budget_discussed,
   };
 
-  console.log('Processing webhook for deal:', dealData.hs_object_id);
+  console.log(`[${dealId}] Processing webhook for deal:`, dealData.hs_object_id);
 
   // Try to fetch screenshots
   let screenshotPaths: string[] = [];
@@ -225,8 +256,8 @@ async function processWebhook(body: any) {
     ].filter(Boolean);
 
     if (screenshotFileIds.length > 0) {
-      console.log('Fetching screenshot files:', screenshotFileIds);
-      screenshotPaths = await getHubSpotFilePaths(screenshotFileIds);
+      console.log(`[${dealId}] Fetching screenshot files:`, screenshotFileIds);
+      screenshotPaths = await getHubSpotFilePaths(screenshotFileIds, dealId);
 
       if (screenshotPaths.length > 0) {
         screenshotSection = screenshotPaths
@@ -235,7 +266,7 @@ async function processWebhook(body: any) {
       }
     }
   } catch (screenshotError: any) {
-    console.log('Error fetching screenshots:', screenshotError.message);
+    console.log(`[${dealId}] Error fetching screenshots:`, screenshotError.message);
     screenshotSection = 'Screenshots could not be retrieved';
   }
 
@@ -252,27 +283,30 @@ async function processWebhook(body: any) {
   Screenshots of Search Result Ranking:
   ${screenshotSection}`.trim();
 
-  console.log('Sending message to OpenAI assistant...');
+  console.log(`[${dealId}] Sending message to OpenAI assistant...`);
 
   const assistantId = process.env.OPENAI_ASSISTANT_ID!;
   const threadId = process.env.OPENAI_THREAD_ID!;
 
-  await sendMessageToThread({ threadId, userMessage });
-  const assistantReply = await createThreadRun({ threadId, assistantId });
+  await sendMessageToThread({ threadId, userMessage, dealId });
+  const assistantReply = await createThreadRun({ threadId, assistantId, dealId });
 
   const slackMessage = createSlackMessage(assistantReply, dealData, screenshotSection);
 
   await postToSlack(slackMessage, '#quote-requests-v2');
-  console.log('Quote request processed and sent to Slack successfully');
+  console.log(`[${dealId}] Quote request processed and sent to Slack successfully`);
 }
 
 async function sendMessageToThread({
   threadId,
   userMessage,
+  dealId,
 }: {
   threadId: string;
   userMessage: string;
+  dealId: string;
 }): Promise<void> {
+  const messageStartTime = Date.now();
   const url = `https://api.openai.com/v1/threads/${threadId}/messages`;
 
   const payload = {
@@ -295,13 +329,16 @@ async function sendMessageToThread({
     throw new Error(`Failed to send message: ${response.status} ${errorText}`);
   }
 
-  console.log('Message sent to thread successfully');
+  const messageTime = Date.now() - messageStartTime;
+  console.log(`[${dealId}] Message sent to thread successfully in ${messageTime}ms`);
 }
 
 /**
  * 3. Main Handler
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const startTime = Date.now();
+
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   // Check webhook secret
@@ -315,13 +352,47 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // Extract deal ID for logging
   const dealId = req.body?.hs_object_id || 'Unknown';
-  console.log(`Starting quote request processing for deal ${dealId}`);
+  console.log(`[${dealId}] Starting quote request processing at ${new Date().toISOString()}`);
+  console.log(`[${dealId}] Handler start time: ${startTime}`);
 
   try {
-    await processWebhook(req.body);
+    await processWebhook(req.body, dealId, startTime);
 
-    console.log(`✅ Quote request handler completed successfully for deal ${dealId}`);
+    const totalTime = Date.now() - startTime;
+    console.log(
+      `[${dealId}] ✅ Quote request handler completed successfully in ${totalTime}ms (${(totalTime / 1000).toFixed(2)}s)`
+    );
   } catch (error: any) {
-    console.log(`❌ Quote request handler failed for deal ${dealId}:`, error.message);
+    const totalTime = Date.now() - startTime;
+    console.log(
+      `[${dealId}] ❌ Quote request handler failed after ${totalTime}ms (${(totalTime / 1000).toFixed(2)}s):`,
+      error.message
+    );
+
+    // Check if it's a timeout-related error
+    if (
+      error.message.includes('timeout') ||
+      error.message.includes('timed out') ||
+      totalTime > 280000
+    ) {
+      console.log(
+        `[${dealId}] 🚨 TIMEOUT DETECTED: Handler ran for ${(totalTime / 1000).toFixed(2)}s (limit: 300s)`
+      );
+
+      // Send timeout alert to Slack
+      try {
+        const timeoutMessage =
+          `🚨 **QUOTE REQUEST TIMEOUT ALERT** 🚨\n\n` +
+          `Deal ID: ${dealId}\n` +
+          `Execution Time: ${(totalTime / 1000).toFixed(2)}s / 300s limit\n` +
+          `Error: ${error.message}\n` +
+          `Timestamp: ${new Date().toISOString()}\n\n` +
+          `This indicates the quote request processor is hitting the 5-minute Vercel limit.`;
+
+        await postToSlack(timeoutMessage, '#quote-requests-v2');
+      } catch (slackError) {
+        console.log(`[${dealId}] Failed to send timeout alert to Slack:`, slackError);
+      }
+    }
   }
 }
