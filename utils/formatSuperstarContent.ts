@@ -1,50 +1,67 @@
+/**
+ * Clean up AI-generated titles by removing unwanted formatting patterns
+ */
+function cleanTitle(title: string): string {
+  console.log('Raw title before cleaning:', title);
+
+  let cleaned = title;
+
+  // Pattern 1: Remove numbered list format like "1. "Title""
+  cleaned = cleaned.replace(/^\d+\.\s*"(.+)"$/, '$1');
+
+  // Pattern 2: Remove numbered list format like "1. Title" (without quotes)
+  cleaned = cleaned.replace(/^\d+\.\s*(.+)$/, '$1');
+
+  // Pattern 3: Remove leading and trailing quotes
+  cleaned = cleaned.replace(/^"(.+)"$/, '$1');
+
+  // Pattern 4: Remove markdown headers (###, ##, etc.)
+  cleaned = cleaned.replace(/^#+\s*/, '');
+
+  // Pattern 5: Remove bold markers (**text**)
+  cleaned = cleaned.replace(/^\*\*(.+)\*\*$/, '$1');
+
+  // Pattern 6: Handle titles that start with "Title:" or similar
+  cleaned = cleaned.replace(/^(Title|Heading|Header):\s*/i, '');
+
+  // Pattern 7: Remove any remaining formatting characters
+  cleaned = cleaned.replace(/[*#`_]/g, '');
+
+  // Clean up whitespace and line breaks
+  cleaned = cleaned.split('\n')[0].trim();
+
+  console.log('Cleaned title:', cleaned);
+  return cleaned;
+}
+
 export const formatSuperstarContent = (content: string, seoTitle: string) => {
   console.log('content before formatting', content);
-  // Extract the title if it starts with ### and is followed by quoted text
-  let cleanedTitle = seoTitle;
-  const titleMatch = seoTitle.match(/###\s*"([^"]+)"/);
-  if (titleMatch) {
-      cleanedTitle = titleMatch[1];
-  } else {
-      // Remove leading and trailing quotes and trim spaces
-      cleanedTitle = seoTitle.replace(/^"|"$/g, '').trim();
-  }
 
-  // Remove any instance of "###", "##", and "**" from the title
-  cleanedTitle = cleanedTitle.replace(/###|##|\*\*/g, '');
-
-  // Handle titles with line breaks - use everything before the first line break
-  cleanedTitle = cleanedTitle.split('\n')[0].trim();
-
-  // Handle multiple title suggestions
-  if (/^\d+\.\s*".*"$/.test(seoTitle)) {
-      const titles = seoTitle.match(/\d+\.\s*"([^"]+)"/g);
-      if (titles && titles.length > 0) {
-          cleanedTitle = titles[0].replace(/^\d+\.\s*"|"$/g, '').trim();
-      }
-  }
+  // Use the enhanced title cleaning function
+  let cleanedTitle = cleanTitle(seoTitle);
 
   // Function to add line breaks within the article every 3-5 sentences
   const addParagraphs = (text: string) => {
-      const sentences = text.split('. ');
-      let paragraph = '';
-      let formattedText = '';
+    const sentences = text.split('. ');
+    let paragraph = '';
+    let formattedText = '';
 
-      for (let i = 0; i < sentences.length; i++) {
-          paragraph += sentences[i] + (i < sentences.length - 1 ? '. ' : '');
-          if (Math.random() < 0.25 || i === sentences.length - 1) { // Approx every 3-5 sentences
-              formattedText += paragraph + '\n\n';
-              paragraph = '';
-          }
+    for (let i = 0; i < sentences.length; i++) {
+      paragraph += sentences[i] + (i < sentences.length - 1 ? '. ' : '');
+      if (Math.random() < 0.25 || i === sentences.length - 1) {
+        // Approx every 3-5 sentences
+        formattedText += paragraph + '\n\n';
+        paragraph = '';
       }
+    }
 
-      return formattedText.trim();
+    return formattedText.trim();
   };
 
   // Remove "Title" keyword if it is the first word and set it as title
-  if (content.startsWith("Title")) {
-      const parts = content.split("\n");
-      content = parts.slice(1).join("\n").trim();
+  if (content.startsWith('Title')) {
+    const parts = content.split('\n');
+    content = parts.slice(1).join('\n').trim();
   }
 
   // Replace multiple # symbols in a row with <br><br>
@@ -57,10 +74,7 @@ export const formatSuperstarContent = (content: string, seoTitle: string) => {
   content = content.replace(/#\s/g, '');
 
   // Replace [text](url) with <a href="url">text</a>
-  content = content.replace(
-      /\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g,
-      '<a href="$2">$1</a>'
-  );
+  content = content.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<a href="$2">$1</a>');
 
   // Handle double asterisks for bold text
   content = content.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
@@ -75,11 +89,14 @@ export const formatSuperstarContent = (content: string, seoTitle: string) => {
   content = content.replace(/\n{3,}/g, '\n');
 
   // Remove leading spaces from the start of each line
-  content = content.split('\n').map(line => line.trimStart()).join('\n');
+  content = content
+    .split('\n')
+    .map(line => line.trimStart())
+    .join('\n');
 
   // Ensure the final content ends with double newline characters if not already present
   if (!content.endsWith('\n\n')) {
-      content += '\n\n';
+    content += '\n\n';
   }
 
   // Replace all instances of double newlines with <br><br>
