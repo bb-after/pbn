@@ -1,0 +1,55 @@
+name: Monitor Inactive Superstar Sites
+
+on:
+  schedule:
+    # Check for inactive sites twice daily
+    - cron: '0 9,18 * * *' # 9:00 AM and 6:00 PM UTC
+  workflow_dispatch: # Allow manual triggering
+    inputs:
+      dry_run:
+        description: 'Run in dry mode (no Slack notifications)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  inactive-sites-monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Monitor Inactive Superstar Sites
+        run: |
+          echo "Checking for inactive superstar sites..."
+
+          # Set dry run mode if requested
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            echo "Running in DRY RUN mode - no Slack notifications will be sent"
+          fi
+
+          # Call the API endpoint
+          response=$(curl -s -w "%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -o response.json \
+            https://ai.statuscrawl.io/api/checkInactiveSuperstarSites)
+
+          # Check if the request was successful
+          if [ "$response" -eq 200 ]; then
+            echo "✅ Inactive sites check completed successfully"
+            cat response.json | jq '.'
+          else
+            echo "❌ Inactive sites check failed with status code: $response"
+            cat response.json
+            exit 1
+          fi
+
+      - name: Report Success
+        if: success()
+        run: |
+          echo "Inactive superstar sites monitoring completed successfully"
+          echo "Check the logs above for details on any inactive sites found"
+
+      - name: Report Failure
+        if: failure()
+        run: |
+          echo "Inactive superstar sites monitoring failed"
+          echo "Check the API logs and ensure all environment variables are properly configured"

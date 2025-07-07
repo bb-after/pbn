@@ -1,6 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { postToSlack } from 'utils/postToSlack';
 
+// Extend execution time to maximum Vercel Pro plan allows (5 minutes)
+export const config = {
+  maxDuration: 300, // 5 minutes (300 seconds) - Pro plan limit
+};
+
 type DealData = {
   hs_object_id: Number;
   keyword: string;
@@ -38,12 +43,13 @@ function formatForSlack(text: string): string {
 }
 
 /**
- * 1. HubSpot Files API: Retrieve Private File Paths - simple working version
+ * 1. HubSpot Files API: Retrieve Private File Paths - optimized parallel version
  */
 async function getHubSpotFilePaths(fileIds: string[]): Promise<string[]> {
-  const filePaths: string[] = [];
+  console.log(`Fetching ${fileIds.length} HubSpot files in parallel...`);
 
-  for (const fileId of fileIds) {
+  // Fetch all files in parallel for better performance
+  const filePromises = fileIds.map(async fileId => {
     try {
       console.log(`Attempting to fetch HubSpot file: ${fileId}`);
 
@@ -53,24 +59,32 @@ async function getHubSpotFilePaths(fileIds: string[]): Promise<string[]> {
           Authorization: `Bearer ${process.env.HUBSPOT_QUOTE_REQUEST_ACCESS_TOKEN}`,
           'Content-Type': 'application/json',
         },
+        // Add timeout to prevent hanging requests
+        signal: AbortSignal.timeout(30000), // 30 second timeout per file
       });
 
       if (!response.ok) {
         console.log(`HubSpot API error for file ${fileId}: ${response.status}`);
-        continue;
+        return null;
       }
 
       const fileData = await response.json();
       if (fileData.url) {
-        filePaths.push(fileData.url);
-        console.log(`Added file URL for ${fileId}`);
+        console.log(`Successfully fetched file URL for ${fileId}`);
+        return fileData.url;
       }
+      return null;
     } catch (err: any) {
       console.log(`Error processing HubSpot file ${fileId}:`, err.message);
+      return null;
     }
-  }
+  });
 
-  console.log(`Retrieved ${filePaths.length} file paths`);
+  // Wait for all requests to complete and filter out failures
+  const results = await Promise.all(filePromises);
+  const filePaths = results.filter((url): url is string => url !== null);
+
+  console.log(`Successfully retrieved ${filePaths.length} out of ${fileIds.length} file paths`);
   return filePaths;
 }
 
@@ -106,6 +120,8 @@ async function createThreadRun({
   threadId: string;
   assistantId: string;
 }): Promise<string> {
+  console.log('Creating OpenAI thread run...');
+
   // Create the run
   const createRunResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs`, {
     method: 'POST',
@@ -125,9 +141,22 @@ async function createThreadRun({
 
   const runData = await createRunResponse.json();
   const runId = runData.id;
+  console.log(`Created run ${runId}, now polling for completion...`);
 
-  // Poll until completed
+  // Poll until completed with timeout protection
+  const maxPollTime = 10 * 60 * 1000; // 10 minutes max polling time
+  const startTime = Date.now();
+  let pollCount = 0;
+
   while (true) {
+    // Check if we've exceeded max polling time
+    if (Date.now() - startTime > maxPollTime) {
+      throw new Error(`OpenAI assistant run timed out after 10 minutes. Run ID: ${runId}`);
+    }
+
+    pollCount++;
+    console.log(`Polling attempt ${pollCount} for run ${runId}...`);
+
     const runStatusResponse = await fetch(
       `https://api.openai.com/v1/threads/${threadId}/runs/${runId}`,
       {
@@ -139,8 +168,11 @@ async function createThreadRun({
     );
 
     const runStatus = await runStatusResponse.json();
+    console.log(`Run status: ${runStatus.status}`);
 
     if (runStatus.status === 'completed') {
+      console.log(`Run completed successfully after ${pollCount} polls`);
+
       // Get messages
       const messagesResponse = await fetch(
         `https://api.openai.com/v1/threads/${threadId}/messages`,
@@ -162,8 +194,8 @@ async function createThreadRun({
       throw new Error(`Run failed: ${runStatus.last_error?.message || 'Unknown error'}`);
     }
 
-    // Wait 1 second before polling again
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Wait 2 seconds before polling again (slightly longer interval for efficiency)
+    await new Promise(resolve => setTimeout(resolve, 2000));
   }
 }
 
