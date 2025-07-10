@@ -65,6 +65,20 @@ interface IndividualCSVRow {
   rowNumber: number;
 }
 
+interface BLPCSVRow {
+  companyName: string;
+  website: string;
+  industry: string;
+  location: string;
+  employeeCount?: string;
+  revenue?: string;
+  contactName?: string;
+  contactTitle?: string;
+  contactEmail?: string;
+  OwnerUserId?: number;
+  rowNumber: number;
+}
+
 interface ValidationError {
   rowNumber: number;
   missingFields: string[];
@@ -79,7 +93,7 @@ interface User {
   name: string;
 }
 
-type ListType = 'company' | 'individual';
+type ListType = 'company' | 'individual' | 'blp';
 
 export default function LeadEnricherPage() {
   const router = useRouter();
@@ -87,6 +101,7 @@ export default function LeadEnricherPage() {
   const [listType, setListType] = useState<ListType>('company');
   const [csvData, setCsvData] = useState<CSVRow[]>([]);
   const [individualCsvData, setIndividualCsvData] = useState<IndividualCSVRow[]>([]);
+  const [blpCsvData, setBlpCsvData] = useState<BLPCSVRow[]>([]);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [isValid, setIsValid] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -122,6 +137,15 @@ export default function LeadEnricherPage() {
       email: ['email', 'emailaddress', 'mail'],
       linkedinURL: ['linkedin', 'linkedinurl', 'linkedinprofile', 'profile'],
       negativeURLTitle: ['negativeurltitle', 'negativetitle', 'excludetitle', 'badtitle'],
+      companyName: ['companyname', 'company', 'organization', 'org', 'business'],
+      website: ['website', 'url', 'domain', 'site', 'link'],
+      industry: ['industry', 'sector', 'vertical', 'business'],
+      location: ['location', 'address', 'city', 'region', 'country'],
+      employeeCount: ['employeecount', 'employees', 'headcount', 'size'],
+      revenue: ['revenue', 'income', 'earnings', 'sales'],
+      contactName: ['contactname', 'name', 'contact', 'person'],
+      contactTitle: ['contacttitle', 'title', 'position', 'role'],
+      contactEmail: ['contactemail', 'email', 'emailaddress', 'mail'],
       owner: ['owner', 'assignedto', 'user', 'assignee', 'responsible'],
     };
 
@@ -215,7 +239,9 @@ export default function LeadEnricherPage() {
     const requiredFields =
       type === 'company'
         ? ['Company', 'Keyword', 'URL']
-        : ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName'];
+        : type === 'individual'
+          ? ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName']
+          : ['companyName']; // BLP required fields - only company name needed
 
     // Note: owner is optional in CSV since it can be set via dropdown
 
@@ -355,7 +381,9 @@ export default function LeadEnricherPage() {
           const requiredFields =
             listType === 'company'
               ? ['Company', 'Keyword', 'URL']
-              : ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName'];
+              : listType === 'individual'
+                ? ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName']
+                : ['companyName']; // BLP only needs company name
 
           // Auto-match fields
           const autoMapping = autoMatchFields(headers, requiredFields);
@@ -423,7 +451,8 @@ export default function LeadEnricherPage() {
       }));
       setCsvData(transformedData);
       setIndividualCsvData([]);
-    } else {
+      setBlpCsvData([]);
+    } else if (listType === 'individual') {
       const transformedIndividualData: IndividualCSVRow[] = data.map((row, index) => ({
         URL: row[mapping['URL']] || '',
         keyword: row[mapping['keyword']] || '',
@@ -437,6 +466,24 @@ export default function LeadEnricherPage() {
       }));
       setIndividualCsvData(transformedIndividualData);
       setCsvData([]);
+      setBlpCsvData([]);
+    } else {
+      const transformedBlpData: BLPCSVRow[] = data.map((row, index) => ({
+        companyName: row[mapping['companyName']] || '',
+        website: row[mapping['website']] || '',
+        industry: row[mapping['industry']] || '',
+        location: row[mapping['location']] || '',
+        employeeCount: row[mapping['employeeCount']] || '',
+        revenue: row[mapping['revenue']] || '',
+        contactName: row[mapping['contactName']] || '',
+        contactTitle: row[mapping['contactTitle']] || '',
+        contactEmail: row[mapping['contactEmail']] || '',
+        OwnerUserId: ownerIdToUse || undefined,
+        rowNumber: index + 2,
+      }));
+      setBlpCsvData(transformedBlpData);
+      setCsvData([]);
+      setIndividualCsvData([]);
     }
 
     setValidationErrors(validation.errors);
@@ -455,7 +502,9 @@ export default function LeadEnricherPage() {
     const requiredFields =
       listType === 'company'
         ? ['Company', 'Keyword', 'URL']
-        : ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName'];
+        : listType === 'individual'
+          ? ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName']
+          : ['companyName']; // BLP only needs company name
 
     // Check if all required fields are mapped
     const unmappedFields = requiredFields.filter(field => !fieldMapping[field]);
@@ -476,7 +525,11 @@ export default function LeadEnricherPage() {
   const handleSubmit = async () => {
     if (
       !isValid ||
-      (listType === 'company' ? csvData.length === 0 : individualCsvData.length === 0)
+      (listType === 'company'
+        ? csvData.length === 0
+        : listType === 'individual'
+          ? individualCsvData.length === 0
+          : blpCsvData.length === 0)
     )
       return;
 
@@ -499,7 +552,9 @@ export default function LeadEnricherPage() {
       const apiEndpoint =
         listType === 'company'
           ? '/api/lead-enricher/submit'
-          : '/api/lead-enricher/submit-individual';
+          : listType === 'individual'
+            ? '/api/lead-enricher/submit-individual'
+            : '/api/lead-enricher/submit-blp';
 
       const response = await axios.post(apiEndpoint, {
         data:
@@ -510,16 +565,29 @@ export default function LeadEnricherPage() {
                 URL: row.URL,
                 OwnerUserId: selectedOwner, // Use selected owner ID
               }))
-            : individualCsvData.map(row => ({
-                URL: row.URL,
-                keyword: row.keyword,
-                negativeURLTitle: row.negativeURLTitle,
-                firstName: row.firstName,
-                lastName: row.lastName,
-                email: row.email,
-                linkedinURL: row.linkedinURL,
-                OwnerUserId: selectedOwner, // Use selected owner ID
-              })),
+            : listType === 'individual'
+              ? individualCsvData.map(row => ({
+                  URL: row.URL,
+                  keyword: row.keyword,
+                  negativeURLTitle: row.negativeURLTitle,
+                  firstName: row.firstName,
+                  lastName: row.lastName,
+                  email: row.email,
+                  linkedinURL: row.linkedinURL,
+                  OwnerUserId: selectedOwner, // Use selected owner ID
+                }))
+              : blpCsvData.map(row => ({
+                  companyName: row.companyName,
+                  website: row.website,
+                  industry: row.industry,
+                  location: row.location,
+                  employeeCount: row.employeeCount,
+                  revenue: row.revenue,
+                  contactName: row.contactName,
+                  contactTitle: row.contactTitle,
+                  contactEmail: row.contactEmail,
+                  OwnerUserId: selectedOwner, // Use selected owner ID
+                })),
         userToken: token,
         fieldMapping: fieldMapping,
         csvHeaders: csvHeaders,
@@ -537,6 +605,7 @@ export default function LeadEnricherPage() {
   const resetForm = () => {
     setCsvData([]);
     setIndividualCsvData([]);
+    setBlpCsvData([]);
     setValidationErrors([]);
     setIsValid(false);
     setSubmitted(false);
@@ -618,7 +687,7 @@ export default function LeadEnricherPage() {
             </Typography>
 
             <Grid container spacing={3} sx={{ mb: 4 }}>
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12} md={4}>
                 <Card
                   variant="outlined"
                   sx={{
@@ -640,6 +709,7 @@ export default function LeadEnricherPage() {
                     // Reset form when changing list type
                     setCsvData([]);
                     setIndividualCsvData([]);
+                    setBlpCsvData([]);
                     setValidationErrors([]);
                     setIsValid(false);
                     setError(null);
@@ -685,7 +755,7 @@ export default function LeadEnricherPage() {
                 </Card>
               </Grid>
 
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12} md={4}>
                 <Card
                   variant="outlined"
                   sx={{
@@ -708,6 +778,7 @@ export default function LeadEnricherPage() {
                     // Reset form when changing list type
                     setCsvData([]);
                     setIndividualCsvData([]);
+                    setBlpCsvData([]);
                     setValidationErrors([]);
                     setIsValid(false);
                     setError(null);
@@ -748,6 +819,74 @@ export default function LeadEnricherPage() {
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
                       For enriching individual data with personal details, keywords, and URLs
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <Card
+                  variant="outlined"
+                  sx={{
+                    height: '200px',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease',
+                    border: '2px solid',
+                    borderColor: listType === 'blp' ? 'success.main' : 'grey.300',
+                    backgroundColor: listType === 'blp' ? 'success.50' : 'background.paper',
+                    '&:hover': {
+                      borderColor: 'success.main',
+                      backgroundColor: 'success.50',
+                      transform: 'translateY(-4px)',
+                      boxShadow: 4,
+                    },
+                  }}
+                  onClick={() => {
+                    setListType('blp');
+                    // Reset form when changing list type
+                    setCsvData([]);
+                    setIndividualCsvData([]);
+                    setBlpCsvData([]);
+                    setValidationErrors([]);
+                    setIsValid(false);
+                    setError(null);
+                    setShowMapping(false);
+                    setFieldMapping({});
+                    setCsvHeaders([]);
+                    setRawCsvData([]);
+                    // Reset file input
+                    const fileInput = document.getElementById('csv-upload') as HTMLInputElement;
+                    if (fileInput) fileInput.value = '';
+                  }}
+                >
+                  <CardContent
+                    sx={{
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      textAlign: 'center',
+                      position: 'relative',
+                    }}
+                  >
+                    {listType === 'blp' && (
+                      <CheckCircleIcon
+                        sx={{
+                          position: 'absolute',
+                          top: 8,
+                          right: 8,
+                          color: 'success.main',
+                          fontSize: 24,
+                        }}
+                      />
+                    )}
+                    <BusinessIcon sx={{ fontSize: 48, color: 'success.main', mb: 2 }} />
+                    <Typography variant="h6" gutterBottom color="success.main">
+                      BLP Prospected Companies
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
+                      For BLP prospecting - only company name required, other data will be enriched
                     </Typography>
                   </CardContent>
                 </Card>
@@ -915,7 +1054,176 @@ export default function LeadEnricherPage() {
                   </Box>
                 </Stack>
               )
-            ) : individualCsvData.length === 0 ? (
+            ) : listType === 'individual' ? (
+              individualCsvData.length === 0 ? (
+                <Card variant="outlined" sx={{ mb: 3 }}>
+                  <CardContent sx={{ p: 4, textAlign: 'center' }}>
+                    <CloudUploadIcon sx={{ fontSize: 80, color: 'text.secondary', mb: 2 }} />
+                    <Typography variant="h6" gutterBottom>
+                      Upload CSV File
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                      Please upload a CSV file with columns for: <strong>URL</strong>,{' '}
+                      <strong>keyword</strong>, <strong>negativeURLTitle</strong>,{' '}
+                      <strong>firstName</strong>, <strong>lastName</strong>, <strong>email</strong>{' '}
+                      (optional), <strong>linkedinURL</strong> (optional)
+                    </Typography>
+
+                    <input
+                      accept=".csv"
+                      style={{ display: 'none' }}
+                      id="csv-upload"
+                      type="file"
+                      onChange={handleFileUpload}
+                      disabled={uploading}
+                    />
+                    <label htmlFor="csv-upload">
+                      <Button
+                        variant="contained"
+                        component="span"
+                        startIcon={uploading ? <CircularProgress size={20} /> : <CloudUploadIcon />}
+                        disabled={uploading}
+                        size="large"
+                      >
+                        {uploading ? 'Processing...' : 'Choose CSV File'}
+                      </Button>
+                    </label>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Stack spacing={3}>
+                  {/* Validation Status */}
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }}>
+                        {isValid ? (
+                          <CheckCircleIcon sx={{ color: 'success.main' }} />
+                        ) : (
+                          <ErrorIcon sx={{ color: 'error.main' }} />
+                        )}
+                        <Typography variant="h6">
+                          Validation {isValid ? 'Passed' : 'Failed'}
+                        </Typography>
+                        <Chip
+                          label={`${individualCsvData.length} rows`}
+                          color="primary"
+                          variant="outlined"
+                        />
+                      </Stack>
+
+                      {!isValid && validationErrors.length > 0 && (
+                        <Alert severity="error" sx={{ mb: 2 }}>
+                          <Typography variant="subtitle2" gutterBottom>
+                            The following rows have missing required fields:
+                          </Typography>
+                          {validationErrors.map((error, index) => (
+                            <Typography key={index} variant="body2">
+                              • Row {error.rowNumber}: Missing {error.missingFields.join(', ')}
+                            </Typography>
+                          ))}
+                        </Alert>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Data Preview */}
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        Data Preview
+                      </Typography>
+                      <TableContainer sx={{ maxHeight: 400 }}>
+                        <Table stickyHeader>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Row</TableCell>
+                              <TableCell>URL</TableCell>
+                              <TableCell>Keyword</TableCell>
+                              <TableCell>Negative URL Title</TableCell>
+                              <TableCell>First Name</TableCell>
+                              <TableCell>Last Name</TableCell>
+                              <TableCell>Email</TableCell>
+                              <TableCell>LinkedIn URL</TableCell>
+                              <TableCell>Owner</TableCell>
+                              <TableCell>Status</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {individualCsvData.slice(0, 10).map((row, index) => {
+                              const hasError = validationErrors.some(
+                                error => error.rowNumber === row.rowNumber
+                              );
+                              return (
+                                <TableRow
+                                  key={index}
+                                  sx={{
+                                    backgroundColor: hasError ? 'error.light' : 'inherit',
+                                    '&:nth-of-type(odd)': {
+                                      backgroundColor: hasError ? 'error.light' : 'action.hover',
+                                    },
+                                  }}
+                                >
+                                  <TableCell>{row.rowNumber}</TableCell>
+                                  <TableCell
+                                    sx={{
+                                      maxWidth: 200,
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    {row.URL}
+                                  </TableCell>
+                                  <TableCell>{row.keyword}</TableCell>
+                                  <TableCell>{row.negativeURLTitle}</TableCell>
+                                  <TableCell>{row.firstName}</TableCell>
+                                  <TableCell>{row.lastName}</TableCell>
+                                  <TableCell>{row.email}</TableCell>
+                                  <TableCell>{row.linkedinURL}</TableCell>
+                                  <TableCell>
+                                    {row.OwnerUserId
+                                      ? users.find(u => u.id === row.OwnerUserId)?.name ||
+                                        'Unknown User'
+                                      : 'No Owner'}
+                                  </TableCell>
+                                  <TableCell>
+                                    {hasError ? (
+                                      <Chip label="Error" color="error" size="small" />
+                                    ) : (
+                                      <Chip label="Valid" color="success" size="small" />
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                      {individualCsvData.length > 10 && (
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                          Showing first 10 rows of {individualCsvData.length} total rows
+                        </Typography>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Action Buttons */}
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Button variant="outlined" onClick={resetForm} disabled={submitting}>
+                      Upload Different File
+                    </Button>
+                    <Button
+                      variant="contained"
+                      onClick={handleSubmit}
+                      disabled={!isValid || submitting}
+                      startIcon={submitting ? <CircularProgress size={20} /> : undefined}
+                    >
+                      {submitting ? 'Submitting...' : 'Submit for Enrichment'}
+                    </Button>
+                  </Box>
+                </Stack>
+              )
+            ) : blpCsvData.length === 0 ? (
               <Card variant="outlined" sx={{ mb: 3 }}>
                 <CardContent sx={{ p: 4, textAlign: 'center' }}>
                   <CloudUploadIcon sx={{ fontSize: 80, color: 'text.secondary', mb: 2 }} />
@@ -923,10 +1231,12 @@ export default function LeadEnricherPage() {
                     Upload CSV File
                   </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                    Please upload a CSV file with columns for: <strong>URL</strong>,{' '}
-                    <strong>keyword</strong>, <strong>negativeURLTitle</strong>,{' '}
-                    <strong>firstName</strong>, <strong>lastName</strong>, <strong>email</strong>{' '}
-                    (optional), <strong>linkedinURL</strong> (optional)
+                    Please upload a CSV file with a column for: <strong>companyName</strong>.{' '}
+                    Additional fields like <strong>website</strong>, <strong>industry</strong>,{' '}
+                    <strong>location</strong>, <strong>employeeCount</strong>,{' '}
+                    <strong>revenue</strong>, <strong>contactName</strong>,{' '}
+                    <strong>contactTitle</strong>, and <strong>contactEmail</strong> are optional
+                    and will be enriched automatically.
                   </Typography>
 
                   <input
@@ -965,7 +1275,7 @@ export default function LeadEnricherPage() {
                         Validation {isValid ? 'Passed' : 'Failed'}
                       </Typography>
                       <Chip
-                        label={`${individualCsvData.length} rows`}
+                        label={`${blpCsvData.length} rows`}
                         color="primary"
                         variant="outlined"
                       />
@@ -997,19 +1307,21 @@ export default function LeadEnricherPage() {
                         <TableHead>
                           <TableRow>
                             <TableCell>Row</TableCell>
-                            <TableCell>URL</TableCell>
-                            <TableCell>Keyword</TableCell>
-                            <TableCell>Negative URL Title</TableCell>
-                            <TableCell>First Name</TableCell>
-                            <TableCell>Last Name</TableCell>
-                            <TableCell>Email</TableCell>
-                            <TableCell>LinkedIn URL</TableCell>
+                            <TableCell>Company Name</TableCell>
+                            <TableCell>Website</TableCell>
+                            <TableCell>Industry</TableCell>
+                            <TableCell>Location</TableCell>
+                            <TableCell>Employee Count</TableCell>
+                            <TableCell>Revenue</TableCell>
+                            <TableCell>Contact Name</TableCell>
+                            <TableCell>Contact Title</TableCell>
+                            <TableCell>Contact Email</TableCell>
                             <TableCell>Owner</TableCell>
                             <TableCell>Status</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {individualCsvData.slice(0, 10).map((row, index) => {
+                          {blpCsvData.slice(0, 10).map((row, index) => {
                             const hasError = validationErrors.some(
                               error => error.rowNumber === row.rowNumber
                             );
@@ -1024,6 +1336,7 @@ export default function LeadEnricherPage() {
                                 }}
                               >
                                 <TableCell>{row.rowNumber}</TableCell>
+                                <TableCell>{row.companyName}</TableCell>
                                 <TableCell
                                   sx={{
                                     maxWidth: 200,
@@ -1032,14 +1345,15 @@ export default function LeadEnricherPage() {
                                     whiteSpace: 'nowrap',
                                   }}
                                 >
-                                  {row.URL}
+                                  {row.website}
                                 </TableCell>
-                                <TableCell>{row.keyword}</TableCell>
-                                <TableCell>{row.negativeURLTitle}</TableCell>
-                                <TableCell>{row.firstName}</TableCell>
-                                <TableCell>{row.lastName}</TableCell>
-                                <TableCell>{row.email}</TableCell>
-                                <TableCell>{row.linkedinURL}</TableCell>
+                                <TableCell>{row.industry}</TableCell>
+                                <TableCell>{row.location}</TableCell>
+                                <TableCell>{row.employeeCount}</TableCell>
+                                <TableCell>{row.revenue}</TableCell>
+                                <TableCell>{row.contactName}</TableCell>
+                                <TableCell>{row.contactTitle}</TableCell>
+                                <TableCell>{row.contactEmail}</TableCell>
                                 <TableCell>
                                   {row.OwnerUserId
                                     ? users.find(u => u.id === row.OwnerUserId)?.name ||
@@ -1059,9 +1373,9 @@ export default function LeadEnricherPage() {
                         </TableBody>
                       </Table>
                     </TableContainer>
-                    {individualCsvData.length > 10 && (
+                    {blpCsvData.length > 10 && (
                       <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                        Showing first 10 rows of {individualCsvData.length} total rows
+                        Showing first 10 rows of {blpCsvData.length} total rows
                       </Typography>
                     )}
                   </CardContent>
@@ -1133,21 +1447,36 @@ export default function LeadEnricherPage() {
               <TableBody>
                 {(listType === 'company'
                   ? ['Company', 'Keyword', 'URL', 'owner']
-                  : [
-                      'URL',
-                      'keyword',
-                      'negativeURLTitle',
-                      'firstName',
-                      'lastName',
-                      'email',
-                      'linkedinURL',
-                      'owner',
-                    ]
+                  : listType === 'individual'
+                    ? [
+                        'URL',
+                        'keyword',
+                        'negativeURLTitle',
+                        'firstName',
+                        'lastName',
+                        'email',
+                        'linkedinURL',
+                        'owner',
+                      ]
+                    : [
+                        'companyName',
+                        'website',
+                        'industry',
+                        'location',
+                        'employeeCount',
+                        'revenue',
+                        'contactName',
+                        'contactTitle',
+                        'contactEmail',
+                        'owner',
+                      ]
                 ).map(requiredField => {
                   const isRequired =
                     listType === 'company'
                       ? true // All required for company, including owner
-                      : !['email', 'linkedinURL'].includes(requiredField); // All except email/linkedin for individual
+                      : listType === 'individual'
+                        ? !['email', 'linkedinURL'].includes(requiredField) // All except email/linkedin for individual
+                        : requiredField === 'companyName' || requiredField === 'owner'; // BLP: only companyName required
                   return (
                     <TableRow key={requiredField}>
                       <TableCell sx={{ minWidth: 200 }}>
@@ -1212,8 +1541,11 @@ export default function LeadEnricherPage() {
             disabled={
               (listType === 'company'
                 ? ['Company', 'Keyword', 'URL']
-                : ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName']
-              ).some(field => !fieldMapping[field]) || !modalOwner
+                : listType === 'individual'
+                  ? ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName']
+                  : ['companyName']
+              ) // BLP only needs company name
+                .some(field => !fieldMapping[field]) || !modalOwner
             }
           >
             Apply Mapping
