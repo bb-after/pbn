@@ -55,14 +55,14 @@ async function getHubSpotFilePaths(fileIds: string[], dealId: string): Promise<s
     try {
       console.log(`[${dealId}] Attempting to fetch HubSpot file: ${fileId}`);
 
-      // Use FileManager API v2 instead - more reliable than Files API v3
+      // Very aggressive timeout for production - 5 seconds max per file
       const response = await fetch(`https://api.hubapi.com/filemanager/api/v2/files/${fileId}`, {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${process.env.HUBSPOT_QUOTE_REQUEST_ACCESS_TOKEN}`,
           'Content-Type': 'application/json',
         },
-        signal: AbortSignal.timeout(10000), // Reduced from 30s to 10s
+        signal: AbortSignal.timeout(5000), // Reduced from 10s to 5s for production
       });
 
       const fileTime = Date.now() - fileStartTime;
@@ -87,6 +87,18 @@ async function getHubSpotFilePaths(fileIds: string[], dealId: string): Promise<s
         `[${dealId}] Error processing HubSpot file ${fileId} after ${fileTime}ms:`,
         err.message
       );
+
+      // Immediately return null on any error to prevent hanging
+      if (err.name === 'AbortError') {
+        console.log(
+          `[${dealId}] File ${fileId} aborted due to 5s timeout - production network issue`
+        );
+      } else if (err.message.includes('fetch failed')) {
+        console.log(
+          `[${dealId}] File ${fileId} network failure - likely Vercel->HubSpot connectivity issue`
+        );
+      }
+
       return null;
     }
   });
@@ -244,7 +256,7 @@ async function processWebhook(body: any, dealId: string, startTime: number) {
 
   console.log(`[${dealId}] Processing webhook for deal:`, dealData.hs_object_id);
 
-  // Try to fetch screenshots
+  // Try to fetch screenshots with aggressive production fallback
   let screenshotPaths: string[] = [];
   let screenshotSection = 'No screenshots available';
 
@@ -257,17 +269,46 @@ async function processWebhook(body: any, dealId: string, startTime: number) {
 
     if (screenshotFileIds.length > 0) {
       console.log(`[${dealId}] Fetching screenshot files:`, screenshotFileIds);
-      screenshotPaths = await getHubSpotFilePaths(screenshotFileIds, dealId);
 
-      if (screenshotPaths.length > 0) {
-        screenshotSection = screenshotPaths
-          .map((url, i) => `Screenshot #${i + 1}: ${url}`)
-          .join('\n');
+      // Add very aggressive timeout for production
+      const screenshotFetchPromise = getHubSpotFilePaths(screenshotFileIds, dealId);
+      const timeoutPromise = new Promise<never>(
+        (_, reject) =>
+          setTimeout(
+            () => reject(new Error('Production timeout - continuing without screenshots')),
+            15000
+          ) // 15 second max
+      );
+
+      try {
+        screenshotPaths = (await Promise.race([
+          screenshotFetchPromise,
+          timeoutPromise,
+        ])) as string[];
+
+        if (screenshotPaths.length > 0) {
+          screenshotSection = screenshotPaths
+            .map((url, i) => `Screenshot #${i + 1}: ${url}`)
+            .join('\n');
+          console.log(
+            `[${dealId}] ✅ Retrieved ${screenshotPaths.length} screenshot URLs successfully`
+          );
+        } else {
+          // If no screenshots retrieved, provide HubSpot deal link instead
+          screenshotSection = `Screenshots available in HubSpot deal: https://app.hubspot.com/contacts/24444832/record/0-3/${dealData.hs_object_id}`;
+          console.log(`[${dealId}] ⚠️ No screenshots retrieved, using HubSpot deal link instead`);
+        }
+      } catch (timeoutError: any) {
+        console.log(
+          `[${dealId}] Screenshot fetch failed/timed out in 15s - continuing with quote request`
+        );
+        // Provide HubSpot deal link as backup
+        screenshotSection = `Screenshots temporarily unavailable. View in HubSpot: https://app.hubspot.com/contacts/24444832/record/0-3/${dealData.hs_object_id}`;
       }
     }
   } catch (screenshotError: any) {
-    console.log(`[${dealId}] Error fetching screenshots:`, screenshotError.message);
-    screenshotSection = 'Screenshots could not be retrieved';
+    console.log(`[${dealId}] Screenshot error:`, screenshotError.message);
+    screenshotSection = `Screenshots could not be retrieved. View deal: https://app.hubspot.com/contacts/24444832/record/0-3/${dealData.hs_object_id}`;
   }
 
   const userMessage = `
