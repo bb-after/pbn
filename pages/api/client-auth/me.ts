@@ -1,17 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import mysql from 'mysql2/promise';
 import { verify } from 'jsonwebtoken';
 import * as cookie from 'cookie';
-
-// Create a connection pool
-const pool = mysql.createPool({
-  host: process.env.DB_HOST_NAME,
-  user: process.env.DB_USER_NAME,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_DATABASE,
-  waitForConnections: true,
-  connectionLimit: 20,
-});
+import { query } from 'lib/db';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {
@@ -53,7 +43,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         cc.contact_id = ? AND cc.is_active = true AND c.is_active = 1
     `;
 
-    const [contactRows] = await pool.query(contactQuery, [decodedToken.contact_id]);
+    const [contactRows] = await query(contactQuery, [decodedToken.contact_id]);
 
     if ((contactRows as any[]).length === 0) {
       return res.status(401).json({ error: 'Unauthorized - Contact not found or inactive' });

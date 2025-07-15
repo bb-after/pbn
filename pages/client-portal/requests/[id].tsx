@@ -217,27 +217,48 @@ const GoogleLoginButton = ({
   onSuccess,
   onError,
   disabled = false,
+  onLoginStart,
 }: {
   onSuccess: (response: any) => void;
   onError: (error: any) => void;
   disabled?: boolean;
+  onLoginStart?: () => void;
 }) => {
   const login = useGoogleLogin({
     onSuccess,
     onError,
-    scope: 'https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive',
+    scope: 'openid email profile',
   });
+
+  const handleLoginClick = () => {
+    if (onLoginStart) {
+      onLoginStart();
+    }
+    login();
+  };
 
   return (
     <Button
       variant="contained"
       color="primary"
-      onClick={() => login()}
+      onClick={handleLoginClick}
       startIcon={<GoogleIcon />}
       disabled={disabled}
       fullWidth
+      sx={{
+        py: 1.5,
+        bgcolor: '#4285f4',
+        '&:hover': {
+          bgcolor: '#3367d6',
+        },
+        '&:disabled': {
+          bgcolor: 'grey.400',
+        },
+        position: 'relative',
+        zIndex: 2,
+      }}
     >
-      Sign in with Google
+      {disabled ? 'Signing in...' : 'Sign in with Google'}
     </Button>
   );
 };
@@ -336,13 +357,17 @@ export default function ClientRequestDetailPage() {
     setShowGoogleAuthPrompt(false);
   };
 
+  const handleCloseGoogleAuthPrompt = () => {
+    setShowGoogleAuthPrompt(false);
+    setIsGoogleAuthenticating(false);
+  };
+
   // Handle mode selection
   const handleModeSelection = (mode: 'google_comment' | 'readonly') => {
     if (mode === 'google_comment') {
       if (googleAccessToken) {
         setUserChosenMode('google_comment');
       } else {
-        setIsGoogleAuthenticating(true);
         setShowGoogleAuthPrompt(true);
       }
     } else {
@@ -1228,7 +1253,7 @@ export default function ClientRequestDetailPage() {
     return null; // The hook will redirect to login page
   }
 
-  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID_CONTENT_APPROVAL;
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID_CONTENT_APPROVAL_REVIEWER;
 
   return (
     <GoogleOAuthProvider clientId={googleClientId || ''}>
@@ -1495,55 +1520,50 @@ export default function ClientRequestDetailPage() {
                                     How would you like to review this content?
                                   </Typography>
                                   <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                                    Choose your preferred way to provide feedback on this document.
+                                    Sign in with Google to comment directly on the document, or
+                                    review without an account.
                                   </Typography>
 
-                                  <Grid container spacing={2}>
-                                    <Grid item xs={12} md={6}>
-                                      <Button
-                                        variant="outlined"
-                                        fullWidth
-                                        onClick={() => handleModeSelection('google_comment')}
-                                        startIcon={<GoogleIcon />}
-                                        sx={{
-                                          py: 2,
-                                          textAlign: 'left',
-                                          justifyContent: 'flex-start',
-                                        }}
-                                      >
-                                        <Box>
-                                          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                                            Comment on Document
-                                          </Typography>
-                                          <Typography variant="body2" color="text.secondary">
-                                            Sign in with Google to comment directly on the document
-                                          </Typography>
-                                        </Box>
-                                      </Button>
-                                    </Grid>
-                                    <Grid item xs={12} md={6}>
-                                      <Button
-                                        variant="outlined"
-                                        fullWidth
-                                        onClick={() => handleModeSelection('readonly')}
-                                        startIcon={<VisibilityIcon />}
-                                        sx={{
-                                          py: 2,
-                                          textAlign: 'left',
-                                          justifyContent: 'flex-start',
-                                        }}
-                                      >
-                                        <Box>
-                                          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                                            View Only
-                                          </Typography>
-                                          <Typography variant="body2" color="text.secondary">
-                                            Read the document and leave feedback below
-                                          </Typography>
-                                        </Box>
-                                      </Button>
-                                    </Grid>
-                                  </Grid>
+                                  <Box sx={{ textAlign: 'center' }}>
+                                    {/* Primary CTA: Sign in to Google */}
+                                    <Button
+                                      variant="contained"
+                                      size="large"
+                                      onClick={() => handleModeSelection('google_comment')}
+                                      startIcon={<GoogleIcon />}
+                                      sx={{
+                                        py: 2,
+                                        px: 4,
+                                        mb: 2,
+                                        bgcolor: '#4285f4',
+                                        '&:hover': {
+                                          bgcolor: '#3367d6',
+                                        },
+                                      }}
+                                    >
+                                      Sign in with Google to Comment
+                                    </Button>
+
+                                    <br />
+
+                                    {/* Secondary option: No G-Suite account */}
+                                    <Button
+                                      variant="text"
+                                      color="primary"
+                                      onClick={() => handleModeSelection('readonly')}
+                                      sx={{
+                                        textTransform: 'none',
+                                        textDecoration: 'underline',
+                                        '&:hover': {
+                                          textDecoration: 'underline',
+                                          bgcolor: 'transparent',
+                                        },
+                                      }}
+                                    >
+                                      Don&apos;t have a G-Suite account? View document and leave
+                                      comments below
+                                    </Button>
+                                  </Box>
                                 </Box>
                               )}
 
@@ -2057,19 +2077,30 @@ export default function ClientRequestDetailPage() {
         </Dialog>
 
         {/* Google Authentication Dialog */}
-        <Dialog open={showGoogleAuthPrompt} onClose={() => setShowGoogleAuthPrompt(false)}>
-          <DialogTitle>Sign in to Comment</DialogTitle>
+        <Dialog
+          open={showGoogleAuthPrompt}
+          onClose={handleCloseGoogleAuthPrompt}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{
+            sx: {
+              borderRadius: 2,
+            },
+          }}
+        >
+          <DialogTitle>Sign in with Google</DialogTitle>
           <DialogContent>
             <DialogContentText sx={{ mb: 2 }}>
               To comment directly on the document, please sign in with your Google account. This
               ensures your identity is associated with your feedback.
             </DialogContentText>
 
-            <Box sx={{ mt: 3, mb: 2 }}>
+            <Box sx={{ mt: 3, mb: 2, position: 'relative', zIndex: 1 }}>
               <GoogleLoginButton
                 onSuccess={handleGoogleLoginSuccess}
                 onError={handleGoogleLoginError}
                 disabled={isGoogleAuthenticating}
+                onLoginStart={() => setIsGoogleAuthenticating(true)}
               />
             </Box>
 
@@ -2081,7 +2112,7 @@ export default function ClientRequestDetailPage() {
             </Alert>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setShowGoogleAuthPrompt(false)}>Cancel</Button>
+            <Button onClick={handleCloseGoogleAuthPrompt}>Cancel</Button>
             <Button
               onClick={() => {
                 setUserChosenMode('readonly');
@@ -2089,7 +2120,7 @@ export default function ClientRequestDetailPage() {
               }}
               variant="outlined"
             >
-              Continue with View Only
+              Continue without G-Suite
             </Button>
           </DialogActions>
         </Dialog>
