@@ -1,33 +1,16 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import mysql, { RowDataPacket } from 'mysql2/promise';
+import { RowDataPacket } from 'mysql2/promise';
 import { postToWordpress } from '../../utils/postToWordpress';
 import { postToSlack } from '../../utils/postToSlack';
 import { generateSuperStarContent } from '../../utils/generateSuperStarContent';
 import { getOrCreateCategory } from 'utils/categoryUtils';
 import axios from 'axios';
+import { query, transaction, getPool } from 'lib/db';
 
 // This function can run for a maximum of 5 minutes (max on pro plan)
 export const config = {
   maxDuration: 300,
 };
-
-const dbConfig = {
-  host: process.env.DB_HOST_NAME,
-  user: process.env.DB_USER_NAME,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_DATABASE,
-};
-
-// Set up a connection pool
-const pool = mysql.createPool({
-  host: process.env.DB_HOST_NAME,
-  user: process.env.DB_USER_NAME,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_DATABASE,
-  waitForConnections: true,
-  connectionLimit: 200, // Set an appropriate limit based on your application's needs
-  queueLimit: 0,
-});
 
 const SLACK_CHANNEL = 'superstar-alerts';
 const BATCH_SIZE = 10; // Process 10 sites at a time
@@ -109,7 +92,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
-  const connection = await pool.getConnection();
+  const connection = await getPool().getConnection();
   try {
     console.log(`Fetching up to ${BATCH_SIZE} eligible superstar sites...`);
 
