@@ -1,12 +1,11 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import * as mysql from 'mysql2/promise';
+import { query, transaction, getPool } from 'lib/db';
 import * as AWS from 'aws-sdk';
 import { URL } from 'url';
 import { validateUserToken } from '../validate-user-token'; // Ensure this import is present
 import * as nodemailer from 'nodemailer';
 import axios from 'axios';
 import { postToSlack } from '../../../utils/postToSlack';
-import { getPool } from 'lib/db';
 
 // Use centralized connection pool instead of creating a new one
 const pool = getPool();

@@ -1,17 +1,8 @@
-import mysql from 'mysql2/promise';
+import { query, transaction, getPool } from 'lib/db';
 import { NextApiRequest, NextApiResponse } from 'next';
 
-// Create a connection pool instead of individual connections
-const pool = mysql.createPool({
-  host: process.env.DB_HOST_NAME,
-  user: process.env.DB_USER_NAME,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_DATABASE,
-  waitForConnections: true,
-  connectionLimit: 10, // Maximum number of connections in the pool
-  queueLimit: 0,
-});
-
+// Use centralized connection pool
+const pool = getPool();
 // Simple in-memory cache implementation
 interface CacheItem {
   data: any;
