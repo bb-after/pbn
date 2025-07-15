@@ -76,23 +76,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log('Document created with ID:', documentId);
 
     // Step 3: Try to update permissions, but continue if it fails
-    console.log('Setting document permissions...');
+    console.log('Setting document permissions to allow anyone with link to comment...');
+    let permissionsSet = false;
     try {
+      // First, try to set comment permissions for anyone with the link
       await drive.permissions.create({
         fileId: documentId,
         requestBody: {
           role: 'commenter',
           type: 'anyone',
         },
+        sendNotificationEmail: false, // Don't send notification emails
       });
-      console.log('Successfully set document permissions.');
+      console.log('Successfully set document permissions to "commenter" for "anyone".');
+      permissionsSet = true;
     } catch (error: any) {
-      // Log error but continue with the document
-      console.warn('Unable to set document permissions:', error.message);
-      console.log(
-        'Continuing with document creation process. Note: The document will not be publicly accessible.'
-      );
-      // We don't re-throw - this is a non-fatal error
+      // If that fails, try to set it as view-only with the option to comment
+      console.warn('Unable to set commenter permissions:', error.message);
+      try {
+        await drive.permissions.create({
+          fileId: documentId,
+          requestBody: {
+            role: 'reader',
+            type: 'anyone',
+          },
+          sendNotificationEmail: false,
+        });
+        console.log('Fallback: Set document permissions to "reader" for "anyone".');
+        permissionsSet = true;
+      } catch (fallbackError: any) {
+        console.warn('Unable to set any public permissions:', fallbackError.message);
+        console.log(
+          'Continuing with document creation process. Note: The document will require explicit sharing.'
+        );
+      }
     }
 
     // Step 4: Try to move the document to the parent folder if specified
@@ -119,7 +136,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       docUrl: `https://docs.google.com/document/d/${documentId}/edit`,
       permissions: {
         sharingAttempted: true,
-        sharingSuccessful: true, // We'll just claim it was successful since the doc is created
+        sharingSuccessful: permissionsSet,
+        message: permissionsSet
+          ? 'Document is publicly accessible for commenting'
+          : 'Document created but may require manual sharing',
       },
     });
   } catch (error: any) {

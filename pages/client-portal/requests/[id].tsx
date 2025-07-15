@@ -44,6 +44,8 @@ import {
   History as HistoryIcon,
   Article as ArticleIcon,
   Close as CloseIcon,
+  Google as GoogleIcon,
+  Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/router';
 import useClientAuth from '../../../hooks/useClientAuth';
@@ -53,6 +55,7 @@ import Head from 'next/head';
 import ReactionPicker from 'components/ReactionPicker';
 import { createRoot } from 'react-dom/client';
 import { initVersionRecogito } from 'utils/recogito';
+import { GoogleOAuthProvider, useGoogleLogin } from '@react-oauth/google';
 
 /// <reference path="./recogito.d.ts" />
 
@@ -168,17 +171,24 @@ interface ApprovalRequest {
 // IMPORTANT: Client portal users should ONLY have comment/suggestion capabilities,
 // never direct edit access to Google Docs. This function ensures all Google Doc URLs
 // use comment-only mode (mode=comment parameter).
-const getEmbeddableGoogleDocUrl = (url: string, status: string): string => {
+const getEmbeddableGoogleDocUrl = (
+  url: string,
+  status: string,
+  isAuthenticated = false
+): string => {
   try {
     if (!url.includes('docs.google.com')) return url;
 
     // Extract document ID from the URL
     const docIdMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
     const docId = docIdMatch ? docIdMatch[1] : '';
-    let mode = 'comment';
-    if (status !== 'pending') {
-      mode = 'view';
+
+    // Determine mode based on authentication and status
+    let mode = 'view'; // Default to view mode
+    if (status === 'pending' && isAuthenticated) {
+      mode = 'comment'; // Allow commenting only if authenticated and pending
     }
+
     if (docId) {
       return `https://docs.google.com/document/d/${docId}/edit?mode=${mode}&embedded=true&rm=minimal&usp=sharing`;
     }
@@ -200,6 +210,36 @@ const getEmbeddableGoogleDocUrl = (url: string, status: string): string => {
   } catch (error) {
     return url;
   }
+};
+
+// Google Login Button Component
+const GoogleLoginButton = ({
+  onSuccess,
+  onError,
+  disabled = false,
+}: {
+  onSuccess: (response: any) => void;
+  onError: (error: any) => void;
+  disabled?: boolean;
+}) => {
+  const login = useGoogleLogin({
+    onSuccess,
+    onError,
+    scope: 'https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive',
+  });
+
+  return (
+    <Button
+      variant="contained"
+      color="primary"
+      onClick={() => login()}
+      startIcon={<GoogleIcon />}
+      disabled={disabled}
+      fullWidth
+    >
+      Sign in with Google
+    </Button>
+  );
 };
 
 export default function ClientRequestDetailPage() {
@@ -265,6 +305,12 @@ export default function ClientRequestDetailPage() {
   // State to store the staff member's email
   const [staffEmail, setStaffEmail] = useState<string | null>(null);
 
+  // Google authentication state
+  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
+  const [isGoogleAuthenticating, setIsGoogleAuthenticating] = useState(false);
+  const [showGoogleAuthPrompt, setShowGoogleAuthPrompt] = useState(false);
+  const [userChosenMode, setUserChosenMode] = useState<'google_comment' | 'readonly' | null>(null);
+
   // Get client token from localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -272,6 +318,37 @@ export default function ClientRequestDetailPage() {
       setClientAuthToken(token || null);
     }
   }, []);
+
+  // Handle successful Google login
+  const handleGoogleLoginSuccess = (tokenResponse: any) => {
+    console.log('Google login successful');
+    setGoogleAccessToken(tokenResponse.access_token);
+    setUserChosenMode('google_comment');
+    setShowGoogleAuthPrompt(false);
+    setIsGoogleAuthenticating(false);
+  };
+
+  // Handle Google login error
+  const handleGoogleLoginError = (error: any) => {
+    console.error('Google login failed:', error);
+    setError('Google sign-in failed. Please try again or use readonly mode.');
+    setIsGoogleAuthenticating(false);
+    setShowGoogleAuthPrompt(false);
+  };
+
+  // Handle mode selection
+  const handleModeSelection = (mode: 'google_comment' | 'readonly') => {
+    if (mode === 'google_comment') {
+      if (googleAccessToken) {
+        setUserChosenMode('google_comment');
+      } else {
+        setIsGoogleAuthenticating(true);
+        setShowGoogleAuthPrompt(true);
+      }
+    } else {
+      setUserChosenMode('readonly');
+    }
+  };
 
   // Set up axios interceptor for handling 403 errors globally
   useEffect(() => {
@@ -1151,249 +1228,255 @@ export default function ClientRequestDetailPage() {
     return null; // The hook will redirect to login page
   }
 
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID_CONTENT_APPROVAL;
+
   return (
-    <Box sx={{ flexGrow: 1 }}>
-      <Head>
-        <title>Content Review - {request?.title || 'Request'}</title>
-        <link rel="stylesheet" href="/vendor/recogito.min.css" />
-      </Head>
-      {/* Header */}
-      <AppBar
-        position="fixed"
-        sx={{
-          zIndex: theme => theme.zIndex.drawer + 1,
-          boxShadow: 3,
-          backgroundColor: 'grey.100',
-          color: 'text.primary',
-        }}
-      >
-        <Toolbar>
-          <IconButton
-            size="large"
-            edge="start"
-            color="inherit"
-            aria-label="back"
-            sx={{ mr: 2 }}
-            onClick={() => router.push('/client-portal')}
-          >
-            <BackIcon />
-          </IconButton>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            Content Review
-          </Typography>
-
-          {/* Add Approve button to App Bar - only show if pending and not approved yet */}
-          {request && request.status === 'pending' && !hasApproved() && (
-            <Tooltip
-              title={
-                <Typography variant="body2">
-                  <strong>Your Decision</strong>
-                  <br />
-                  Please review the content and approve if you&apos;re satisfied with it. Once
-                  approved, the content will be prepared for publishing.
-                </Typography>
-              }
-              arrow
-            >
-              <Button
-                variant="contained"
-                color="success"
-                startIcon={<CheckCircleIcon />}
-                onClick={() => setApprovalDialogOpen(true)}
-                sx={{ mr: 2, fontWeight: 'bold', px: 3 }}
-              >
-                Approve
-              </Button>
-            </Tooltip>
-          )}
-
-          {/* Add Submit with Feedback button */}
-          {request && request.status === 'pending' && !hasApproved() && (
-            <Button
-              onClick={() => setFeedbackDialogOpen(true)}
-              variant="outlined"
-              color="warning"
-              startIcon={<CommentIcon />}
-              sx={{ mr: 2 }}
-            >
-              Submit with Feedback
-            </Button>
-          )}
-
-          <Box>
+    <GoogleOAuthProvider clientId={googleClientId || ''}>
+      <Box sx={{ flexGrow: 1 }}>
+        <Head>
+          <title>Content Review - {request?.title || 'Request'}</title>
+          <link rel="stylesheet" href="/vendor/recogito.min.css" />
+        </Head>
+        {/* Header */}
+        <AppBar
+          position="fixed"
+          sx={{
+            zIndex: theme => theme.zIndex.drawer + 1,
+            boxShadow: 3,
+            backgroundColor: 'grey.100',
+            color: 'text.primary',
+          }}
+        >
+          <Toolbar>
             <IconButton
               size="large"
-              edge="end"
-              aria-label="account menu"
-              aria-controls="menu-appbar"
-              aria-haspopup="true"
-              onClick={handleMenuOpen}
+              edge="start"
               color="inherit"
+              aria-label="back"
+              sx={{ mr: 2 }}
+              onClick={() => router.push('/client-portal')}
             >
-              <Avatar
-                sx={{
-                  bgcolor: 'primary.main',
-                  mr: 2,
-                  width: 32,
-                  height: 32,
-                  fontSize: '0.9rem',
-                }}
-              >
-                {clientInfo ? clientInfo.name.charAt(0).toUpperCase() : 'C'}
-              </Avatar>
+              <BackIcon />
             </IconButton>
-            <Menu
-              id="menu-appbar"
-              anchorEl={anchorEl}
-              anchorOrigin={{
-                vertical: 'bottom',
-                horizontal: 'right',
-              }}
-              keepMounted
-              transformOrigin={{
-                vertical: 'top',
-                horizontal: 'right',
-              }}
-              open={Boolean(anchorEl)}
-              onClose={handleMenuClose}
-            >
-              <MenuItem disabled>
-                {clientInfo?.name} ({clientInfo?.email})
-              </MenuItem>
-              <Divider />
-              <MenuItem onClick={handleLogout}>
-                <LogoutIcon fontSize="small" sx={{ mr: 1 }} />
-                Logout
-              </MenuItem>
-            </Menu>
-          </Box>
-        </Toolbar>
-      </AppBar>
+            <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+              Content Review
+            </Typography>
 
-      {/* Add a toolbar component for proper spacing below the AppBar */}
-      <Toolbar />
+            {/* Add Approve button to App Bar - only show if pending and not approved yet */}
+            {request && request.status === 'pending' && !hasApproved() && (
+              <Tooltip
+                title={
+                  <Typography variant="body2">
+                    <strong>Your Decision</strong>
+                    <br />
+                    Please review the content and approve if you&apos;re satisfied with it. Once
+                    approved, the content will be prepared for publishing.
+                  </Typography>
+                }
+                arrow
+              >
+                <Button
+                  variant="contained"
+                  color="success"
+                  startIcon={<CheckCircleIcon />}
+                  onClick={() => setApprovalDialogOpen(true)}
+                  sx={{ mr: 2, fontWeight: 'bold', px: 3 }}
+                >
+                  Approve
+                </Button>
+              </Tooltip>
+            )}
 
-      {/* Content */}
-      <Container maxWidth="lg">
-        <Box my={4}>
-          {/* Error alert */}
-          {error && (
-            <Alert severity="error" sx={{ mb: 3 }}>
-              {error}
-            </Alert>
-          )}
+            {/* Add Submit with Feedback button */}
+            {request && request.status === 'pending' && !hasApproved() && (
+              <Button
+                onClick={() => setFeedbackDialogOpen(true)}
+                variant="outlined"
+                color="warning"
+                startIcon={<CommentIcon />}
+                sx={{ mr: 2 }}
+              >
+                Submit with Feedback
+              </Button>
+            )}
 
-          {request && (
-            <>
-              {/* Request header */}
-              <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
-                <Grid container spacing={3}>
-                  <Grid item xs={12} md={7}>
-                    <Box display="flex" alignItems="center" mb={2}>
-                      <Typography variant="h5">{request.title}</Typography>
-                      <Box ml={2}>{getStatusBadge(request.status)}</Box>
-                    </Box>
+            <Box>
+              <IconButton
+                size="large"
+                edge="end"
+                aria-label="account menu"
+                aria-controls="menu-appbar"
+                aria-haspopup="true"
+                onClick={handleMenuOpen}
+                color="inherit"
+              >
+                <Avatar
+                  sx={{
+                    bgcolor: 'primary.main',
+                    mr: 2,
+                    width: 32,
+                    height: 32,
+                    fontSize: '0.9rem',
+                  }}
+                >
+                  {clientInfo ? clientInfo.name.charAt(0).toUpperCase() : 'C'}
+                </Avatar>
+              </IconButton>
+              <Menu
+                id="menu-appbar"
+                anchorEl={anchorEl}
+                anchorOrigin={{
+                  vertical: 'bottom',
+                  horizontal: 'right',
+                }}
+                keepMounted
+                transformOrigin={{
+                  vertical: 'top',
+                  horizontal: 'right',
+                }}
+                open={Boolean(anchorEl)}
+                onClose={handleMenuClose}
+              >
+                <MenuItem disabled>
+                  {clientInfo?.name} ({clientInfo?.email})
+                </MenuItem>
+                <Divider />
+                <MenuItem onClick={handleLogout}>
+                  <LogoutIcon fontSize="small" sx={{ mr: 1 }} />
+                  Logout
+                </MenuItem>
+              </Menu>
+            </Box>
+          </Toolbar>
+        </AppBar>
 
-                    {request.description && (
-                      <Typography variant="body1" sx={{ mt: 2 }}>
-                        {request.description}
-                      </Typography>
-                    )}
-                  </Grid>
+        {/* Add a toolbar component for proper spacing below the AppBar */}
+        <Toolbar />
 
-                  <Grid item xs={12} md={5}>
-                    <Box
-                      sx={{
-                        position: 'sticky',
-                        top: '20px',
-                        zIndex: 2,
-                      }}
-                    >
-                      {/* Request info card */}
-                      <Card variant="outlined">
-                        <CardContent>
-                          <Box display="flex" justifyContent="space-between" mb={1}>
-                            <Typography variant="body2" color="textSecondary">
-                              Submitted:
-                            </Typography>
-                            <Typography variant="body2">
-                              {new Date(request.created_at).toLocaleDateString()}
-                            </Typography>
-                          </Box>
+        {/* Content */}
+        <Container maxWidth="lg">
+          <Box my={4}>
+            {/* Error alert */}
+            {error && (
+              <Alert severity="error" sx={{ mb: 3 }}>
+                {error}
+              </Alert>
+            )}
 
-                          <Box display="flex" justifyContent="space-between" mb={1}>
-                            <Typography variant="body2" color="textSecondary">
-                              Submitted by:
-                            </Typography>
-                            <Typography variant="body2">{staffEmail || 'Staff member'}</Typography>
-                          </Box>
-                        </CardContent>
-                      </Card>
+            {request && (
+              <>
+                {/* Request header */}
+                <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
+                  <Grid container spacing={3}>
+                    <Grid item xs={12} md={7}>
+                      <Box display="flex" alignItems="center" mb={2}>
+                        <Typography variant="h5">{request.title}</Typography>
+                        <Box ml={2}>{getStatusBadge(request.status)}</Box>
+                      </Box>
 
-                      {/* Remove the Decision box and keep only the approval status alerts */}
-                      {request.status === 'approved' && (
-                        <Alert severity="success" sx={{ mb: 2 }}>
-                          You have approved this content.
-                        </Alert>
+                      {request.description && (
+                        <Typography variant="body1" sx={{ mt: 2 }}>
+                          {request.description}
+                        </Typography>
                       )}
+                    </Grid>
 
-                      {request.status === 'rejected' && (
-                        <Alert severity="error" sx={{ mb: 2 }}>
-                          You have rejected this content.
-                        </Alert>
-                      )}
+                    <Grid item xs={12} md={5}>
+                      <Box
+                        sx={{
+                          position: 'sticky',
+                          top: '20px',
+                          zIndex: 2,
+                        }}
+                      >
+                        {/* Request info card */}
+                        <Card variant="outlined">
+                          <CardContent>
+                            <Box display="flex" justifyContent="space-between" mb={1}>
+                              <Typography variant="body2" color="textSecondary">
+                                Submitted:
+                              </Typography>
+                              <Typography variant="body2">
+                                {new Date(request.created_at).toLocaleDateString()}
+                              </Typography>
+                            </Box>
 
-                      {request.status === 'pending' && hasApproved() && (
-                        <Alert severity="success" sx={{ mb: 2 }}>
-                          You have approved this content. Waiting for other stakeholders to review.
-                        </Alert>
-                      )}
+                            <Box display="flex" justifyContent="space-between" mb={1}>
+                              <Typography variant="body2" color="textSecondary">
+                                Submitted by:
+                              </Typography>
+                              <Typography variant="body2">
+                                {staffEmail || 'Staff member'}
+                              </Typography>
+                            </Box>
+                          </CardContent>
+                        </Card>
 
-                      {/* Published URL (if available) */}
-                      {request.published_url && (
-                        <Box mt={2}>
-                          <Button
-                            variant="contained"
-                            color="primary"
-                            fullWidth
-                            startIcon={<LinkIcon />}
-                            href={request.published_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            View Published Content
-                          </Button>
-                        </Box>
-                      )}
-                    </Box>
-                  </Grid>
-                </Grid>
-              </Paper>
+                        {/* Remove the Decision box and keep only the approval status alerts */}
+                        {request.status === 'approved' && (
+                          <Alert severity="success" sx={{ mb: 2 }}>
+                            You have approved this content.
+                          </Alert>
+                        )}
 
-              {/* Main content grid */}
-              {!viewingVersion ? (
-                <Grid container spacing={3}>
-                  {/* Main content column */}
-                  <Grid item xs={12}>
-                    {/* Document card - Updated Rendering Logic */}
-                    <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-                      <Typography variant="h6" gutterBottom>
-                        {request.status === 'pending' ? 'Content for Review' : 'Reviewed Content'}
-                      </Typography>
+                        {request.status === 'rejected' && (
+                          <Alert severity="error" sx={{ mb: 2 }}>
+                            You have rejected this content.
+                          </Alert>
+                        )}
 
-                      {/* GOOGLE DOC DISPLAY - Separate rendering for Google Docs */}
-                      {!viewingVersion &&
-                        request?.inline_content &&
-                        (request?.content_type === 'google_doc' ||
-                          (request?.inline_content.includes('docs.google.com') &&
-                            !request?.inline_content.startsWith('<'))) && (
+                        {request.status === 'pending' && hasApproved() && (
+                          <Alert severity="success" sx={{ mb: 2 }}>
+                            You have approved this content. Waiting for other stakeholders to
+                            review.
+                          </Alert>
+                        )}
+
+                        {/* Published URL (if available) */}
+                        {request.published_url && (
                           <Box mt={2}>
-                            <Typography variant="h4" gutterBottom>
-                              {request.title}
-                            </Typography>
+                            <Button
+                              variant="contained"
+                              color="primary"
+                              fullWidth
+                              startIcon={<LinkIcon />}
+                              href={request.published_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              View Published Content
+                            </Button>
+                          </Box>
+                        )}
+                      </Box>
+                    </Grid>
+                  </Grid>
+                </Paper>
 
-                            {/* Add a way to toggle minimal mode for clients */}
-                            {/* <Box display="flex" justifyContent="flex-end" mb={1}>
+                {/* Main content grid */}
+                {!viewingVersion ? (
+                  <Grid container spacing={3}>
+                    {/* Main content column */}
+                    <Grid item xs={12}>
+                      {/* Document card - Updated Rendering Logic */}
+                      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+                        <Typography variant="h6" gutterBottom>
+                          {request.status === 'pending' ? 'Content for Review' : 'Reviewed Content'}
+                        </Typography>
+
+                        {/* GOOGLE DOC DISPLAY - Separate rendering for Google Docs */}
+                        {!viewingVersion &&
+                          request?.inline_content &&
+                          (request?.content_type === 'google_doc' ||
+                            (request?.inline_content.includes('docs.google.com') &&
+                              !request?.inline_content.startsWith('<'))) && (
+                            <Box mt={2}>
+                              <Typography variant="h4" gutterBottom>
+                                {request.title}
+                              </Typography>
+
+                              {/* Add a way to toggle minimal mode for clients */}
+                              {/* <Box display="flex" justifyContent="flex-end" mb={1}>
                               <Button
                                 variant="text"
                                 size="small"
@@ -1405,435 +1488,612 @@ export default function ClientRequestDetailPage() {
                               </Button>
                             </Box> */}
 
-                            <Box
-                              sx={{
-                                height: '700px',
-                                border: '1px solid',
-                                borderColor: 'rgba(0, 0, 0, 0.23)',
-                                borderRadius: 1,
-                                overflow: 'hidden',
-                              }}
-                            >
-                              <iframe
-                                src={getEmbeddableGoogleDocUrl(
-                                  request.inline_content,
-                                  request.status
-                                )}
-                                width="100%"
-                                height="100%"
-                                frameBorder="0"
-                                style={{ border: 'none' }}
-                                allow="autoplay; encrypted-media"
-                                allowFullScreen
-                              ></iframe>
-                            </Box>
-                          </Box>
-                        )}
+                              {/* Mode Selection for Google Docs */}
+                              {request.status === 'pending' && !userChosenMode && (
+                                <Box sx={{ mb: 3, p: 3, bgcolor: 'grey.50', borderRadius: 2 }}>
+                                  <Typography variant="h6" gutterBottom>
+                                    How would you like to review this content?
+                                  </Typography>
+                                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                                    Choose your preferred way to provide feedback on this document.
+                                  </Typography>
 
-                      {/* REGULAR HTML CONTENT DISPLAY - Only render for non-Google Docs */}
-                      {!viewingVersion &&
-                        request?.inline_content &&
-                        !(
-                          request?.content_type === 'google_doc' ||
-                          (request?.inline_content.includes('docs.google.com') &&
-                            !request?.inline_content.startsWith('<'))
-                        ) && (
-                          <Box
-                            mt={2}
-                            ref={contentRef}
-                            sx={{
-                              '& p': { my: 1.5 },
-                              '& ul, & ol': { my: 1.5, pl: 3 },
-                              '& li': { mb: 0.5 },
-                              '& h1, & h2, & h3, & h4, & h5, & h6': {
-                                my: 2,
-                                fontWeight: 'bold',
-                              },
-                              '& a': {
-                                color: 'primary.main',
-                                textDecoration: 'underline',
-                                '&:hover': {
-                                  color: 'primary.dark',
-                                },
-                              },
-                            }}
-                            className="annotatable-container"
-                          >
-                            <div id="content-view">
-                              {/* Content will be initialized by Recogito */}
-                            </div>
-                          </Box>
-                        )}
-
-                      {/* File download button for file-based requests */}
-                      {!viewingVersion && !request?.inline_content && request?.file_url && (
-                        <Box display="flex" alignItems="center" my={2}>
-                          <DocumentIcon color="primary" sx={{ mr: 2 }} />
-                          <Typography variant="body1">
-                            {getFileTypeName(request.file_url)}
-                          </Typography>
-                          <Box flexGrow={1} />
-                          <Button
-                            variant="contained"
-                            startIcon={<DownloadIcon />}
-                            href={request.file_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            View / Download
-                          </Button>
-                        </Box>
-                      )}
-
-                      {/* Fallback if no content exists */}
-                      {!viewingVersion && !request?.inline_content && !request?.file_url && (
-                        <Typography variant="body2" color="textSecondary" sx={{ mt: 2 }}>
-                          No content available for review.
-                        </Typography>
-                      )}
-                    </Paper>
-
-                    {/* Comments section */}
-                    <Paper elevation={2} sx={{ p: 3 }}>
-                      <Typography variant="h6" gutterBottom>
-                        Comments
-                      </Typography>
-
-                      <Box mt={2} mb={3}>
-                        <TextField
-                          fullWidth
-                          multiline
-                          rows={3}
-                          label="Add a comment"
-                          placeholder="Enter your feedback here..."
-                          value={newComment}
-                          onChange={e => setNewComment(e.target.value)}
-                        />
-                        <Box display="flex" justifyContent="flex-end" mt={2}>
-                          <Button
-                            variant="contained"
-                            startIcon={<SendIcon />}
-                            onClick={handleSubmitComment}
-                            disabled={submittingComment || !newComment.trim()}
-                          >
-                            {submittingComment ? <CircularProgress size={24} /> : 'Send Feedback'}
-                          </Button>
-                        </Box>
-                      </Box>
-
-                      <Divider sx={{ my: 2 }} />
-
-                      {request.comments && request.comments.length > 0 ? (
-                        <Box sx={{ maxHeight: '400px', overflow: 'auto' }}>
-                          <List>
-                            {request.comments.map(comment => (
-                              <React.Fragment key={comment.comment_id}>
-                                <ListItem alignItems="flex-start">
-                                  <ListItemAvatar>
-                                    <Avatar>
-                                      {comment.contact_name
-                                        ? comment.contact_name.charAt(0).toUpperCase()
-                                        : 'S'}
-                                    </Avatar>
-                                  </ListItemAvatar>
-                                  <ListItemText
-                                    primary={
-                                      <Box display="flex" justifyContent="space-between">
-                                        <Typography variant="subtitle2">
-                                          {comment.contact_name || 'Staff'}
-                                        </Typography>
-                                        <Typography variant="caption" color="textSecondary">
-                                          {new Date(comment.created_at).toLocaleString(undefined, {
-                                            year: 'numeric',
-                                            month: 'short',
-                                            day: 'numeric',
-                                            hour: '2-digit',
-                                            minute: '2-digit',
-                                            timeZoneName: 'short',
-                                          })}
-                                        </Typography>
-                                      </Box>
-                                    }
-                                    secondary={
-                                      <Typography
-                                        component="span"
-                                        variant="body2"
-                                        color="textPrimary"
-                                        sx={{ mt: 1, display: 'block' }}
+                                  <Grid container spacing={2}>
+                                    <Grid item xs={12} md={6}>
+                                      <Button
+                                        variant="outlined"
+                                        fullWidth
+                                        onClick={() => handleModeSelection('google_comment')}
+                                        startIcon={<GoogleIcon />}
+                                        sx={{
+                                          py: 2,
+                                          textAlign: 'left',
+                                          justifyContent: 'flex-start',
+                                        }}
                                       >
-                                        {comment.comment}
-                                        <ReactionPicker
-                                          targetType="comment"
-                                          targetId={comment.comment_id}
-                                          requestId={Number(id)}
-                                          isClientPortal={true}
-                                          clientContactId={clientInfo?.contact_id}
-                                          token={clientAuthToken || undefined}
-                                        />
+                                        <Box>
+                                          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                                            Comment on Document
+                                          </Typography>
+                                          <Typography variant="body2" color="text.secondary">
+                                            Sign in with Google to comment directly on the document
+                                          </Typography>
+                                        </Box>
+                                      </Button>
+                                    </Grid>
+                                    <Grid item xs={12} md={6}>
+                                      <Button
+                                        variant="outlined"
+                                        fullWidth
+                                        onClick={() => handleModeSelection('readonly')}
+                                        startIcon={<VisibilityIcon />}
+                                        sx={{
+                                          py: 2,
+                                          textAlign: 'left',
+                                          justifyContent: 'flex-start',
+                                        }}
+                                      >
+                                        <Box>
+                                          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                                            View Only
+                                          </Typography>
+                                          <Typography variant="body2" color="text.secondary">
+                                            Read the document and leave feedback below
+                                          </Typography>
+                                        </Box>
+                                      </Button>
+                                    </Grid>
+                                  </Grid>
+                                </Box>
+                              )}
+
+                              {/* Status indicators and mode controls */}
+                              {userChosenMode === 'google_comment' && googleAccessToken && (
+                                <Alert severity="success" sx={{ mb: 2 }}>
+                                  <Box
+                                    display="flex"
+                                    justifyContent="space-between"
+                                    alignItems="center"
+                                  >
+                                    <Typography variant="body2">
+                                      ✅ <strong>Signed in with Google</strong> - You can comment
+                                      directly on the document
+                                    </Typography>
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      onClick={() => setUserChosenMode(null)}
+                                    >
+                                      Change Mode
+                                    </Button>
+                                  </Box>
+                                </Alert>
+                              )}
+
+                              {userChosenMode === 'google_comment' &&
+                                !googleAccessToken &&
+                                isGoogleAuthenticating && (
+                                  <Alert severity="info" sx={{ mb: 2 }}>
+                                    <Box display="flex" alignItems="center">
+                                      <CircularProgress size={20} sx={{ mr: 2 }} />
+                                      <Typography variant="body2">
+                                        Waiting for Google sign-in...
                                       </Typography>
-                                    }
-                                  />
-                                </ListItem>
-                                <Divider variant="inset" component="li" />
-                              </React.Fragment>
-                            ))}
-                          </List>
-                        </Box>
-                      ) : (
-                        <Typography variant="body2" color="textSecondary" align="center">
-                          No comments yet
-                        </Typography>
-                      )}
-                    </Paper>
-                  </Grid>
-                </Grid>
-              ) : (
-                // Version history content view
-                <Grid container spacing={3}>
-                  <Grid item xs={12}>
-                    <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-                      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                        <Typography variant="h6">
-                          Version{' '}
-                          {request.versions.find(v => v.version_id === currentVersionId)
-                            ?.version_number || ''}{' '}
-                          Content
-                        </Typography>
-                        <Button
-                          variant="outlined"
-                          startIcon={<BackIcon />}
-                          onClick={handleCloseVersionView}
-                        >
-                          Back to Current Version
-                        </Button>
-                      </Box>
+                                    </Box>
+                                  </Alert>
+                                )}
 
-                      {versionLoading ? (
-                        <Box display="flex" justifyContent="center" my={4}>
-                          <CircularProgress />
-                        </Box>
-                      ) : versionContent ? (
-                        <Box sx={{ mt: 2 }}>
-                          <Typography variant="body2" color="textSecondary" gutterBottom>
-                            {annotations.length} comment{annotations.length !== 1 ? 's' : ''} for
-                            this version.
-                          </Typography>
+                              {userChosenMode === 'readonly' && (
+                                <Alert severity="info" sx={{ mb: 2 }}>
+                                  <Box
+                                    display="flex"
+                                    justifyContent="space-between"
+                                    alignItems="center"
+                                  >
+                                    <Typography variant="body2">
+                                      👁️ <strong>View-only mode</strong> - Use the comments section
+                                      below to provide feedback
+                                    </Typography>
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      onClick={() => setUserChosenMode(null)}
+                                    >
+                                      Change Mode
+                                    </Button>
+                                  </Box>
+                                </Alert>
+                              )}
 
-                          {/* Check if this is a Google Doc */}
-                          {currentVersionId &&
-                          (request?.versions.find(v => v.version_id === currentVersionId)
-                            ?.content_type === 'google_doc' ||
-                            (versionContent &&
-                              versionContent.includes('docs.google.com') &&
-                              !versionContent.startsWith('<'))) ? (
-                            <Box
-                              sx={{
-                                height: '700px',
-                                border: '1px solid',
-                                borderColor: 'rgba(0, 0, 0, 0.23)',
-                                borderRadius: 1,
-                                overflow: 'hidden',
-                                backgroundColor: '#ffffff',
-                              }}
-                            >
-                              <iframe
-                                src={getEmbeddableGoogleDocUrl(versionContent, request.status)}
-                                width="100%"
-                                height="100%"
-                                frameBorder="0"
-                                style={{ border: 'none' }}
-                                allow="autoplay; encrypted-media"
-                                allowFullScreen
-                              ></iframe>
+                              {/* Only show document if user has made a choice OR if request is not pending */}
+                              {(userChosenMode || request.status !== 'pending') && (
+                                <Box
+                                  sx={{
+                                    height: '700px',
+                                    border: '1px solid',
+                                    borderColor: 'rgba(0, 0, 0, 0.23)',
+                                    borderRadius: 1,
+                                    overflow: 'hidden',
+                                  }}
+                                >
+                                  <iframe
+                                    src={getEmbeddableGoogleDocUrl(
+                                      request.inline_content,
+                                      request.status,
+                                      userChosenMode === 'google_comment' && !!googleAccessToken
+                                    )}
+                                    width="100%"
+                                    height="100%"
+                                    frameBorder="0"
+                                    style={{ border: 'none' }}
+                                    allow="autoplay; encrypted-media"
+                                    allowFullScreen
+                                  ></iframe>
+                                </Box>
+                              )}
                             </Box>
-                          ) : (
-                            <Typography variant="body2" color="textSecondary" align="center">
-                              Historical inline content is not preserved for older versions. The
-                              database has been updated to store inline content for future versions.
-                            </Typography>
                           )}
-                        </Box>
-                      ) : (
-                        <Typography variant="body2" color="textSecondary" align="center">
-                          Historical inline content is not preserved for older versions. The
-                          database has been updated to store inline content for future versions.
-                        </Typography>
-                      )}
-                    </Paper>
-                  </Grid>
-                </Grid>
-              )}
-            </>
-          )}
-        </Box>
-      </Container>
 
-      {/* Approval confirmation dialog */}
-      <Dialog open={approvalDialogOpen} onClose={() => setApprovalDialogOpen(false)}>
-        <DialogTitle>Confirm Approval</DialogTitle>
-        <DialogContent>
-          <DialogContentText sx={{ mb: 2 }}>
-            Are you sure you want to approve this content? This will indicate that you have reviewed
-            the content and are satisfied with it.
-          </DialogContentText>
-
-          <Box sx={{ mt: 2 }}>
-            <FormLabel component="legend" sx={{ mb: 1, display: 'block' }}>
-              Add any comments about your approval (optional)
-            </FormLabel>
-            <TextField
-              fullWidth
-              multiline
-              rows={3}
-              value={approvalNote}
-              onChange={e => setApprovalNote(e.target.value)}
-              placeholder="Your note will be sent to the content owner"
-              variant="outlined"
-            />
-            <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5, display: 'block' }}>
-              Your note will be sent to the content owner with your approval
-            </Typography>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setApprovalDialogOpen(false)}>Cancel</Button>
-          <Button
-            onClick={handleApprove}
-            variant="contained"
-            color="success"
-            disabled={actionLoading}
-          >
-            {actionLoading ? <CircularProgress size={24} /> : 'Approve'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Feedback dialog */}
-      <Dialog open={feedbackDialogOpen} onClose={() => setFeedbackDialogOpen(false)}>
-        <DialogTitle>Submit with Feedback</DialogTitle>
-        <DialogContent>
-          <DialogContentText sx={{ mb: 2 }}>
-            Please provide your feedback about this content. The content owner will be notified.
-          </DialogContentText>
-          <TextField
-            autoFocus
-            required
-            label="Your Feedback"
-            fullWidth
-            multiline
-            rows={4}
-            value={feedbackNote}
-            onChange={e => setFeedbackNote(e.target.value)}
-            placeholder="What changes or improvements would you like to see?"
-            error={!feedbackNote.trim() && submittingFeedback}
-            helperText={!feedbackNote.trim() && submittingFeedback ? 'Feedback is required' : ''}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setFeedbackDialogOpen(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            onClick={handleSubmitWithFeedback}
-            disabled={submittingFeedback || !feedbackNote.trim()}
-            color="primary"
-          >
-            {submittingFeedback ? <CircularProgress size={24} /> : 'Submit Feedback'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Version history dialog */}
-      <Dialog
-        open={versionHistoryOpen}
-        onClose={() => setVersionHistoryOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>Version History</DialogTitle>
-        <DialogContent>
-          {request?.versions && (
-            <List>
-              {request.versions.map(version => (
-                <React.Fragment key={version.version_id}>
-                  <ListItem
-                    alignItems="flex-start"
-                    sx={{
-                      border: '1px solid',
-                      borderColor: 'divider',
-                      borderRadius: 1,
-                      my: 2,
-                    }}
-                  >
-                    <DocumentIcon fontSize="large" sx={{ mr: 2, mt: 1 }} />
-                    <ListItemText
-                      primary={
-                        <Box display="flex" justifyContent="space-between">
-                          <Typography variant="h6">Version {version.version_number}</Typography>
-                          <Typography variant="body2" color="textSecondary">
-                            {new Date(version.created_at).toLocaleString(undefined, {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              timeZoneName: 'short',
-                            })}
-                          </Typography>
-                        </Box>
-                      }
-                      secondary={
-                        <>
-                          {version.comments && (
-                            <Typography
-                              component="span"
-                              variant="body2"
-                              color="textPrimary"
-                              sx={{ mt: 1, display: 'block' }}
+                        {/* REGULAR HTML CONTENT DISPLAY - Only render for non-Google Docs */}
+                        {!viewingVersion &&
+                          request?.inline_content &&
+                          !(
+                            request?.content_type === 'google_doc' ||
+                            (request?.inline_content.includes('docs.google.com') &&
+                              !request?.inline_content.startsWith('<'))
+                          ) && (
+                            <Box
+                              mt={2}
+                              ref={contentRef}
+                              sx={{
+                                '& p': { my: 1.5 },
+                                '& ul, & ol': { my: 1.5, pl: 3 },
+                                '& li': { mb: 0.5 },
+                                '& h1, & h2, & h3, & h4, & h5, & h6': {
+                                  my: 2,
+                                  fontWeight: 'bold',
+                                },
+                                '& a': {
+                                  color: 'primary.main',
+                                  textDecoration: 'underline',
+                                  '&:hover': {
+                                    color: 'primary.dark',
+                                  },
+                                },
+                              }}
+                              className="annotatable-container"
                             >
-                              {version.comments}
-                            </Typography>
+                              <div id="content-view">
+                                {/* Content will be initialized by Recogito */}
+                              </div>
+                            </Box>
                           )}
-                          {version.file_url ? (
-                            // For file-based versions
+
+                        {/* File download button for file-based requests */}
+                        {!viewingVersion && !request?.inline_content && request?.file_url && (
+                          <Box display="flex" alignItems="center" my={2}>
+                            <DocumentIcon color="primary" sx={{ mr: 2 }} />
+                            <Typography variant="body1">
+                              {getFileTypeName(request.file_url)}
+                            </Typography>
+                            <Box flexGrow={1} />
                             <Button
-                              variant="outlined"
-                              size="small"
+                              variant="contained"
                               startIcon={<DownloadIcon />}
-                              href={version.file_url}
+                              href={request.file_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              sx={{ mt: 2 }}
                             >
-                              Download File
+                              View / Download
                             </Button>
-                          ) : (
-                            // For inline content versions - ensure Google Doc links use comment mode
+                          </Box>
+                        )}
+
+                        {/* Fallback if no content exists */}
+                        {!viewingVersion && !request?.inline_content && !request?.file_url && (
+                          <Typography variant="body2" color="textSecondary" sx={{ mt: 2 }}>
+                            No content available for review.
+                          </Typography>
+                        )}
+                      </Paper>
+
+                      {/* Comments section */}
+                      <Paper elevation={2} sx={{ p: 3 }}>
+                        <Typography variant="h6" gutterBottom>
+                          Comments
+                        </Typography>
+
+                        <Box mt={2} mb={3}>
+                          <TextField
+                            fullWidth
+                            multiline
+                            rows={3}
+                            label="Add a comment"
+                            placeholder="Enter your feedback here..."
+                            value={newComment}
+                            onChange={e => setNewComment(e.target.value)}
+                          />
+                          <Box display="flex" justifyContent="flex-end" mt={2}>
                             <Button
-                              variant="outlined"
-                              size="small"
-                              startIcon={<ArticleIcon />}
-                              onClick={() => {
-                                handleViewVersionContent(version);
-                                setVersionHistoryOpen(false);
-                              }}
-                              sx={{ mt: 2 }}
+                              variant="contained"
+                              startIcon={<SendIcon />}
+                              onClick={handleSubmitComment}
+                              disabled={submittingComment || !newComment.trim()}
                             >
-                              View Content
+                              {submittingComment ? <CircularProgress size={24} /> : 'Send Feedback'}
                             </Button>
-                          )}
-                        </>
-                      }
-                    />
-                  </ListItem>
-                </React.Fragment>
-              ))}
-            </List>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setVersionHistoryOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+                          </Box>
+                        </Box>
+
+                        <Divider sx={{ my: 2 }} />
+
+                        {request.comments && request.comments.length > 0 ? (
+                          <Box sx={{ maxHeight: '400px', overflow: 'auto' }}>
+                            <List>
+                              {request.comments.map(comment => (
+                                <React.Fragment key={comment.comment_id}>
+                                  <ListItem alignItems="flex-start">
+                                    <ListItemAvatar>
+                                      <Avatar>
+                                        {comment.contact_name
+                                          ? comment.contact_name.charAt(0).toUpperCase()
+                                          : 'S'}
+                                      </Avatar>
+                                    </ListItemAvatar>
+                                    <ListItemText
+                                      primary={
+                                        <Box display="flex" justifyContent="space-between">
+                                          <Typography variant="subtitle2">
+                                            {comment.contact_name || 'Staff'}
+                                          </Typography>
+                                          <Typography variant="caption" color="textSecondary">
+                                            {new Date(comment.created_at).toLocaleString(
+                                              undefined,
+                                              {
+                                                year: 'numeric',
+                                                month: 'short',
+                                                day: 'numeric',
+                                                hour: '2-digit',
+                                                minute: '2-digit',
+                                                timeZoneName: 'short',
+                                              }
+                                            )}
+                                          </Typography>
+                                        </Box>
+                                      }
+                                      secondary={
+                                        <Typography
+                                          component="span"
+                                          variant="body2"
+                                          color="textPrimary"
+                                          sx={{ mt: 1, display: 'block' }}
+                                        >
+                                          {comment.comment}
+                                          <ReactionPicker
+                                            targetType="comment"
+                                            targetId={comment.comment_id}
+                                            requestId={Number(id)}
+                                            isClientPortal={true}
+                                            clientContactId={clientInfo?.contact_id}
+                                            token={clientAuthToken || undefined}
+                                          />
+                                        </Typography>
+                                      }
+                                    />
+                                  </ListItem>
+                                  <Divider variant="inset" component="li" />
+                                </React.Fragment>
+                              ))}
+                            </List>
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" color="textSecondary" align="center">
+                            No comments yet
+                          </Typography>
+                        )}
+                      </Paper>
+                    </Grid>
+                  </Grid>
+                ) : (
+                  // Version history content view
+                  <Grid container spacing={3}>
+                    <Grid item xs={12}>
+                      <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
+                        <Box
+                          display="flex"
+                          justifyContent="space-between"
+                          alignItems="center"
+                          mb={2}
+                        >
+                          <Typography variant="h6">
+                            Version{' '}
+                            {request.versions.find(v => v.version_id === currentVersionId)
+                              ?.version_number || ''}{' '}
+                            Content
+                          </Typography>
+                          <Button
+                            variant="outlined"
+                            startIcon={<BackIcon />}
+                            onClick={handleCloseVersionView}
+                          >
+                            Back to Current Version
+                          </Button>
+                        </Box>
+
+                        {versionLoading ? (
+                          <Box display="flex" justifyContent="center" my={4}>
+                            <CircularProgress />
+                          </Box>
+                        ) : versionContent ? (
+                          <Box sx={{ mt: 2 }}>
+                            <Typography variant="body2" color="textSecondary" gutterBottom>
+                              {annotations.length} comment{annotations.length !== 1 ? 's' : ''} for
+                              this version.
+                            </Typography>
+
+                            {/* Check if this is a Google Doc */}
+                            {currentVersionId &&
+                            (request?.versions.find(v => v.version_id === currentVersionId)
+                              ?.content_type === 'google_doc' ||
+                              (versionContent &&
+                                versionContent.includes('docs.google.com') &&
+                                !versionContent.startsWith('<'))) ? (
+                              <Box
+                                sx={{
+                                  height: '700px',
+                                  border: '1px solid',
+                                  borderColor: 'rgba(0, 0, 0, 0.23)',
+                                  borderRadius: 1,
+                                  overflow: 'hidden',
+                                  backgroundColor: '#ffffff',
+                                }}
+                              >
+                                <iframe
+                                  src={getEmbeddableGoogleDocUrl(
+                                    versionContent,
+                                    request.status,
+                                    userChosenMode === 'google_comment' && !!googleAccessToken
+                                  )}
+                                  width="100%"
+                                  height="100%"
+                                  frameBorder="0"
+                                  style={{ border: 'none' }}
+                                  allow="autoplay; encrypted-media"
+                                  allowFullScreen
+                                ></iframe>
+                              </Box>
+                            ) : (
+                              <Typography variant="body2" color="textSecondary" align="center">
+                                Historical inline content is not preserved for older versions. The
+                                database has been updated to store inline content for future
+                                versions.
+                              </Typography>
+                            )}
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" color="textSecondary" align="center">
+                            Historical inline content is not preserved for older versions. The
+                            database has been updated to store inline content for future versions.
+                          </Typography>
+                        )}
+                      </Paper>
+                    </Grid>
+                  </Grid>
+                )}
+              </>
+            )}
+          </Box>
+        </Container>
+
+        {/* Approval confirmation dialog */}
+        <Dialog open={approvalDialogOpen} onClose={() => setApprovalDialogOpen(false)}>
+          <DialogTitle>Confirm Approval</DialogTitle>
+          <DialogContent>
+            <DialogContentText sx={{ mb: 2 }}>
+              Are you sure you want to approve this content? This will indicate that you have
+              reviewed the content and are satisfied with it.
+            </DialogContentText>
+
+            <Box sx={{ mt: 2 }}>
+              <FormLabel component="legend" sx={{ mb: 1, display: 'block' }}>
+                Add any comments about your approval (optional)
+              </FormLabel>
+              <TextField
+                fullWidth
+                multiline
+                rows={3}
+                value={approvalNote}
+                onChange={e => setApprovalNote(e.target.value)}
+                placeholder="Your note will be sent to the content owner"
+                variant="outlined"
+              />
+              <Typography
+                variant="caption"
+                color="textSecondary"
+                sx={{ mt: 0.5, display: 'block' }}
+              >
+                Your note will be sent to the content owner with your approval
+              </Typography>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setApprovalDialogOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleApprove}
+              variant="contained"
+              color="success"
+              disabled={actionLoading}
+            >
+              {actionLoading ? <CircularProgress size={24} /> : 'Approve'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Feedback dialog */}
+        <Dialog open={feedbackDialogOpen} onClose={() => setFeedbackDialogOpen(false)}>
+          <DialogTitle>Submit with Feedback</DialogTitle>
+          <DialogContent>
+            <DialogContentText sx={{ mb: 2 }}>
+              Please provide your feedback about this content. The content owner will be notified.
+            </DialogContentText>
+            <TextField
+              autoFocus
+              required
+              label="Your Feedback"
+              fullWidth
+              multiline
+              rows={4}
+              value={feedbackNote}
+              onChange={e => setFeedbackNote(e.target.value)}
+              placeholder="What changes or improvements would you like to see?"
+              error={!feedbackNote.trim() && submittingFeedback}
+              helperText={!feedbackNote.trim() && submittingFeedback ? 'Feedback is required' : ''}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setFeedbackDialogOpen(false)}>Cancel</Button>
+            <Button
+              variant="contained"
+              onClick={handleSubmitWithFeedback}
+              disabled={submittingFeedback || !feedbackNote.trim()}
+              color="primary"
+            >
+              {submittingFeedback ? <CircularProgress size={24} /> : 'Submit Feedback'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Version history dialog */}
+        <Dialog
+          open={versionHistoryOpen}
+          onClose={() => setVersionHistoryOpen(false)}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle>Version History</DialogTitle>
+          <DialogContent>
+            {request?.versions && (
+              <List>
+                {request.versions.map(version => (
+                  <React.Fragment key={version.version_id}>
+                    <ListItem
+                      alignItems="flex-start"
+                      sx={{
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 1,
+                        my: 2,
+                      }}
+                    >
+                      <DocumentIcon fontSize="large" sx={{ mr: 2, mt: 1 }} />
+                      <ListItemText
+                        primary={
+                          <Box display="flex" justifyContent="space-between">
+                            <Typography variant="h6">Version {version.version_number}</Typography>
+                            <Typography variant="body2" color="textSecondary">
+                              {new Date(version.created_at).toLocaleString(undefined, {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                timeZoneName: 'short',
+                              })}
+                            </Typography>
+                          </Box>
+                        }
+                        secondary={
+                          <>
+                            {version.comments && (
+                              <Typography
+                                component="span"
+                                variant="body2"
+                                color="textPrimary"
+                                sx={{ mt: 1, display: 'block' }}
+                              >
+                                {version.comments}
+                              </Typography>
+                            )}
+                            {version.file_url ? (
+                              // For file-based versions
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                startIcon={<DownloadIcon />}
+                                href={version.file_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                sx={{ mt: 2 }}
+                              >
+                                Download File
+                              </Button>
+                            ) : (
+                              // For inline content versions - ensure Google Doc links use comment mode
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                startIcon={<ArticleIcon />}
+                                onClick={() => {
+                                  handleViewVersionContent(version);
+                                  setVersionHistoryOpen(false);
+                                }}
+                                sx={{ mt: 2 }}
+                              >
+                                View Content
+                              </Button>
+                            )}
+                          </>
+                        }
+                      />
+                    </ListItem>
+                  </React.Fragment>
+                ))}
+              </List>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setVersionHistoryOpen(false)}>Close</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Google Authentication Dialog */}
+        <Dialog open={showGoogleAuthPrompt} onClose={() => setShowGoogleAuthPrompt(false)}>
+          <DialogTitle>Sign in to Comment</DialogTitle>
+          <DialogContent>
+            <DialogContentText sx={{ mb: 2 }}>
+              To comment directly on the document, please sign in with your Google account. This
+              ensures your identity is associated with your feedback.
+            </DialogContentText>
+
+            <Box sx={{ mt: 3, mb: 2 }}>
+              <GoogleLoginButton
+                onSuccess={handleGoogleLoginSuccess}
+                onError={handleGoogleLoginError}
+                disabled={isGoogleAuthenticating}
+              />
+            </Box>
+
+            <Alert severity="info" sx={{ mt: 2 }}>
+              <Typography variant="body2">
+                <strong>Alternative:</strong> You can also provide feedback using the comments
+                section below without signing in to Google.
+              </Typography>
+            </Alert>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setShowGoogleAuthPrompt(false)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                setUserChosenMode('readonly');
+                setShowGoogleAuthPrompt(false);
+              }}
+              variant="outlined"
+            >
+              Continue with View Only
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </Box>
+    </GoogleOAuthProvider>
   );
 }

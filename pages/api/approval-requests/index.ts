@@ -1,18 +1,10 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import mysql from 'mysql2/promise';
+import { query, transaction, getPool } from 'lib/db';
 import { validateUserToken } from '../validate-user-token';
 import { postToSlack } from '../../../utils/postToSlack';
 
-// Create a connection pool
-const pool = mysql.createPool({
-  host: process.env.DB_HOST_NAME,
-  user: process.env.DB_USER_NAME,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_DATABASE,
-  waitForConnections: true,
-  connectionLimit: 20,
-});
-
+// Use centralized connection pool
+const pool = getPool();
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Validate user token for staff operations
   const token = (req.headers['x-auth-token'] as string) || (req.cookies && req.cookies.auth_token);

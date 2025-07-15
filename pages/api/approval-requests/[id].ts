@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import * as mysql from 'mysql2/promise';
+import { query, transaction, getPool } from 'lib/db';
 import * as AWS from 'aws-sdk';
 import { URL } from 'url';
 import { validateUserToken } from '../validate-user-token'; // Ensure this import is present
@@ -7,19 +7,12 @@ import * as nodemailer from 'nodemailer';
 import axios from 'axios';
 import { postToSlack } from '../../../utils/postToSlack';
 
+// Use centralized connection pool instead of creating a new one
+const pool = getPool();
+
 // Configure AWS (ensure region is set, credentials should be auto-loaded from env)
 AWS.config.update({ region: 'us-east-2' }); // Force us-east-2 based on bucket URL
 const s3 = new AWS.S3();
-
-// Create a connection pool (reuse across requests)
-const pool = mysql.createPool({
-  host: process.env.DB_HOST_NAME,
-  user: process.env.DB_USER_NAME,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_DATABASE,
-  waitForConnections: true,
-  connectionLimit: 20,
-});
 
 // Configure email transport
 const transporter = nodemailer.createTransport({
