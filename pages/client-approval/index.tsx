@@ -25,16 +25,12 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  ToggleButton,
-  ToggleButtonGroup,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
   Search as SearchIcon,
   FilterList as FilterIcon,
-  ViewModule as CardViewIcon,
-  ViewList as TableViewIcon,
   Link as LinkIcon,
 } from '@mui/icons-material';
 import LayoutContainer from '../../components/LayoutContainer';
@@ -43,6 +39,16 @@ import { useRouter } from 'next/router';
 import useValidateUserToken from 'hooks/useValidateUserToken';
 import axios from 'axios';
 import UnauthorizedAccess from 'components/UnauthorizedAccess';
+import {
+  useToast,
+  IntercomLayout,
+  IntercomButton,
+  IntercomCard,
+  IntercomSearchInput,
+  ToastProvider,
+  ThemeProvider,
+} from 'components/ui';
+import ViewModeToggle from '../../components/ViewModeToggle';
 
 // Define approval request interface
 interface ApprovalRequest {
@@ -70,10 +76,11 @@ interface ApprovalRequest {
   }> | null;
 }
 
-export default function ClientApprovalPage() {
+function ClientApprovalPageContent() {
   const router = useRouter();
   const { isValidUser, isLoading, user } = useValidateUserToken();
   const { admin: isAdminMode } = router.query;
+  const { showError, showSuccess } = useToast();
 
   // Check if user is admin
   const isAdmin = user?.role === 'admin';
@@ -113,8 +120,9 @@ export default function ClientApprovalPage() {
       setError(message);
       setToastMessage(message);
       setToastOpen(true);
+      showError('Request not found', message);
     }
-  }, [errorParam]);
+  }, [errorParam, showError]);
 
   // Redirect non-admin users trying to access admin mode
   useEffect(() => {
@@ -134,12 +142,12 @@ export default function ClientApprovalPage() {
     }
   }, [isValidUser, isAdmin]);
 
-  // Only refetch when tab changes
+  // Refetch when tab changes or view mode changes
   useEffect(() => {
     if (isValidUser) {
       fetchApprovalRequests();
     }
-  }, [tabValue]);
+  }, [tabValue, viewMode]);
 
   // Helper to determine tab types
   const isPendingTab = tabValue === 0;
@@ -184,15 +192,31 @@ export default function ClientApprovalPage() {
         params.append('client_id', clientFilter.toString());
       }
 
-      // Add tab-based filters
-      if (isPendingTab) {
-        params.append('status', 'pending');
-      } else if (isApprovedTab) {
-        params.append('status', 'approved');
-        params.append('published', 'false');
-      } else if (isPublishedTab) {
-        params.append('status', 'approved');
-        params.append('published', 'true');
+      // Add filters based on view mode
+      if (viewMode === 'table') {
+        // In table view, use status dropdown filter
+        if (statusFilter && statusFilter !== 'all') {
+          if (statusFilter === 'published') {
+            params.append('status', 'approved');
+            params.append('published', 'true');
+          } else if (statusFilter === 'approved') {
+            params.append('status', 'approved');
+            params.append('published', 'false');
+          } else {
+            params.append('status', statusFilter);
+          }
+        }
+      } else {
+        // In card view, use tab-based filters
+        if (isPendingTab) {
+          params.append('status', 'pending');
+        } else if (isApprovedTab) {
+          params.append('status', 'approved');
+          params.append('published', 'false');
+        } else if (isPublishedTab) {
+          params.append('status', 'approved');
+          params.append('published', 'true');
+        }
       }
 
       if (params.toString()) {
@@ -310,26 +334,33 @@ export default function ClientApprovalPage() {
         />
       );
     }
+
+    // Handle null/undefined status
+    if (!request.status) {
+      return <Chip label="Unknown" color="default" size="small" />;
+    }
+
     let color: 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' =
       'default';
+    let label = request.status.charAt(0).toUpperCase() + request.status.slice(1);
+
     switch (request.status) {
       case 'pending':
         color = 'warning';
         break;
       case 'approved':
-        color = 'success';
+        if (request.published_url) {
+          label = 'Published';
+          color = 'info';
+        } else {
+          color = 'success';
+        }
         break;
       case 'rejected':
         color = 'error';
         break;
     }
-    return (
-      <Chip
-        label={request.status.charAt(0).toUpperCase() + request.status.slice(1)}
-        color={color}
-        size="small"
-      />
-    );
+    return <Chip label={label} color={color} size="small" />;
   };
 
   // Handle closing the toast
@@ -389,15 +420,31 @@ export default function ClientApprovalPage() {
         params.append('client_id', clientFilter.toString());
       }
 
-      // Add tab-based filters
-      if (isPendingTab) {
-        params.append('status', 'pending');
-      } else if (isApprovedTab) {
-        params.append('status', 'approved');
-        params.append('published', 'false');
-      } else if (isPublishedTab) {
-        params.append('status', 'approved');
-        params.append('published', 'true');
+      // Add filters based on view mode
+      if (viewMode === 'table') {
+        // In table view, use status dropdown filter
+        if (statusFilter && statusFilter !== 'all') {
+          if (statusFilter === 'published') {
+            params.append('status', 'approved');
+            params.append('published', 'true');
+          } else if (statusFilter === 'approved') {
+            params.append('status', 'approved');
+            params.append('published', 'false');
+          } else {
+            params.append('status', statusFilter);
+          }
+        }
+      } else {
+        // In card view, use tab-based filters
+        if (isPendingTab) {
+          params.append('status', 'pending');
+        } else if (isApprovedTab) {
+          params.append('status', 'approved');
+          params.append('published', 'false');
+        } else if (isPublishedTab) {
+          params.append('status', 'approved');
+          params.append('published', 'true');
+        }
       }
 
       if (params.toString()) {
@@ -508,15 +555,31 @@ export default function ClientApprovalPage() {
         params.append('client_id', clientFilterStr);
       }
 
-      // Add tab-based filters
-      if (isPendingTab) {
-        params.append('status', 'pending');
-      } else if (isApprovedTab) {
-        params.append('status', 'approved');
-        params.append('published', 'false');
-      } else if (isPublishedTab) {
-        params.append('status', 'approved');
-        params.append('published', 'true');
+      // Add filters based on view mode
+      if (viewMode === 'table') {
+        // In table view, use status dropdown filter
+        if (statusFilter && statusFilter !== 'all') {
+          if (statusFilter === 'published') {
+            params.append('status', 'approved');
+            params.append('published', 'true');
+          } else if (statusFilter === 'approved') {
+            params.append('status', 'approved');
+            params.append('published', 'false');
+          } else {
+            params.append('status', statusFilter);
+          }
+        }
+      } else {
+        // In card view, use tab-based filters
+        if (isPendingTab) {
+          params.append('status', 'pending');
+        } else if (isApprovedTab) {
+          params.append('status', 'approved');
+          params.append('published', 'false');
+        } else if (isPublishedTab) {
+          params.append('status', 'approved');
+          params.append('published', 'true');
+        }
       }
 
       if (params.toString()) {
@@ -584,15 +647,17 @@ export default function ClientApprovalPage() {
         params.append('client_id', clientFilter.toString());
       }
 
-      // Add tab-based filters
-      if (isPendingTab) {
-        params.append('status', 'pending');
-      } else if (isApprovedTab) {
-        params.append('status', 'approved');
-        params.append('published', 'false');
-      } else if (isPublishedTab) {
-        params.append('status', 'approved');
-        params.append('published', 'true');
+      // Add status filter (for table view)
+      if (currentStatusFilter && currentStatusFilter !== 'all') {
+        if (currentStatusFilter === 'published') {
+          params.append('status', 'approved');
+          params.append('published', 'true');
+        } else if (currentStatusFilter === 'approved') {
+          params.append('status', 'approved');
+          params.append('published', 'false');
+        } else {
+          params.append('status', currentStatusFilter);
+        }
       }
 
       if (params.toString()) {
@@ -636,9 +701,9 @@ export default function ClientApprovalPage() {
       <Table>
         <TableHead>
           <TableRow>
+            <TableCell>Status</TableCell>
             <TableCell>Title</TableCell>
             <TableCell>Client</TableCell>
-            <TableCell>Status</TableCell>
             <TableCell>Approvals</TableCell>
             <TableCell>Created</TableCell>
             <TableCell>Published URL</TableCell>
@@ -648,6 +713,9 @@ export default function ClientApprovalPage() {
         <TableBody>
           {filteredRequests.map(request => (
             <TableRow key={request.request_id} hover sx={{ cursor: 'pointer' }}>
+              <TableCell onClick={() => handleViewRequest(request.request_id)}>
+                {getStatusChip(request)}
+              </TableCell>
               <TableCell onClick={() => handleViewRequest(request.request_id)}>
                 <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
                   {request.title}
@@ -673,9 +741,6 @@ export default function ClientApprovalPage() {
                 {request.client_name}
               </TableCell>
               <TableCell onClick={() => handleViewRequest(request.request_id)}>
-                {getStatusChip(request)}
-              </TableCell>
-              <TableCell onClick={() => handleViewRequest(request.request_id)}>
                 <Chip
                   size="small"
                   label={`${request.approvals_count}/${request.total_contacts}`}
@@ -689,10 +754,18 @@ export default function ClientApprovalPage() {
               </TableCell>
               <TableCell>
                 {request.published_url ? (
-                  <Box display="flex" alignItems="center">
+                  <Box
+                    display="flex"
+                    alignItems="center"
+                    sx={{ cursor: 'pointer' }}
+                    onClick={e => {
+                      e.stopPropagation();
+                      window.open(request.published_url!, '_blank');
+                    }}
+                  >
                     <LinkIcon color="primary" sx={{ mr: 0.5, fontSize: 16 }} />
                     <Typography variant="body2" sx={{ maxWidth: 150 }} noWrap>
-                      {new URL(request.published_url).hostname}
+                      {new URL(request.published_url!).hostname}
                     </Typography>
                   </Box>
                 ) : (
@@ -702,13 +775,24 @@ export default function ClientApprovalPage() {
                 )}
               </TableCell>
               <TableCell>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={() => handleViewRequest(request.request_id)}
-                >
-                  View
-                </Button>
+                <Box display="flex" gap={1}>
+                  <IntercomButton
+                    size="small"
+                    variant="secondary"
+                    onClick={() => handleViewRequest(request.request_id)}
+                  >
+                    View
+                  </IntercomButton>
+                  {request.published_url && (
+                    <IntercomButton
+                      size="small"
+                      variant="primary"
+                      onClick={() => window.open(request.published_url!, '_blank')}
+                    >
+                      Visit
+                    </IntercomButton>
+                  )}
+                </Box>
               </TableCell>
             </TableRow>
           ))}
@@ -723,12 +807,13 @@ export default function ClientApprovalPage() {
       {filteredRequests.map(request => (
         <Grid item xs={12} md={6} lg={4} key={request.request_id}>
           <Card
+            elevation={3}
             sx={{
               height: '100%',
               display: 'flex',
               flexDirection: 'column',
               cursor: 'pointer',
-              transition: 'transform 0.2s, box-shadow 0.2s',
+              transition: 'all 0.2s ease-in-out',
               '&:hover': {
                 transform: 'translateY(-4px)',
                 boxShadow: 6,
@@ -755,12 +840,6 @@ export default function ClientApprovalPage() {
                   color={request.approvals_count === request.total_contacts ? 'success' : 'default'}
                   sx={{ mr: 1 }}
                 />
-
-                <Chip
-                  size="small"
-                  label={`Version ${request.versions?.[0]?.version_number || 1}`}
-                  color="info"
-                />
               </Box>
 
               {request.description && (
@@ -780,9 +859,16 @@ export default function ClientApprovalPage() {
               )}
 
               {request.published_url && (
-                <Box mt={2}>
+                <Box
+                  mt={2}
+                  sx={{ cursor: 'pointer' }}
+                  onClick={e => {
+                    e.stopPropagation();
+                    window.open(request.published_url!, '_blank');
+                  }}
+                >
                   <Typography variant="body2" color="primary">
-                    Published at: {new URL(request.published_url).hostname}
+                    Published at: {new URL(request.published_url!).hostname}
                   </Typography>
                 </Box>
               )}
@@ -793,6 +879,8 @@ export default function ClientApprovalPage() {
             <CardActions>
               <Button
                 size="small"
+                variant="outlined"
+                color="primary"
                 onClick={e => {
                   e.stopPropagation(); // Prevent card click from triggering
                   handleViewRequest(request.request_id);
@@ -800,6 +888,18 @@ export default function ClientApprovalPage() {
               >
                 View Details
               </Button>
+              {request.published_url && (
+                <Button
+                  size="small"
+                  variant="contained"
+                  onClick={e => {
+                    e.stopPropagation();
+                    window.open(request.published_url!, '_blank');
+                  }}
+                >
+                  Visit
+                </Button>
+              )}
               <Box flexGrow={1} />
               <Typography variant="caption" color="textSecondary">
                 {new Date(request.created_at).toLocaleDateString()}
@@ -824,65 +924,47 @@ export default function ClientApprovalPage() {
   }
 
   return (
-    <LayoutContainer>
-      <StyledHeader />
-      <Container maxWidth="lg">
-        <Box my={4}>
-          <Grid container justifyContent="space-between" alignItems="center" spacing={2}>
-            <Grid item>
-              <Typography variant="h4" gutterBottom>
-                {pageTitle}
-              </Typography>
-            </Grid>
-            <Grid item>
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<AddIcon />}
-                onClick={handleCreateRequest}
-              >
-                New Request
-              </Button>
-            </Grid>
-          </Grid>
+    <IntercomLayout
+      title={pageTitle}
+      breadcrumbs={[
+        { label: 'Client Approval', href: '/client-approval' },
+        ...(isAdminMode && isAdmin ? [{ label: 'Admin View' }] : []),
+      ]}
+      actions={
+        <IntercomButton variant="primary" leftIcon={<AddIcon />} onClick={handleCreateRequest}>
+          New Request
+        </IntercomButton>
+      }
+    >
+      <Box sx={{ mb: 4 }}>
+        <Box display="flex" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
+          {viewMode === 'cards' && (
+            <Tabs value={tabValue} onChange={handleTabChange} aria-label="approval request tabs">
+              <Tab label="Pending Approval" />
+              <Tab label="Approved Content" />
+              <Tab label="Published Content" />
+            </Tabs>
+          )}
+          {viewMode === 'table' && (
+            <Typography variant="h5" component="div" sx={{ color: 'text.primary' }}>
+              All Requests
+            </Typography>
+          )}
+          <ViewModeToggle value={viewMode} onChange={handleViewModeChange} />
+        </Box>
 
-          <Box my={3}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Tabs value={tabValue} onChange={handleTabChange} aria-label="approval request tabs">
-                <Tab label="Pending Approval" />
-                <Tab label="Approved Content" />
-                <Tab label="Published Content" />
-              </Tabs>
-              <ToggleButtonGroup
-                value={viewMode}
-                exclusive
-                onChange={handleViewModeChange}
-                size="small"
-              >
-                <ToggleButton value="table">
-                  <TableViewIcon />
-                </ToggleButton>
-                <ToggleButton value="cards">
-                  <CardViewIcon />
-                </ToggleButton>
-              </ToggleButtonGroup>
-            </Box>
-          </Box>
-
-          {/* Filters */}
-          <Paper elevation={2} sx={{ p: 2, mb: 3 }}>
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} md={4}>
-                <TextField
-                  fullWidth
-                  label="Search by title or client"
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  InputProps={{
-                    startAdornment: <SearchIcon color="action" sx={{ mr: 1 }} />,
-                  }}
-                />
-              </Grid>
+        {/* Filters */}
+        <IntercomCard borderless padding="medium" sx={{ mb: 3 }}>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} md={4}>
+              <IntercomSearchInput
+                placeholder="Search by title or client"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                fullWidth
+              />
+            </Grid>
+            {viewMode === 'table' && (
               <Grid item xs={12} md={3}>
                 <TextField
                   select
@@ -896,116 +978,171 @@ export default function ClientApprovalPage() {
                     // Call handler with the value from the event
                     handleStatusFilterChange(value);
                   }}
+                  sx={{
+                    '& .MuiInputBase-root': {
+                      color: 'text.primary',
+                      backgroundColor: 'background.paper',
+                    },
+                    '& .MuiInputLabel-root': {
+                      color: 'text.secondary',
+                    },
+                    '& .MuiSelect-select': {
+                      color: 'text.primary',
+                    },
+                    '& .MuiOutlinedInput-input': {
+                      color: 'text.primary',
+                    },
+                  }}
                 >
                   <MenuItem value="all">All Statuses</MenuItem>
                   <MenuItem value="pending">Pending</MenuItem>
                   <MenuItem value="approved">Approved</MenuItem>
-                  <MenuItem value="rejected">Rejected</MenuItem>
+                  <MenuItem value="published">Published</MenuItem>
                 </TextField>
               </Grid>
+            )}
+            <Grid item xs={12} md={3}>
+              <TextField
+                select
+                fullWidth
+                label="Client"
+                value={clientFilter}
+                onChange={e => {
+                  // Get the value directly from the event
+                  const value = Number(e.target.value) || e.target.value;
+                  console.log('Client filter changed directly from event:', value);
+                  // Call handler with the value from the event
+                  handleClientFilterChange(value);
+                }}
+                sx={{
+                  '& .MuiInputBase-root': {
+                    color: 'text.primary',
+                    backgroundColor: 'background.paper',
+                  },
+                  '& .MuiInputLabel-root': {
+                    color: 'text.secondary',
+                  },
+                  '& .MuiSelect-select': {
+                    color: 'text.primary',
+                  },
+                  '& .MuiOutlinedInput-input': {
+                    color: 'text.primary',
+                  },
+                }}
+              >
+                <MenuItem value="all">All Clients</MenuItem>
+                {clients.map(client => (
+                  <MenuItem key={client.client_id} value={client.client_id}>
+                    {client.client_name}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+
+            {users.length > 0 && (
               <Grid item xs={12} md={3}>
                 <TextField
                   select
                   fullWidth
-                  label="Client"
-                  value={clientFilter}
+                  label="User"
+                  value={userFilter}
                   onChange={e => {
                     // Get the value directly from the event
-                    const value = Number(e.target.value) || e.target.value;
-                    console.log('Client filter changed directly from event:', value);
+                    const value = e.target.value;
+                    console.log('User filter changed directly from event:', value);
                     // Call handler with the value from the event
-                    handleClientFilterChange(value);
+                    handleUserFilterChange(value);
+                  }}
+                  sx={{
+                    '& .MuiInputBase-root': {
+                      color: 'text.primary',
+                      backgroundColor: 'background.paper',
+                    },
+                    '& .MuiInputLabel-root': {
+                      color: 'text.secondary',
+                    },
+                    '& .MuiSelect-select': {
+                      color: 'text.primary',
+                    },
+                    '& .MuiOutlinedInput-input': {
+                      color: 'text.primary',
+                    },
                   }}
                 >
-                  <MenuItem value="all">All Clients</MenuItem>
-                  {clients.map(client => (
-                    <MenuItem key={client.client_id} value={client.client_id}>
-                      {client.client_name}
+                  <MenuItem value="all">All Users</MenuItem>
+                  {users.map(user => (
+                    <MenuItem key={user.id} value={user.id}>
+                      {user.name}
                     </MenuItem>
                   ))}
                 </TextField>
               </Grid>
-
-              {users.length > 0 && (
-                <Grid item xs={12} md={3}>
-                  <TextField
-                    select
-                    fullWidth
-                    label="User"
-                    value={userFilter}
-                    onChange={e => {
-                      // Get the value directly from the event
-                      const value = e.target.value;
-                      console.log('User filter changed directly from event:', value);
-                      // Call handler with the value from the event
-                      handleUserFilterChange(value);
-                    }}
-                  >
-                    <MenuItem value="all">All Users</MenuItem>
-                    {users.map(user => (
-                      <MenuItem key={user.id} value={user.id}>
-                        {user.name}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                </Grid>
-              )}
-              <Grid item xs={12} md={2}>
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  startIcon={<RefreshIcon />}
-                  onClick={fetchApprovalRequests}
-                >
-                  Refresh
-                </Button>
-              </Grid>
+            )}
+            <Grid item xs={12} md={2}>
+              <IntercomButton
+                fullWidth
+                variant="secondary"
+                leftIcon={<RefreshIcon />}
+                onClick={fetchApprovalRequests}
+              >
+                Refresh
+              </IntercomButton>
             </Grid>
-          </Paper>
+          </Grid>
+        </IntercomCard>
 
-          {/* Content */}
-          {loading ? (
-            <Box display="flex" justifyContent="center" my={4}>
-              <CircularProgress />
-            </Box>
-          ) : error ? (
-            <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
-              {error}
-            </Alert>
-          ) : filteredRequests.length === 0 ? (
-            <Alert severity="info">
-              {userFilter !== 'all' ? (
-                <span>
-                  No approval requests found for the selected user. The user may not have created
-                  any requests or they might all be {tabValue === 0 ? 'archived' : 'active'}.
-                </span>
-              ) : isPendingTab ? (
-                'No pending approval requests found. Create a new request to get started.'
-              ) : isApprovedTab ? (
-                'No approved content found.'
-              ) : (
-                'No published content found.'
-              )}
-            </Alert>
-          ) : viewMode === 'table' ? (
-            <RequestsTable />
-          ) : (
-            <RequestsCards />
-          )}
-        </Box>
-      </Container>
+        {/* Content */}
+        {loading ? (
+          <Box display="flex" justifyContent="center" my={4}>
+            <CircularProgress />
+          </Box>
+        ) : error ? (
+          <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        ) : filteredRequests.length === 0 ? (
+          <Alert severity="info">
+            {userFilter !== 'all' ? (
+              <span>
+                No approval requests found for the selected user. The user may not have created any
+                requests or they might all be {tabValue === 0 ? 'archived' : 'active'}.
+              </span>
+            ) : isPendingTab ? (
+              'No pending approval requests found. Create a new request to get started.'
+            ) : isApprovedTab ? (
+              'No approved content found.'
+            ) : (
+              'No published content found.'
+            )}
+          </Alert>
+        ) : viewMode === 'table' ? (
+          <RequestsTable />
+        ) : (
+          <RequestsCards />
+        )}
 
-      {/* Toast Notification */}
-      <Snackbar
-        open={toastOpen}
-        autoHideDuration={6000}
-        onClose={handleCloseToast}
-        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
-      >
-        <Alert onClose={handleCloseToast} severity="warning" sx={{ width: '100%' }}>
-          {toastMessage}
-        </Alert>
-      </Snackbar>
-    </LayoutContainer>
+        {/* Toast Notification - keeping for backwards compatibility */}
+        <Snackbar
+          open={toastOpen}
+          autoHideDuration={6000}
+          onClose={handleCloseToast}
+          anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        >
+          <Alert onClose={handleCloseToast} severity="warning" sx={{ width: '100%' }}>
+            {toastMessage}
+          </Alert>
+        </Snackbar>
+      </Box>
+    </IntercomLayout>
+  );
+}
+
+export default function ClientApprovalPage() {
+  return (
+    <ThemeProvider>
+      <ToastProvider>
+        <ClientApprovalPageContent />
+      </ToastProvider>
+    </ThemeProvider>
   );
 }

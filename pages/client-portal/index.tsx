@@ -27,8 +27,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  ToggleButton,
-  ToggleButtonGroup,
+  TextField,
 } from '@mui/material';
 import {
   AccountCircle,
@@ -38,9 +37,17 @@ import {
   Warning as PendingIcon,
   ThumbDown as RejectedIcon,
   Link as LinkIcon,
-  ViewModule as CardViewIcon,
-  ViewList as TableViewIcon,
 } from '@mui/icons-material';
+import { ClientPortalLayout } from '../../components/layout/ClientPortalLayout';
+import {
+  ThemeProvider,
+  ToastProvider,
+  IntercomButton,
+  IntercomCard,
+  IntercomEmptyCard,
+  IntercomInput,
+} from '../../components/ui';
+import ViewModeToggle from '../../components/ViewModeToggle';
 import { useRouter } from 'next/router';
 import useClientAuth from '../../hooks/useClientAuth';
 import axios from 'axios';
@@ -75,6 +82,7 @@ export default function ClientPortalPage() {
 
   // State for tabs
   const [tabValue, setTabValue] = useState(0);
+  const [showAllContent, setShowAllContent] = useState(false);
 
   // State for requests data
   const [pendingRequests, setPendingRequests] = useState<ApprovalRequest[]>([]);
@@ -171,6 +179,10 @@ export default function ClientPortalPage() {
   ) => {
     if (newViewMode !== null) {
       setViewMode(newViewMode);
+      // Reset "all content" state when switching to card view
+      if (newViewMode === 'cards') {
+        setShowAllContent(false);
+      }
     }
   };
 
@@ -207,19 +219,31 @@ export default function ClientPortalPage() {
   };
 
   // Generate status chip with appropriate color
-  const getStatusChip = (status: string) => {
+  const getStatusChip = (request: ApprovalRequest) => {
+    // Handle null/undefined status
+    if (!request.status) {
+      return <Chip label="Unknown" color="default" size="small" />;
+    }
+
     let color: 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' =
       'default';
     let icon = null;
+    let label = request.status.charAt(0).toUpperCase() + request.status.slice(1);
 
-    switch (status) {
+    switch (request.status) {
       case 'pending':
         color = 'warning';
         icon = <PendingIcon />;
         break;
       case 'approved':
-        color = 'success';
-        icon = <ApprovedIcon />;
+        if (request.published_url) {
+          label = 'Published';
+          color = 'info';
+          icon = <LinkIcon />;
+        } else {
+          color = 'success';
+          icon = <ApprovedIcon />;
+        }
         break;
       case 'rejected':
         color = 'error';
@@ -227,21 +251,26 @@ export default function ClientPortalPage() {
         break;
     }
 
-    return (
-      <Chip
-        icon={icon as React.ReactElement}
-        label={status.charAt(0).toUpperCase() + status.slice(1)}
-        color={color}
-        size="small"
-      />
-    );
+    return <Chip icon={icon as React.ReactElement} label={label} color={color} size="small" />;
   };
 
-  // Get current requests based on tab
+  // Get current requests based on view mode and tab/filter
   const getCurrentRequests = () => {
-    if (isPendingTab) return pendingRequests;
-    if (isApprovedTab) return approvedRequests;
-    if (isPublishedTab) return publishedRequests;
+    if (viewMode === 'table') {
+      // In table view, filter based on showAllContent or current tab value
+      if (showAllContent) {
+        return [...pendingRequests, ...approvedRequests, ...publishedRequests];
+      } else {
+        if (isPendingTab) return pendingRequests;
+        if (isApprovedTab) return approvedRequests;
+        if (isPublishedTab) return publishedRequests;
+      }
+    } else {
+      // In card view, return requests based on current tab
+      if (isPendingTab) return pendingRequests;
+      if (isApprovedTab) return approvedRequests;
+      if (isPublishedTab) return publishedRequests;
+    }
     return [];
   };
 
@@ -251,8 +280,8 @@ export default function ClientPortalPage() {
       <Table>
         <TableHead>
           <TableRow>
-            <TableCell>Title</TableCell>
             <TableCell>Status</TableCell>
+            <TableCell>Title</TableCell>
             <TableCell>Created</TableCell>
             <TableCell>Published URL</TableCell>
             <TableCell>Actions</TableCell>
@@ -261,6 +290,9 @@ export default function ClientPortalPage() {
         <TableBody>
           {requests.map(request => (
             <TableRow key={request.request_id} hover sx={{ cursor: 'pointer' }}>
+              <TableCell onClick={() => handleViewRequest(request.request_id)}>
+                {getStatusChip(request)}
+              </TableCell>
               <TableCell onClick={() => handleViewRequest(request.request_id)}>
                 <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
                   {request.title}
@@ -283,19 +315,24 @@ export default function ClientPortalPage() {
                 )}
               </TableCell>
               <TableCell onClick={() => handleViewRequest(request.request_id)}>
-                {getStatusChip(request.status)}
-              </TableCell>
-              <TableCell onClick={() => handleViewRequest(request.request_id)}>
                 <Typography variant="body2">
                   {new Date(request.created_at).toLocaleDateString()}
                 </Typography>
               </TableCell>
               <TableCell>
                 {request.published_url ? (
-                  <Box display="flex" alignItems="center">
+                  <Box
+                    display="flex"
+                    alignItems="center"
+                    sx={{ cursor: 'pointer' }}
+                    onClick={e => {
+                      e.stopPropagation();
+                      window.open(request.published_url!, '_blank');
+                    }}
+                  >
                     <LinkIcon color="primary" sx={{ mr: 0.5, fontSize: 16 }} />
                     <Typography variant="body2" sx={{ maxWidth: 200 }} noWrap>
-                      {new URL(request.published_url).hostname}
+                      {new URL(request.published_url!).hostname}
                     </Typography>
                   </Box>
                 ) : (
@@ -306,23 +343,21 @@ export default function ClientPortalPage() {
               </TableCell>
               <TableCell>
                 <Box display="flex" gap={1}>
-                  <Button
+                  <IntercomButton
                     size="small"
-                    variant="outlined"
+                    variant="secondary"
                     onClick={() => handleViewRequest(request.request_id)}
                   >
                     {isPendingTab ? 'Review' : 'View'}
-                  </Button>
+                  </IntercomButton>
                   {request.published_url && (
-                    <Button
+                    <IntercomButton
                       size="small"
-                      variant="contained"
-                      href={request.published_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      variant="primary"
+                      onClick={() => window.open(request.published_url!, '_blank')}
                     >
                       Visit
-                    </Button>
+                    </IntercomButton>
                   )}
                 </Box>
               </TableCell>
@@ -344,9 +379,8 @@ export default function ClientPortalPage() {
               height: '100%',
               display: 'flex',
               flexDirection: 'column',
-              position: 'relative',
-              transition: 'all 0.2s ease-in-out',
               cursor: 'pointer',
+              transition: 'all 0.2s ease-in-out',
               '&:hover': {
                 transform: 'translateY(-4px)',
                 boxShadow: 6,
@@ -359,7 +393,7 @@ export default function ClientPortalPage() {
                 <Typography variant="h6" noWrap sx={{ maxWidth: '70%' }}>
                   {request.title}
                 </Typography>
-                {getStatusChip(request.status)}
+                {getStatusChip(request)}
               </Box>
 
               {request.description && (
@@ -386,10 +420,16 @@ export default function ClientPortalPage() {
               </Box>
 
               {request.published_url && (
-                <Box display="flex" alignItems="center">
-                  <LinkIcon color="primary" sx={{ mr: 1 }} />
-                  <Typography variant="body2" noWrap sx={{ maxWidth: '100%' }}>
-                    {new URL(request.published_url).hostname}
+                <Box
+                  mt={2}
+                  sx={{ cursor: 'pointer' }}
+                  onClick={e => {
+                    e.stopPropagation();
+                    window.open(request.published_url!, '_blank');
+                  }}
+                >
+                  <Typography variant="body2" color="primary">
+                    Published at: {new URL(request.published_url!).hostname}
                   </Typography>
                 </Box>
               )}
@@ -399,8 +439,9 @@ export default function ClientPortalPage() {
 
             <CardActions>
               <Button
-                fullWidth
+                size="small"
                 variant={isPendingTab ? 'contained' : 'outlined'}
+                color="primary"
                 onClick={e => {
                   e.stopPropagation(); // Prevent card click from triggering
                   handleViewRequest(request.request_id);
@@ -410,16 +451,20 @@ export default function ClientPortalPage() {
               </Button>
               {request.published_url && (
                 <Button
-                  fullWidth
+                  size="small"
                   variant="contained"
-                  href={request.published_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={e => e.stopPropagation()}
+                  onClick={e => {
+                    e.stopPropagation();
+                    window.open(request.published_url!, '_blank');
+                  }}
                 >
-                  View Published Content
+                  Visit
                 </Button>
               )}
+              <Box flexGrow={1} />
+              <Typography variant="caption" color="textSecondary">
+                {new Date(request.created_at).toLocaleDateString()}
+              </Typography>
             </CardActions>
           </Card>
         </Grid>
@@ -429,9 +474,11 @@ export default function ClientPortalPage() {
 
   if (isLoading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
-        <CircularProgress />
-      </Box>
+      <ThemeProvider>
+        <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
+          <CircularProgress />
+        </Box>
+      </ThemeProvider>
     );
   }
 
@@ -441,58 +488,13 @@ export default function ClientPortalPage() {
 
   const currentRequests = getCurrentRequests();
 
-  return (
-    <Box sx={{ flexGrow: 1 }}>
-      {/* Header */}
-      <AppBar position="static">
-        <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            {clientInfo?.client_name} - Content Portal
-          </Typography>
-
-          <Box>
-            <IconButton
-              size="large"
-              edge="end"
-              aria-label="account menu"
-              aria-controls="menu-appbar"
-              aria-haspopup="true"
-              onClick={handleMenuOpen}
-              color="inherit"
-            >
-              <AccountCircle />
-            </IconButton>
-            <Menu
-              id="menu-appbar"
-              anchorEl={anchorEl}
-              anchorOrigin={{
-                vertical: 'bottom',
-                horizontal: 'right',
-              }}
-              keepMounted
-              transformOrigin={{
-                vertical: 'top',
-                horizontal: 'right',
-              }}
-              open={Boolean(anchorEl)}
-              onClose={handleMenuClose}
-            >
-              <MenuItem disabled>
-                {clientInfo?.name} ({clientInfo?.email})
-              </MenuItem>
-              <Divider />
-              <MenuItem onClick={handleLogout}>
-                <LogoutIcon fontSize="small" sx={{ mr: 1 }} />
-                Logout
-              </MenuItem>
-            </Menu>
-          </Box>
-        </Toolbar>
-      </AppBar>
-
-      {/* Content */}
-      <Container maxWidth="lg">
-        <Box my={4}>
+  function ClientPortalPageContent() {
+    return (
+      <ClientPortalLayout
+        title="Content Portal"
+        breadcrumbs={[{ label: 'Content Portal', href: '/client-portal' }]}
+      >
+        <Box>
           <Typography variant="h4" gutterBottom>
             Content Approval Dashboard
           </Typography>
@@ -505,68 +507,108 @@ export default function ClientPortalPage() {
           {/* Tabs and View Toggle */}
           <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
             <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Tabs value={tabValue} onChange={handleTabChange} aria-label="approval request tabs">
-                <Tab
-                  label={
-                    <Box display="flex" alignItems="center">
-                      Pending Approval
-                      {pendingRequests.length > 0 && (
-                        <Chip
-                          label={pendingRequests.length}
-                          color="warning"
-                          size="small"
-                          sx={{ ml: 1 }}
-                        />
-                      )}
-                    </Box>
-                  }
-                />
-                <Tab
-                  label={
-                    <Box display="flex" alignItems="center">
-                      Approved Content
-                      {approvedRequests.length > 0 && (
-                        <Chip
-                          label={approvedRequests.length}
-                          color="success"
-                          size="small"
-                          sx={{ ml: 1 }}
-                        />
-                      )}
-                    </Box>
-                  }
-                />
-                <Tab
-                  label={
-                    <Box display="flex" alignItems="center">
-                      Published Content
-                      {publishedRequests.length > 0 && (
-                        <Chip
-                          label={publishedRequests.length}
-                          color="info"
-                          size="small"
-                          sx={{ ml: 1 }}
-                        />
-                      )}
-                    </Box>
-                  }
-                />
-              </Tabs>
-              <ToggleButtonGroup
-                value={viewMode}
-                exclusive
-                onChange={handleViewModeChange}
-                size="small"
-              >
-                <ToggleButton value="table">
-                  <TableViewIcon />
-                </ToggleButton>
-                <ToggleButton value="cards">
-                  <CardViewIcon />
-                </ToggleButton>
-              </ToggleButtonGroup>
+              {viewMode === 'cards' && (
+                <Tabs
+                  value={tabValue}
+                  onChange={handleTabChange}
+                  aria-label="approval request tabs"
+                >
+                  <Tab
+                    label={
+                      <Box display="flex" alignItems="center">
+                        Pending Approval
+                        {pendingRequests.length > 0 && (
+                          <Chip
+                            label={pendingRequests.length}
+                            color="warning"
+                            size="small"
+                            sx={{ ml: 1 }}
+                          />
+                        )}
+                      </Box>
+                    }
+                  />
+                  <Tab
+                    label={
+                      <Box display="flex" alignItems="center">
+                        Approved Content
+                        {approvedRequests.length > 0 && (
+                          <Chip
+                            label={approvedRequests.length}
+                            color="success"
+                            size="small"
+                            sx={{ ml: 1 }}
+                          />
+                        )}
+                      </Box>
+                    }
+                  />
+                  <Tab
+                    label={
+                      <Box display="flex" alignItems="center">
+                        Published Content
+                        {publishedRequests.length > 0 && (
+                          <Chip
+                            label={publishedRequests.length}
+                            color="info"
+                            size="small"
+                            sx={{ ml: 1 }}
+                          />
+                        )}
+                      </Box>
+                    }
+                  />
+                </Tabs>
+              )}
+              {viewMode === 'table' && (
+                <Typography variant="h5" component="div">
+                  All Content
+                </Typography>
+              )}
+              <ViewModeToggle value={viewMode} onChange={handleViewModeChange} />
             </Box>
           </Box>
+
+          {/* Filters for table view */}
+          {viewMode === 'table' && (
+            <Paper elevation={2} sx={{ p: 2, mb: 3 }}>
+              <Grid container spacing={2} alignItems="center">
+                <Grid item xs={12} md={4}>
+                  <IntercomInput
+                    select
+                    fullWidth
+                    label="Status Filter"
+                    value={
+                      showAllContent
+                        ? 'all'
+                        : tabValue === 0
+                          ? 'pending'
+                          : tabValue === 1
+                            ? 'approved'
+                            : 'published'
+                    }
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      const value = e.target.value;
+                      if (value === 'all') {
+                        setShowAllContent(true);
+                        setTabValue(0); // Reset to first tab for consistency
+                      } else {
+                        setShowAllContent(false);
+                        if (value === 'pending') setTabValue(0);
+                        else if (value === 'approved') setTabValue(1);
+                        else if (value === 'published') setTabValue(2);
+                      }
+                    }}
+                  >
+                    <MenuItem value="all">All Content</MenuItem>
+                    <MenuItem value="pending">Pending Approval</MenuItem>
+                    <MenuItem value="approved">Approved Content</MenuItem>
+                    <MenuItem value="published">Published Content</MenuItem>
+                  </IntercomInput>
+                </Grid>
+              </Grid>
+            </Paper>
+          )}
 
           {/* Error message */}
           {error && (
@@ -581,30 +623,46 @@ export default function ClientPortalPage() {
               <CircularProgress />
             </Box>
           ) : currentRequests.length === 0 ? (
-            <Alert severity="info">
-              {isPendingTab && 'No content is waiting for your approval at this time.'}
-              {isApprovedTab && 'No approved content is available to view at this time.'}
-              {isPublishedTab && 'No published content is available to view at this time.'}
-            </Alert>
+            <IntercomEmptyCard
+              title="No Content Available"
+              description={
+                showAllContent
+                  ? 'No content is available at this time.'
+                  : isPendingTab
+                    ? 'No content is waiting for your approval at this time.'
+                    : isApprovedTab
+                      ? 'No approved content is available to view at this time.'
+                      : 'No published content is available to view at this time.'
+              }
+              icon={<DocumentIcon />}
+            />
           ) : viewMode === 'table' ? (
             <RequestsTable requests={currentRequests} />
           ) : (
             <RequestsCards requests={currentRequests} />
           )}
         </Box>
-      </Container>
+      </ClientPortalLayout>
+    );
+  }
 
-      {/* Toast Notification */}
-      <Snackbar
-        open={toastOpen}
-        autoHideDuration={6000}
-        onClose={handleCloseToast}
-        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
-      >
-        <Alert onClose={handleCloseToast} severity="warning" sx={{ width: '100%' }}>
-          {toastMessage}
-        </Alert>
-      </Snackbar>
-    </Box>
+  return (
+    <ThemeProvider>
+      <ToastProvider>
+        <ClientPortalPageContent />
+
+        {/* Toast Notification */}
+        <Snackbar
+          open={toastOpen}
+          autoHideDuration={6000}
+          onClose={handleCloseToast}
+          anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        >
+          <Alert onClose={handleCloseToast} severity="warning" sx={{ width: '100%' }}>
+            {toastMessage}
+          </Alert>
+        </Snackbar>
+      </ToastProvider>
+    </ThemeProvider>
   );
 }
