@@ -63,6 +63,14 @@ import {
 } from '@mui/icons-material';
 import LayoutContainer from '../../../components/LayoutContainer';
 import StyledHeader from '../../../components/StyledHeader';
+import { IntercomLayout } from '../../../components/layout/IntercomLayout';
+import {
+  ThemeProvider,
+  ToastProvider,
+  IntercomButton,
+  IntercomCard,
+  IntercomInput,
+} from '../../../components/ui';
 import { useRouter } from 'next/router';
 import useValidateUserToken from 'hooks/useValidateUserToken';
 import axios from 'axios';
@@ -752,23 +760,17 @@ export default function ApprovalRequestDetailPage() {
     );
   }
 
-  return (
-    <>
-      <Head>
-        <title>Request Details - {request?.title || id}</title>
-      </Head>
-
-      <LayoutContainer>
-        <StyledHeader />
-        <Container maxWidth="lg">
-          <Box my={4}>
-            <Box display="flex" alignItems="center" mb={3}>
-              <IconButton onClick={() => router.push('/client-approval')} sx={{ mr: 2 }}>
-                <BackIcon />
-              </IconButton>
-              <Typography variant="h4">Approval Request Details</Typography>
-            </Box>
-
+  function ClientApprovalRequestContent() {
+    return (
+      <>
+        <IntercomLayout
+          title={request?.title || 'Request Details'}
+          breadcrumbs={[
+            { label: 'Client Approval', href: '/client-approval' },
+            { label: 'Request Details' },
+          ]}
+        >
+          <Box>
             {error && (
               <Alert severity="error" sx={{ mb: 3 }}>
                 {error}
@@ -843,8 +845,8 @@ export default function ApprovalRequestDetailPage() {
                     </Grid>
 
                     <Grid item xs={12} md={4}>
-                      <Card variant="outlined">
-                        <CardContent>
+                      <IntercomCard>
+                        <Box sx={{ p: 2 }}>
                           {/* <Typography variant="subtitle2" gutterBottom>
                             Request Info
                           </Typography> */}
@@ -875,8 +877,8 @@ export default function ApprovalRequestDetailPage() {
                               {request.contacts.length}
                             </Typography>
                           </Box>
-                        </CardContent>
-                      </Card>
+                        </Box>
+                      </IntercomCard>
                     </Grid>
                   </Grid>
                 </Paper>
@@ -909,14 +911,12 @@ export default function ApprovalRequestDetailPage() {
                             >
                               <Typography variant="h6">
                                 Contact Status &nbsp;
-                                <Button
-                                  variant="outlined"
-                                  size="small"
-                                  // startIcon={<AddIcon />}
+                                <IntercomButton
+                                  variant="secondary"
                                   onClick={() => setIsAddReviewersModalOpen(true)}
                                 >
                                   Manage
-                                </Button>
+                                </IntercomButton>
                               </Typography>
                             </Box>
                             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
@@ -962,23 +962,21 @@ export default function ApprovalRequestDetailPage() {
                             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                               {/* Only show approve button if status is not already approved */}
                               {request.status !== 'approved' && (
-                                <Button
-                                  variant="contained"
-                                  color="success"
+                                <IntercomButton
+                                  variant="primary"
                                   onClick={handleOpenApprovalDialog}
                                   startIcon={<CheckIcon />}
                                 >
                                   Approve Content
-                                </Button>
+                                </IntercomButton>
                               )}
-                              <Button
-                                variant="outlined"
-                                color="warning"
+                              <IntercomButton
+                                variant="danger"
                                 onClick={handleArchiveRequest}
                                 startIcon={<DeleteIcon />}
                               >
                                 Archive Request
-                              </Button>
+                              </IntercomButton>
                             </Box>
                           </Grid>
                         </Grid>
@@ -1044,10 +1042,8 @@ export default function ApprovalRequestDetailPage() {
                                           {request.title}
                                         </Typography>
 
-                                        <Button
-                                          variant="outlined"
-                                          size="small"
-                                          color="secondary"
+                                        <IntercomButton
+                                          variant="secondary"
                                           onClick={() => setIsMinimalMode(!isMinimalMode)}
                                           startIcon={
                                             isMinimalMode ? <ArticleIcon /> : <CloseIcon />
@@ -1056,7 +1052,7 @@ export default function ApprovalRequestDetailPage() {
                                           {isMinimalMode
                                             ? 'Use Standard Editor'
                                             : 'Use Minimal Editor'}
-                                        </Button>
+                                        </IntercomButton>
                                       </Box>
 
                                       {/* Single iframe that follows the same format as client view */}
@@ -1117,17 +1113,14 @@ export default function ApprovalRequestDetailPage() {
                                   <Alert severity="info" sx={{ mt: 2 }}>
                                     This request contains a file attachment instead of inline
                                     content.
-                                    <Button
-                                      size="small"
-                                      variant="outlined"
-                                      href={request.file_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
+                                    <IntercomButton
+                                      variant="secondary"
+                                      onClick={() => window.open(request.file_url!, '_blank')}
                                       startIcon={<DownloadIcon />}
                                       sx={{ ml: 2 }}
                                     >
                                       Download File
-                                    </Button>
+                                    </IntercomButton>
                                   </Alert>
                                 );
                               } else {
@@ -1148,38 +1141,34 @@ export default function ApprovalRequestDetailPage() {
                             <Box mt={2}>
                               <Grid container spacing={2} alignItems="flex-end">
                                 <Grid item xs={request.published_url ? 9 : 12}>
-                                  <TextField
+                                  <IntercomInput
                                     fullWidth
                                     label="Published URL"
                                     placeholder="https://example.com/published-content"
                                     value={publishedUrl}
                                     onChange={e => setPublishedUrl(e.target.value)}
-                                    InputProps={{
-                                      startAdornment: <LinkIcon color="action" sx={{ mr: 1 }} />,
-                                    }}
+                                    leftIcon={<LinkIcon />}
                                   />
                                 </Grid>
                                 {request.published_url && (
                                   <Grid item xs={3}>
-                                    <Button
+                                    <IntercomButton
                                       fullWidth
-                                      href={request.published_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
+                                      onClick={() => window.open(request.published_url!, '_blank')}
                                     >
                                       Visit
-                                    </Button>
+                                    </IntercomButton>
                                   </Grid>
                                 )}
                               </Grid>
                               <Box display="flex" justifyContent="flex-end" mt={2}>
-                                <Button
-                                  variant="contained"
+                                <IntercomButton
+                                  variant="primary"
                                   onClick={handleUpdatePublishedUrl}
                                   disabled={updatingUrl}
                                 >
                                   {updatingUrl ? <CircularProgress size={24} /> : 'Update URL'}
-                                </Button>
+                                </IntercomButton>
                               </Box>
                             </Box>
                           </Paper>
@@ -1190,7 +1179,7 @@ export default function ApprovalRequestDetailPage() {
                             </Typography>
 
                             <Box mt={2} mb={3}>
-                              <TextField
+                              <IntercomInput
                                 fullWidth
                                 multiline
                                 rows={3}
@@ -1200,8 +1189,8 @@ export default function ApprovalRequestDetailPage() {
                                 onChange={e => setNewComment(e.target.value)}
                               />
                               <Box display="flex" justifyContent="flex-end" mt={2}>
-                                <Button
-                                  variant="contained"
+                                <IntercomButton
+                                  variant="primary"
                                   onClick={handleSubmitComment}
                                   disabled={submittingComment || !newComment.trim()}
                                 >
@@ -1210,7 +1199,7 @@ export default function ApprovalRequestDetailPage() {
                                   ) : (
                                     'Post Comment'
                                   )}
-                                </Button>
+                                </IntercomButton>
                               </Box>
                             </Box>
 
@@ -1317,14 +1306,13 @@ export default function ApprovalRequestDetailPage() {
                     <Paper elevation={2} sx={{ p: 3 }}>
                       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                         <Typography variant="h6">Version History</Typography>
-                        <Button
-                          variant="contained"
-                          color="primary"
+                        <IntercomButton
+                          variant="primary"
                           startIcon={<AddIcon />}
                           onClick={handleOpenNewVersionDialog}
                         >
                           Create New Version
-                        </Button>
+                        </IntercomButton>
                       </Box>
 
                       {request.versions && request.versions.length > 0 ? (
@@ -1374,29 +1362,25 @@ export default function ApprovalRequestDetailPage() {
                                         </Typography>
                                       )}
                                       {version.file_url && (
-                                        <Button
-                                          variant="outlined"
-                                          size="small"
+                                        <IntercomButton
+                                          variant="secondary"
                                           startIcon={<DownloadIcon />}
-                                          href={version.file_url}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
+                                          onClick={() => window.open(version.file_url!, '_blank')}
                                           sx={{ mt: 2, mr: 2 }}
                                         >
                                           View / Download
-                                        </Button>
+                                        </IntercomButton>
                                       )}
 
                                       {/* Add View Content button */}
-                                      <Button
-                                        variant="outlined"
-                                        size="small"
+                                      <IntercomButton
+                                        variant="secondary"
                                         startIcon={<ArticleIcon />}
                                         onClick={() => handleOpenVersionContent(version)}
                                         sx={{ mt: 2 }}
                                       >
                                         View Content
-                                      </Button>
+                                      </IntercomButton>
                                     </>
                                   }
                                 />
@@ -1474,7 +1458,7 @@ export default function ApprovalRequestDetailPage() {
               </>
             )}
           </Box>
-        </Container>
+        </IntercomLayout>
 
         <Dialog open={confirmRemoveOpen} onClose={handleCloseRemoveDialog}>
           <DialogTitle>Remove Contact?</DialogTitle>
@@ -1490,10 +1474,12 @@ export default function ApprovalRequestDetailPage() {
             </DialogContentText>
           </DialogContent>
           <DialogActions>
-            <Button onClick={handleCloseRemoveDialog}>Cancel</Button>
-            <Button onClick={handleConfirmRemoveContact} color="error" variant="contained">
+            <IntercomButton onClick={handleCloseRemoveDialog} variant="ghost">
+              Cancel
+            </IntercomButton>
+            <IntercomButton onClick={handleConfirmRemoveContact} variant="danger">
               Remove
-            </Button>
+            </IntercomButton>
           </DialogActions>
         </Dialog>
 
@@ -1565,18 +1551,17 @@ export default function ApprovalRequestDetailPage() {
               )}
           </DialogContent>
           <DialogActions>
-            <Button onClick={handleCloseApprovalDialog} color="inherit">
+            <IntercomButton onClick={handleCloseApprovalDialog} variant="ghost">
               Cancel
-            </Button>
-            <Button
+            </IntercomButton>
+            <IntercomButton
               onClick={handleManualApproval}
-              color="success"
-              variant="contained"
+              variant="primary"
               disabled={isSubmittingApproval}
               startIcon={isSubmittingApproval ? <CircularProgress size={20} /> : <CheckIcon />}
             >
               Approve
-            </Button>
+            </IntercomButton>
           </DialogActions>
         </Dialog>
         {/* --- End Approval Confirmation Dialog --- */}
@@ -1608,7 +1593,20 @@ export default function ApprovalRequestDetailPage() {
           />
         )}
         {/* --- End Add Reviewers Modal --- */}
-      </LayoutContainer>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Head>
+        <title>Request Details - {request?.title || id}</title>
+      </Head>
+      <ThemeProvider>
+        <ToastProvider>
+          <ClientApprovalRequestContent />
+        </ToastProvider>
+      </ThemeProvider>
     </>
   );
 }

@@ -43,12 +43,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 // Get approval requests with filtering options
 async function getApprovalRequests(req: NextApiRequest, res: NextApiResponse, userInfo: any) {
-  const { status, user_id } = req.query;
+  const { status, user_id, published } = req.query;
   const isClientPortal = req.headers['x-client-portal'] === 'true';
   const contactId = req.headers['x-client-contact-id'];
 
   // Debug request parameters
-  console.log('Request query params:', { status, contactId, user_id });
+  console.log('Request query params:', { status, contactId, user_id, published });
   console.log('Request query raw:', req.query);
 
   try {
@@ -106,6 +106,12 @@ async function getApprovalRequests(req: NextApiRequest, res: NextApiResponse, us
         conditions.push(`ar.status = ?`);
         queryParams.push(status);
       }
+      // Optionally allow published filter
+      if (published === 'true') {
+        conditions.push(`ar.published_url IS NOT NULL`);
+      } else if (published === 'false') {
+        conditions.push(`ar.published_url IS NULL`);
+      }
       // Optionally allow archived filter
       if (req.query.include_archived !== 'true') {
         conditions.push(`ar.is_archived = 0`);
@@ -121,6 +127,12 @@ async function getApprovalRequests(req: NextApiRequest, res: NextApiResponse, us
       if (status) {
         conditions.push(`ar.status = ?`);
         queryParams.push(status);
+      }
+      // Handle published filter for staff/admin
+      if (published === 'true') {
+        conditions.push(`ar.published_url IS NOT NULL`);
+      } else if (published === 'false') {
+        conditions.push(`ar.published_url IS NULL`);
       }
       if (userInfo && userInfo.user_id) {
         const isAdmin = userInfo.role === 'admin';
