@@ -71,6 +71,7 @@ import dynamic from 'next/dynamic';
 import ReactionPicker from 'components/ReactionPicker';
 import { createRoot } from 'react-dom/client';
 import ViewLogModal from 'components/ViewLogModal';
+import AddReviewersModal from 'components/AddReviewersModal';
 
 // Add Recogito types declaration reference (assuming it exists)
 /// <reference path="../../../client-portal/recogito.d.ts" />
@@ -275,6 +276,9 @@ export default function ApprovalRequestDetailPage() {
   const [newVersionComment, setNewVersionComment] = useState('');
   const [isSubmittingVersion, setIsSubmittingVersion] = useState(false);
   // --- End State for New Version Dialog ---
+
+  // --- Add State for Add Reviewers Modal ---
+  const [isAddReviewersModalOpen, setIsAddReviewersModalOpen] = useState(false);
 
   // Add Recogito Refs & State
   const contentRef = useRef<HTMLDivElement>(null);
@@ -897,9 +901,24 @@ export default function ApprovalRequestDetailPage() {
                         <Grid container spacing={3}>
                           {/* Contact Status */}
                           <Grid item xs={12} md={8}>
-                            <Typography variant="h6" gutterBottom>
-                              Contact Status
-                            </Typography>
+                            <Box
+                              display="flex"
+                              justifyContent="space-between"
+                              alignItems="center"
+                              mb={2}
+                            >
+                              <Typography variant="h6">
+                                Contact Status &nbsp;
+                                <Button
+                                  variant="outlined"
+                                  size="small"
+                                  // startIcon={<AddIcon />}
+                                  onClick={() => setIsAddReviewersModalOpen(true)}
+                                >
+                                  Manage
+                                </Button>
+                              </Typography>
+                            </Box>
                             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
                               {request.contacts.map(contact => (
                                 <Chip
@@ -1573,6 +1592,22 @@ export default function ApprovalRequestDetailPage() {
             {toastMessage}
           </Alert>
         </Snackbar>
+
+        {/* --- Add Reviewers Modal --- */}
+        {request && (
+          <AddReviewersModal
+            open={isAddReviewersModalOpen}
+            onClose={() => setIsAddReviewersModalOpen(false)}
+            requestId={request.request_id}
+            clientId={request.client_id}
+            currentReviewerIds={request.contacts.map(c => c.contact_id)}
+            onReviewersAdded={() => {
+              fetchRequestDetails();
+              showToast('Reviewers updated successfully.', 'success');
+            }}
+          />
+        )}
+        {/* --- End Add Reviewers Modal --- */}
       </LayoutContainer>
     </>
   );
