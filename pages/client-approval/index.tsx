@@ -19,12 +19,23 @@ import {
   IconButton,
   Divider,
   Snackbar,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Refresh as RefreshIcon,
   Search as SearchIcon,
   FilterList as FilterIcon,
+  ViewModule as CardViewIcon,
+  ViewList as TableViewIcon,
+  Link as LinkIcon,
 } from '@mui/icons-material';
 import LayoutContainer from '../../components/LayoutContainer';
 import StyledHeader from '../../components/StyledHeader';
@@ -74,6 +85,9 @@ export default function ClientApprovalPage() {
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // State for view mode
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('table');
 
   // State for filters and tabs
   const [tabValue, setTabValue] = useState(0);
@@ -127,10 +141,20 @@ export default function ClientApprovalPage() {
     }
   }, [tabValue]);
 
-  // Helper to determine if archived tab is selected
-  const isArchivedTab = tabValue === 2;
-  const isActiveTab = tabValue === 0;
+  // Helper to determine tab types
+  const isPendingTab = tabValue === 0;
   const isApprovedTab = tabValue === 1;
+  const isPublishedTab = tabValue === 2;
+
+  // Handle view mode change
+  const handleViewModeChange = (
+    event: React.MouseEvent<HTMLElement>,
+    newViewMode: 'cards' | 'table'
+  ) => {
+    if (newViewMode !== null) {
+      setViewMode(newViewMode);
+    }
+  };
 
   // Fetch all approval requests
   const fetchApprovalRequests = async () => {
@@ -161,12 +185,14 @@ export default function ClientApprovalPage() {
       }
 
       // Add tab-based filters
-      if (isActiveTab) {
+      if (isPendingTab) {
         params.append('status', 'pending');
       } else if (isApprovedTab) {
         params.append('status', 'approved');
-      } else if (isArchivedTab) {
-        params.append('include_archived', 'true');
+        params.append('published', 'false');
+      } else if (isPublishedTab) {
+        params.append('status', 'approved');
+        params.append('published', 'true');
       }
 
       if (params.toString()) {
@@ -364,12 +390,14 @@ export default function ClientApprovalPage() {
       }
 
       // Add tab-based filters
-      if (isActiveTab) {
+      if (isPendingTab) {
         params.append('status', 'pending');
       } else if (isApprovedTab) {
         params.append('status', 'approved');
-      } else if (isArchivedTab) {
-        params.append('include_archived', 'true');
+        params.append('published', 'false');
+      } else if (isPublishedTab) {
+        params.append('status', 'approved');
+        params.append('published', 'true');
       }
 
       if (params.toString()) {
@@ -481,12 +509,14 @@ export default function ClientApprovalPage() {
       }
 
       // Add tab-based filters
-      if (isActiveTab) {
+      if (isPendingTab) {
         params.append('status', 'pending');
       } else if (isApprovedTab) {
         params.append('status', 'approved');
-      } else if (isArchivedTab) {
-        params.append('include_archived', 'true');
+        params.append('published', 'false');
+      } else if (isPublishedTab) {
+        params.append('status', 'approved');
+        params.append('published', 'true');
       }
 
       if (params.toString()) {
@@ -555,12 +585,14 @@ export default function ClientApprovalPage() {
       }
 
       // Add tab-based filters
-      if (isActiveTab) {
+      if (isPendingTab) {
         params.append('status', 'pending');
       } else if (isApprovedTab) {
         params.append('status', 'approved');
-      } else if (isArchivedTab) {
-        params.append('include_archived', 'true');
+        params.append('published', 'false');
+      } else if (isPublishedTab) {
+        params.append('status', 'approved');
+        params.append('published', 'true');
       }
 
       if (params.toString()) {
@@ -598,6 +630,187 @@ export default function ClientApprovalPage() {
     }
   };
 
+  // Table component for requests
+  const RequestsTable = () => (
+    <TableContainer component={Paper} elevation={2}>
+      <Table>
+        <TableHead>
+          <TableRow>
+            <TableCell>Title</TableCell>
+            <TableCell>Client</TableCell>
+            <TableCell>Status</TableCell>
+            <TableCell>Approvals</TableCell>
+            <TableCell>Created</TableCell>
+            <TableCell>Published URL</TableCell>
+            <TableCell>Actions</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {filteredRequests.map(request => (
+            <TableRow key={request.request_id} hover sx={{ cursor: 'pointer' }}>
+              <TableCell onClick={() => handleViewRequest(request.request_id)}>
+                <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                  {request.title}
+                </Typography>
+                {request.description && (
+                  <Typography
+                    variant="body2"
+                    color="textSecondary"
+                    sx={{
+                      mt: 0.5,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 1,
+                      WebkitBoxOrient: 'vertical',
+                    }}
+                  >
+                    {request.description}
+                  </Typography>
+                )}
+              </TableCell>
+              <TableCell onClick={() => handleViewRequest(request.request_id)}>
+                {request.client_name}
+              </TableCell>
+              <TableCell onClick={() => handleViewRequest(request.request_id)}>
+                {getStatusChip(request)}
+              </TableCell>
+              <TableCell onClick={() => handleViewRequest(request.request_id)}>
+                <Chip
+                  size="small"
+                  label={`${request.approvals_count}/${request.total_contacts}`}
+                  color={request.approvals_count === request.total_contacts ? 'success' : 'default'}
+                />
+              </TableCell>
+              <TableCell onClick={() => handleViewRequest(request.request_id)}>
+                <Typography variant="body2">
+                  {new Date(request.created_at).toLocaleDateString()}
+                </Typography>
+              </TableCell>
+              <TableCell>
+                {request.published_url ? (
+                  <Box display="flex" alignItems="center">
+                    <LinkIcon color="primary" sx={{ mr: 0.5, fontSize: 16 }} />
+                    <Typography variant="body2" sx={{ maxWidth: 150 }} noWrap>
+                      {new URL(request.published_url).hostname}
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Typography variant="body2" color="textSecondary">
+                    Not published
+                  </Typography>
+                )}
+              </TableCell>
+              <TableCell>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => handleViewRequest(request.request_id)}
+                >
+                  View
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
+
+  // Cards component for requests
+  const RequestsCards = () => (
+    <Grid container spacing={3}>
+      {filteredRequests.map(request => (
+        <Grid item xs={12} md={6} lg={4} key={request.request_id}>
+          <Card
+            sx={{
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              cursor: 'pointer',
+              transition: 'transform 0.2s, box-shadow 0.2s',
+              '&:hover': {
+                transform: 'translateY(-4px)',
+                boxShadow: 6,
+              },
+            }}
+            onClick={() => handleViewRequest(request.request_id)}
+          >
+            <CardContent sx={{ flexGrow: 1 }}>
+              <Box display="flex" justifyContent="space-between" alignItems="flex-start">
+                <Typography variant="h6" noWrap sx={{ maxWidth: '70%' }}>
+                  {request.title}
+                </Typography>
+                {getStatusChip(request)}
+              </Box>
+
+              <Typography variant="body2" color="textSecondary" gutterBottom>
+                Client: {request.client_name}
+              </Typography>
+
+              <Box mt={1}>
+                <Chip
+                  size="small"
+                  label={`${request.approvals_count}/${request.total_contacts} Approved`}
+                  color={request.approvals_count === request.total_contacts ? 'success' : 'default'}
+                  sx={{ mr: 1 }}
+                />
+
+                <Chip
+                  size="small"
+                  label={`Version ${request.versions?.[0]?.version_number || 1}`}
+                  color="info"
+                />
+              </Box>
+
+              {request.description && (
+                <Typography
+                  variant="body2"
+                  sx={{
+                    mt: 2,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                  }}
+                >
+                  {request.description}
+                </Typography>
+              )}
+
+              {request.published_url && (
+                <Box mt={2}>
+                  <Typography variant="body2" color="primary">
+                    Published at: {new URL(request.published_url).hostname}
+                  </Typography>
+                </Box>
+              )}
+            </CardContent>
+
+            <Divider />
+
+            <CardActions>
+              <Button
+                size="small"
+                onClick={e => {
+                  e.stopPropagation(); // Prevent card click from triggering
+                  handleViewRequest(request.request_id);
+                }}
+              >
+                View Details
+              </Button>
+              <Box flexGrow={1} />
+              <Typography variant="caption" color="textSecondary">
+                {new Date(request.created_at).toLocaleDateString()}
+              </Typography>
+            </CardActions>
+          </Card>
+        </Grid>
+      ))}
+    </Grid>
+  );
+
   if (isLoading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
@@ -634,11 +847,26 @@ export default function ClientApprovalPage() {
           </Grid>
 
           <Box my={3}>
-            <Tabs value={tabValue} onChange={handleTabChange} aria-label="approval request tabs">
-              <Tab label="Active Requests" />
-              <Tab label="Approved Requests" />
-              <Tab label="Archived Requests" />
-            </Tabs>
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <Tabs value={tabValue} onChange={handleTabChange} aria-label="approval request tabs">
+                <Tab label="Pending Approval" />
+                <Tab label="Approved Content" />
+                <Tab label="Published Content" />
+              </Tabs>
+              <ToggleButtonGroup
+                value={viewMode}
+                exclusive
+                onChange={handleViewModeChange}
+                size="small"
+              >
+                <ToggleButton value="table">
+                  <TableViewIcon />
+                </ToggleButton>
+                <ToggleButton value="cards">
+                  <CardViewIcon />
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
           </Box>
 
           {/* Filters */}
@@ -751,109 +979,18 @@ export default function ClientApprovalPage() {
                   No approval requests found for the selected user. The user may not have created
                   any requests or they might all be {tabValue === 0 ? 'archived' : 'active'}.
                 </span>
-              ) : tabValue === 0 ? (
+              ) : isPendingTab ? (
                 'No pending approval requests found. Create a new request to get started.'
-              ) : tabValue === 1 ? (
-                'No approved requests found.'
+              ) : isApprovedTab ? (
+                'No approved content found.'
               ) : (
-                'No archived approval requests found.'
+                'No published content found.'
               )}
             </Alert>
+          ) : viewMode === 'table' ? (
+            <RequestsTable />
           ) : (
-            <Grid container spacing={3}>
-              {filteredRequests.map(request => (
-                <Grid item xs={12} md={6} lg={4} key={request.request_id}>
-                  <Card
-                    sx={{
-                      height: '100%',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      cursor: 'pointer',
-                      transition: 'transform 0.2s, box-shadow 0.2s',
-                      '&:hover': {
-                        transform: 'translateY(-4px)',
-                        boxShadow: 6,
-                      },
-                    }}
-                    onClick={() => handleViewRequest(request.request_id)}
-                  >
-                    <CardContent sx={{ flexGrow: 1 }}>
-                      <Box display="flex" justifyContent="space-between" alignItems="flex-start">
-                        <Typography variant="h6" noWrap sx={{ maxWidth: '70%' }}>
-                          {request.title}
-                        </Typography>
-                        {getStatusChip(request)}
-                      </Box>
-
-                      <Typography variant="body2" color="textSecondary" gutterBottom>
-                        Client: {request.client_name}
-                      </Typography>
-
-                      <Box mt={1}>
-                        <Chip
-                          size="small"
-                          label={`${request.approvals_count}/${request.total_contacts} Approved`}
-                          color={
-                            request.approvals_count === request.total_contacts
-                              ? 'success'
-                              : 'default'
-                          }
-                          sx={{ mr: 1 }}
-                        />
-
-                        <Chip
-                          size="small"
-                          label={`Version ${request.versions?.[0]?.version_number || 1}`}
-                          color="info"
-                        />
-                      </Box>
-
-                      {request.description && (
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            mt: 2,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            display: '-webkit-box',
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: 'vertical',
-                          }}
-                        >
-                          {request.description}
-                        </Typography>
-                      )}
-
-                      {request.published_url && (
-                        <Box mt={2}>
-                          <Typography variant="body2" color="primary">
-                            Published at: {new URL(request.published_url).hostname}
-                          </Typography>
-                        </Box>
-                      )}
-                    </CardContent>
-
-                    <Divider />
-
-                    <CardActions>
-                      <Button
-                        size="small"
-                        onClick={e => {
-                          e.stopPropagation(); // Prevent card click from triggering
-                          handleViewRequest(request.request_id);
-                        }}
-                      >
-                        View Details
-                      </Button>
-                      <Box flexGrow={1} />
-                      <Typography variant="caption" color="textSecondary">
-                        {new Date(request.created_at).toLocaleDateString()}
-                      </Typography>
-                    </CardActions>
-                  </Card>
-                </Grid>
-              ))}
-            </Grid>
+            <RequestsCards />
           )}
         </Box>
       </Container>
