@@ -421,7 +421,7 @@ function ClientApprovalPageContent() {
 
     let color: 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' =
       'default';
-    let label = request.status.charAt(0).toUpperCase() + request.status.slice(1);
+    let label = request.status?.charAt(0).toUpperCase() + request.status.slice(1);
 
     switch (request.status) {
       case 'pending':

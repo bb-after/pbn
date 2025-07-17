@@ -6,8 +6,6 @@ import {
   Paper,
   Button,
   Grid,
-  Card,
-  CardContent,
   Chip,
   CircularProgress,
   Alert,
@@ -17,16 +15,17 @@ import {
   ListItemIcon,
   ListItemText,
   Avatar,
+  Tooltip,
+  ListItemAvatar,
 } from '@mui/material';
 import {
-  GetApp as DownloadIcon,
-  Person as PersonIcon,
-  Visibility as ViewIcon,
+  Description as DocumentIcon,
+  CalendarToday as CalendarIcon,
   Share as ShareIcon,
-  Description as FileIcon,
-  Schedule as ClockIcon,
+  Download as DownloadIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
+  Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/router';
 import useValidateUserToken from 'hooks/useValidateUserToken';
@@ -67,6 +66,10 @@ interface ReportDetail {
     shared_at: string | null;
     viewed_at: string | null;
     created_at: string;
+    has_viewed: boolean;
+    views: Array<{
+      viewed_at: string;
+    }>;
   }>;
   comments: Array<{
     comment_id: number;
@@ -132,7 +135,7 @@ function ReportDetailPageContent() {
   };
 
   // Handle downloading the report
-  const handleDownload = () => {
+  const handleDownloadReport = () => {
     if (report) {
       window.open(report.file_url, '_blank');
     }
@@ -259,7 +262,11 @@ function ReportDetailPageContent() {
       breadcrumbs={[{ label: 'Reports', href: '/reports' }, { label: report.title }]}
       actions={
         <Box display="flex" gap={1}>
-          <IntercomButton variant="primary" leftIcon={<DownloadIcon />} onClick={handleDownload}>
+          <IntercomButton
+            variant="primary"
+            leftIcon={<DownloadIcon />}
+            onClick={handleDownloadReport}
+          >
             Download
           </IntercomButton>
           {canEdit && (
@@ -310,28 +317,26 @@ function ReportDetailPageContent() {
                 <Typography variant="h6" gutterBottom>
                   File Information
                 </Typography>
-                <Card variant="outlined">
-                  <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                    <Box display="flex" alignItems="center" gap={2}>
-                      <FileIcon color="primary" sx={{ fontSize: 40 }} />
-                      <Box flex={1}>
-                        <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
-                          {report.file_name || 'Report File'}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {getFileTypeDisplay(report.file_type, report.file_name)} File
-                        </Typography>
-                      </Box>
-                      <Button
-                        variant="outlined"
-                        startIcon={<DownloadIcon />}
-                        onClick={handleDownload}
-                      >
-                        Download
-                      </Button>
+                <Paper variant="outlined" sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                  <Box display="flex" alignItems="center" gap={2}>
+                    <DocumentIcon color="primary" sx={{ fontSize: 40 }} />
+                    <Box flex={1}>
+                      <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                        {report.file_name || 'Report File'}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {getFileTypeDisplay(report.file_type, report.file_name)} File
+                      </Typography>
                     </Box>
-                  </CardContent>
-                </Card>
+                    <Button
+                      variant="outlined"
+                      startIcon={<DownloadIcon />}
+                      onClick={handleDownloadReport}
+                    >
+                      Download
+                    </Button>
+                  </Box>
+                </Paper>
               </Box>
 
               {/* Metadata */}
@@ -404,56 +409,51 @@ function ReportDetailPageContent() {
                 Shared With ({report.total_contacts})
               </Typography>
               <List>
-                {report.contacts.map((contact, index) => (
-                  <React.Fragment key={contact.contact_id}>
-                    {index > 0 && <Divider />}
-                    <ListItem sx={{ px: 0 }}>
-                      <ListItemIcon>
-                        <Avatar sx={{ width: 32, height: 32 }}>
-                          {contact.name.charAt(0).toUpperCase()}
-                        </Avatar>
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={contact.name}
-                        secondary={
-                          <Box>
-                            <Typography variant="body2" color="text.secondary">
-                              {contact.email}
-                            </Typography>
-                            {contact.job_title && (
-                              <Typography variant="caption" color="text.secondary">
-                                {contact.job_title}
-                              </Typography>
-                            )}
-                            <Box mt={0.5}>
-                              {contact.viewed_at ? (
-                                <Chip
-                                  size="small"
-                                  label={`Viewed ${new Date(contact.viewed_at).toLocaleDateString()}`}
-                                  color="success"
-                                  variant="outlined"
-                                />
-                              ) : contact.shared_at ? (
-                                <Chip
-                                  size="small"
-                                  label="Shared"
-                                  color="primary"
-                                  variant="outlined"
-                                />
-                              ) : (
-                                <Chip
-                                  size="small"
-                                  label="Pending"
-                                  color="default"
-                                  variant="outlined"
-                                />
-                              )}
-                            </Box>
-                          </Box>
-                        }
-                      />
-                    </ListItem>
-                  </React.Fragment>
+                {report.contacts.map(contact => (
+                  <ListItem
+                    key={contact.contact_id}
+                    sx={{
+                      transition: 'background-color 0.2s ease-in-out',
+                      borderRadius: 1,
+                      '&:hover': {
+                        backgroundColor: 'action.hover',
+                      },
+                    }}
+                  >
+                    <ListItemAvatar>
+                      <Avatar sx={{ bgcolor: 'primary.light' }}>{contact.name.charAt(0)}</Avatar>
+                    </ListItemAvatar>
+                    <ListItemText
+                      primary={contact.name}
+                      secondary={contact.email}
+                      primaryTypographyProps={{
+                        fontWeight: 500,
+                        color: 'text.primary',
+                      }}
+                      secondaryTypographyProps={{
+                        color: 'text.secondary',
+                      }}
+                    />
+                    <Box sx={{ textAlign: 'right' }}>
+                      {contact.has_viewed ? (
+                        <Tooltip
+                          title={`Last viewed: ${new Date(
+                            contact.views[0]?.viewed_at
+                          ).toLocaleString()}`}
+                        >
+                          <Chip
+                            icon={<VisibilityIcon />}
+                            label="Viewed"
+                            size="small"
+                            color="success"
+                            variant="outlined"
+                          />
+                        </Tooltip>
+                      ) : (
+                        <Chip label="Not Viewed" size="small" variant="outlined" />
+                      )}
+                    </Box>
+                  </ListItem>
                 ))}
               </List>
             </Box>

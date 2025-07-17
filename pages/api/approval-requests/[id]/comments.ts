@@ -273,7 +273,7 @@ async function addComment(
       try {
         // Get request details for Slack notification
         const [requestDetailsRows]: any = await pool.query(
-          `SELECT ar.title, ar.client_id, c.client_name, u.name as owner_name
+          `SELECT ar.title, ar.client_id, c.client_name, u.name as owner_name, ar.project_slack_channel
            FROM client_approval_requests ar
            JOIN clients c ON ar.client_id = c.client_id
            LEFT JOIN users u ON ar.created_by_id = u.id
@@ -308,8 +308,10 @@ async function addComment(
             `*Comment:*\n${comment}\n\n` +
             `<${requestUrl}|View Request>`;
 
-          await postToSlack(slackMessage, process.env.SLACK_APPROVAL_UPDATES_CHANNEL);
-          console.log('Slack comment notification sent');
+          const channel =
+            requestDetails.project_slack_channel || process.env.SLACK_APPROVAL_UPDATES_CHANNEL;
+          await postToSlack(slackMessage, channel);
+          console.log(`Slack comment notification sent to ${channel || 'default channel'}`);
         }
       } catch (slackError) {
         console.error('Error sending Slack notification for comment:', slackError);
