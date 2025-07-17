@@ -283,7 +283,7 @@ export const createIntercomTheme = (mode: PaletteMode = 'light'): ThemeOptions =
       MuiCard: {
         styleOverrides: {
           root: {
-            borderRadius: intercomBorderRadius.lg,
+            borderRadius: intercomBorderRadius.xs,
             boxShadow: intercomShadows[3],
             border: `1px solid ${intercomColors.grey[200]}`,
           },
