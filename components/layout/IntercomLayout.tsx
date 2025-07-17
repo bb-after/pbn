@@ -150,15 +150,21 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
             onClick={hasChildren ? () => handleExpandClick(item.id) : () => router.push(item.href!)}
             sx={{
               pl: `${paddingLeft}px`,
-              borderRadius: 1,
-              mx: 1,
+              borderRadius: 1.5,
+              mx: 1.5,
               my: 0.5,
               backgroundColor: isActive ? 'primary.main' : 'transparent',
               color: isActive ? 'primary.contrastText' : 'text.primary',
               transition: 'all 0.2s ease-in-out',
               '&:hover': {
                 backgroundColor: isActive ? 'primary.dark' : 'action.hover',
-                color: isActive ? 'white' : 'text.primary',
+                color: isActive ? 'white' : 'inherit',
+                '& .MuiListItemText-primary': {
+                  color: isActive ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                },
+                '& .MuiListItemIcon-root': {
+                  color: isActive ? 'white' : 'rgba(0, 0, 0, 0.54)',
+                },
               },
             }}
           >
@@ -264,7 +270,7 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
       </Box>
 
       <Box sx={{ flex: 1, overflow: 'auto' }}>
-        <List sx={{ px: 1 }}>{navigationItems.map(item => renderNavigationItem(item))}</List>
+        <List sx={{ px: 2 }}>{navigationItems.map(item => renderNavigationItem(item))}</List>
       </Box>
 
       <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>

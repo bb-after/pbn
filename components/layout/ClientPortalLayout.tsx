@@ -100,19 +100,30 @@ export const ClientPortalLayout: React.FC<ClientPortalLayoutProps> = ({
           <ListItemButton
             onClick={() => router.push(item.href!)}
             sx={{
-              borderRadius: 1,
-              mx: 1,
+              borderRadius: 1.5,
+              mx: 1.5,
               my: 0.5,
               backgroundColor: isActive ? 'primary.main' : 'transparent',
               color: isActive ? 'primary.contrastText' : 'text.primary',
+              transition: 'all 0.2s ease-in-out',
               '&:hover': {
                 backgroundColor: isActive ? 'primary.dark' : 'action.hover',
-                color: isActive ? 'primary.contrastText' : 'text.primary',
+                color: isActive ? 'white' : 'inherit',
+                '& .MuiListItemText-primary': {
+                  color: isActive ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                },
+                '& .MuiListItemIcon-root': {
+                  color: isActive ? 'white' : 'rgba(0, 0, 0, 0.54)',
+                },
               },
             }}
           >
             <ListItemIcon
-              sx={{ minWidth: 40, color: isActive ? 'primary.contrastText' : 'text.secondary' }}
+              sx={{
+                minWidth: 40,
+                color: isActive ? 'primary.contrastText' : 'text.secondary',
+                transition: 'color 0.2s ease-in-out',
+              }}
             >
               {item.icon}
             </ListItemIcon>
@@ -121,7 +132,7 @@ export const ClientPortalLayout: React.FC<ClientPortalLayoutProps> = ({
               primaryTypographyProps={{
                 fontSize: '0.875rem',
                 fontWeight: 500,
-                color: isActive ? 'primary.contrastText' : 'text.primary',
+                color: 'inherit',
               }}
             />
           </ListItemButton>
@@ -185,7 +196,7 @@ export const ClientPortalLayout: React.FC<ClientPortalLayoutProps> = ({
       </Box>
 
       <Box sx={{ flex: 1, overflow: 'auto' }}>
-        <List sx={{ px: 1 }}>
+        <List sx={{ px: 2 }}>
           {clientPortalNavigationItems.map(item => renderNavigationItem(item))}
         </List>
       </Box>

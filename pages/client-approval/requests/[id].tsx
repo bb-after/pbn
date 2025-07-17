@@ -360,12 +360,11 @@ export default function ApprovalRequestDetailPage() {
   // Update published URL state when request data changes
   useEffect(() => {
     if (request?.published_url) {
-      fetchRequestDetails();
       setPublishedUrl(request.published_url);
     } else {
       setPublishedUrl('');
     }
-  }, [fetchRequestDetails, request]);
+  }, [request?.published_url]);
 
   useEffect(() => {
     // Redirect to login if user is not valid and loading is finished
@@ -1007,7 +1006,7 @@ export default function ApprovalRequestDetailPage() {
                                   (request.inline_content.includes('docs.google.com') &&
                                     !request.inline_content.startsWith('<'))
                                 ) {
-                                  console.log('Google Doc detected in staff view');
+                                  // Google Doc detected in staff view
 
                                   // Get the direct document URL - for staff view we pass true
                                   const docUrl = request.google_doc_id
