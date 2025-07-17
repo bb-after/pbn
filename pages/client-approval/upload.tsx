@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { Container, Typography, Box } from '@mui/material';
-import LayoutContainer from '../../components/LayoutContainer';
-import StyledHeader from '../../components/StyledHeader';
+import { Typography, Box, CircularProgress } from '@mui/material';
+import { IntercomLayout, ThemeProvider, ToastProvider, IntercomCard } from '../../components/ui';
 import ClientApprovalRequestForm from '../../components/ClientApprovalRequestForm';
 import { useRouter } from 'next/router';
 import useValidateUserToken from 'hooks/useValidateUserToken';
+import UnauthorizedAccess from '../../components/UnauthorizedAccess';
 
-export default function UploadApprovalRequestPage() {
+function UploadApprovalRequestPageContent() {
   const router = useRouter();
   const { isValidUser, isLoading } = useValidateUserToken();
   const [googleToken, setGoogleToken] = useState<string | null>(null);
@@ -24,28 +24,29 @@ export default function UploadApprovalRequestPage() {
   if (isLoading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
-        <Typography>Loading...</Typography>
+        <CircularProgress />
       </Box>
     );
   }
 
   if (!isValidUser) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
-        <Typography variant="h6">Unauthorized access. Please log in.</Typography>
-      </Box>
-    );
+    return <UnauthorizedAccess />;
   }
 
   return (
-    <LayoutContainer>
-      <StyledHeader />
-      <Container maxWidth="lg">
-        <Box my={3}>
-          <Typography variant="h4" gutterBottom>
-            Content Approval Request
+    <IntercomLayout
+      title="New Content Approval Request"
+      breadcrumbs={[
+        { label: 'Client Approval', href: '/client-approval' },
+        { label: 'New Request' },
+      ]}
+    >
+      <IntercomCard>
+        <Box p={3}>
+          <Typography variant="h5" gutterBottom>
+            Content Submission
           </Typography>
-          <Typography variant="body1" color="textSecondary" paragraph>
+          <Typography variant="body2" color="text.secondary" paragraph>
             Upload content for client review and approval. The selected client contacts will receive
             an email notification with a link to review the content.
           </Typography>
@@ -57,7 +58,17 @@ export default function UploadApprovalRequestPage() {
             googleClientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID_CONTENT_APPROVAL!}
           />
         </Box>
-      </Container>
-    </LayoutContainer>
+      </IntercomCard>
+    </IntercomLayout>
+  );
+}
+
+export default function UploadApprovalRequestPage() {
+  return (
+    <ThemeProvider>
+      <ToastProvider>
+        <UploadApprovalRequestPageContent />
+      </ToastProvider>
+    </ThemeProvider>
   );
 }

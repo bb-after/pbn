@@ -37,6 +37,8 @@ import {
   Warning as PendingIcon,
   ThumbDown as RejectedIcon,
   Link as LinkIcon,
+  ArrowUpward as ArrowUpwardIcon,
+  ArrowDownward as ArrowDownwardIcon,
 } from '@mui/icons-material';
 import { ClientPortalLayout } from '../../components/layout/ClientPortalLayout';
 import {
@@ -90,6 +92,10 @@ export default function ClientPortalPage() {
   const [publishedRequests, setPublishedRequests] = useState<ApprovalRequest[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // State for sorting
+  const [sortBy, setSortBy] = useState<string>('created_at');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // State for toast notification
   const [toastOpen, setToastOpen] = useState(false);
@@ -186,6 +192,16 @@ export default function ClientPortalPage() {
     }
   };
 
+  // Handle sorting
+  const handleSort = (column: string) => {
+    if (sortBy === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(column);
+      setSortDirection('asc');
+    }
+  };
+
   // Handle user menu open
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -274,15 +290,77 @@ export default function ClientPortalPage() {
     return [];
   };
 
+  // Apply sorting to the current requests
+  const sortedRequests = [...getCurrentRequests()].sort((a, b) => {
+    const aValue = a[sortBy as keyof ApprovalRequest];
+    const bValue = b[sortBy as keyof ApprovalRequest];
+
+    if (aValue === null || aValue === undefined) return 1;
+    if (bValue === null || bValue === undefined) return -1;
+
+    if (typeof aValue === 'string' && typeof bValue === 'string') {
+      return sortDirection === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+    }
+
+    if (typeof aValue === 'number' && typeof bValue === 'number') {
+      return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
+    }
+
+    // Fallback for dates
+    return sortDirection === 'asc'
+      ? new Date(aValue as string).getTime() - new Date(bValue as string).getTime()
+      : new Date(bValue as string).getTime() - new Date(aValue as string).getTime();
+  });
+
+  // Sortable header component
+  const SortableHeader = ({ column, children }: { column: string; children: React.ReactNode }) => (
+    <TableCell
+      sx={{
+        cursor: 'pointer',
+        userSelect: 'none',
+        '&:hover': {
+          backgroundColor: 'action.hover',
+        },
+      }}
+      onClick={() => handleSort(column)}
+    >
+      <Box display="flex" alignItems="center">
+        {children}
+        <Box
+          ml={1}
+          display="flex"
+          flexDirection="column"
+          sx={{ opacity: sortBy === column ? 1 : 0.3 }}
+        >
+          <ArrowUpwardIcon
+            sx={{
+              fontSize: 12,
+              color:
+                sortBy === column && sortDirection === 'asc' ? 'primary.main' : 'text.disabled',
+            }}
+          />
+          <ArrowDownwardIcon
+            sx={{
+              fontSize: 12,
+              mt: -0.5,
+              color:
+                sortBy === column && sortDirection === 'desc' ? 'primary.main' : 'text.disabled',
+            }}
+          />
+        </Box>
+      </Box>
+    </TableCell>
+  );
+
   // Table component for requests
   const RequestsTable = ({ requests }: { requests: ApprovalRequest[] }) => (
     <TableContainer component={Paper} elevation={2}>
       <Table>
         <TableHead>
           <TableRow>
-            <TableCell>Status</TableCell>
-            <TableCell>Title</TableCell>
-            <TableCell>Created</TableCell>
+            <SortableHeader column="status">Status</SortableHeader>
+            <SortableHeader column="title">Title</SortableHeader>
+            <SortableHeader column="created_at">Created</SortableHeader>
             <TableCell>Published URL</TableCell>
             <TableCell>Actions</TableCell>
           </TableRow>
@@ -637,7 +715,7 @@ export default function ClientPortalPage() {
               icon={<DocumentIcon />}
             />
           ) : viewMode === 'table' ? (
-            <RequestsTable requests={currentRequests} />
+            <RequestsTable requests={sortedRequests} />
           ) : (
             <RequestsCards requests={currentRequests} />
           )}

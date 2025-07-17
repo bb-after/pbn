@@ -31,7 +31,10 @@ import {
   Dashboard as DashboardIcon,
   People as PeopleIcon,
   Assignment as AssignmentIcon,
-  Settings as SettingsIcon,
+  CheckCircle as CheckCircleIcon,
+  Article as ArticleIcon,
+  Star as StarIcon,
+  Explore as ExploreIcon,
   Notifications as NotificationsIcon,
   Help as HelpIcon,
   ExpandLess,
@@ -73,7 +76,7 @@ const navigationItems: NavigationItem[] = [
   {
     id: 'client-approval',
     label: 'Client Approval',
-    icon: <AssignmentIcon />,
+    icon: <CheckCircleIcon />,
     href: '/client-approval',
   },
   {
@@ -84,13 +87,13 @@ const navigationItems: NavigationItem[] = [
       {
         id: 'pbn-submissions',
         label: 'PBN Submissions',
-        icon: <AssignmentIcon />,
+        icon: <ArticleIcon />,
         href: '/pbn-submissions',
       },
       {
         id: 'superstar-submissions',
         label: 'Superstar Submissions',
-        icon: <AssignmentIcon />,
+        icon: <StarIcon />,
         href: '/superstar-sites',
       },
     ],
@@ -98,7 +101,7 @@ const navigationItems: NavigationItem[] = [
   {
     id: 'content-compass',
     label: 'Content Compass',
-    icon: <SettingsIcon />,
+    icon: <ExploreIcon />,
     href: '/content-compass',
   },
 ];

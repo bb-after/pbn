@@ -378,6 +378,29 @@ function ClientApprovalPageContent() {
     );
   });
 
+  // Apply sorting
+  const sortedRequests = [...filteredRequests].sort((a, b) => {
+    const aValue = a[sortBy as keyof ApprovalRequest];
+    const bValue = b[sortBy as keyof ApprovalRequest];
+
+    // Handle different data types
+    if (aValue === null || aValue === undefined) return 1;
+    if (bValue === null || bValue === undefined) return -1;
+
+    if (typeof aValue === 'string' && typeof bValue === 'string') {
+      return sortDirection === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+    }
+
+    if (typeof aValue === 'number' && typeof bValue === 'number') {
+      return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
+    }
+
+    // Fallback for dates or other types
+    return sortDirection === 'asc'
+      ? new Date(aValue as string).getTime() - new Date(bValue as string).getTime()
+      : new Date(bValue as string).getTime() - new Date(aValue as string).getTime();
+  });
+
   // Generate status chip with appropriate color
   const getStatusChip = (request: ApprovalRequest) => {
     if (request.is_archived) {
@@ -757,17 +780,17 @@ function ClientApprovalPageContent() {
       <Table>
         <TableHead>
           <TableRow>
-            <TableCell>Status</TableCell>
-            <TableCell>Title</TableCell>
-            <TableCell>Client</TableCell>
-            <TableCell>Approvals</TableCell>
-            <TableCell>Created</TableCell>
+            <SortableHeader column="status">Status</SortableHeader>
+            <SortableHeader column="title">Title</SortableHeader>
+            <SortableHeader column="client_name">Client</SortableHeader>
+            <SortableHeader column="approvals_count">Approvals</SortableHeader>
+            <SortableHeader column="created_at">Created</SortableHeader>
             <TableCell>Published URL</TableCell>
             <TableCell>Actions</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
-          {filteredRequests.map(request => (
+          {sortedRequests.map(request => (
             <TableRow key={request.request_id} hover sx={{ cursor: 'pointer' }}>
               <TableCell onClick={() => handleViewRequest(request.request_id)}>
                 {getStatusChip(request)}
