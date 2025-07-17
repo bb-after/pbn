@@ -32,6 +32,8 @@ import {
   Search as SearchIcon,
   FilterList as FilterIcon,
   Link as LinkIcon,
+  ArrowUpward as ArrowUpwardIcon,
+  ArrowDownward as ArrowDownwardIcon,
 } from '@mui/icons-material';
 import LayoutContainer from '../../components/LayoutContainer';
 import StyledHeader from '../../components/StyledHeader';
@@ -105,6 +107,10 @@ function ClientApprovalPageContent() {
   const [userFilter, setUserFilter] = useState<string>('all');
   const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
 
+  // State for sorting
+  const [sortBy, setSortBy] = useState<string>('created_at');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
   // State for toast notification
   const [toastOpen, setToastOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
@@ -163,6 +169,56 @@ function ClientApprovalPageContent() {
       setViewMode(newViewMode);
     }
   };
+
+  // Handle sorting
+  const handleSort = (column: string) => {
+    if (sortBy === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(column);
+      setSortDirection('asc');
+    }
+  };
+
+  // Sortable header component
+  const SortableHeader = ({ column, children }: { column: string; children: React.ReactNode }) => (
+    <TableCell
+      sx={{
+        cursor: 'pointer',
+        userSelect: 'none',
+        '&:hover': {
+          backgroundColor: 'action.hover',
+        },
+      }}
+      onClick={() => handleSort(column)}
+    >
+      <Box display="flex" alignItems="center">
+        {children}
+        <Box
+          ml={1}
+          display="flex"
+          flexDirection="column"
+          sx={{ opacity: sortBy === column ? 1 : 0.3 }}
+        >
+          <ArrowUpwardIcon
+            sx={{
+              fontSize: 12,
+              color:
+                sortBy === column && sortDirection === 'asc' ? 'primary.main' : 'text.disabled',
+            }}
+          />
+          <ArrowDownwardIcon
+            sx={{
+              fontSize: 12,
+              mt: -0.5,
+              color:
+                sortBy === column && sortDirection === 'desc' ? 'primary.main' : 'text.disabled',
+            }}
+          />
+        </Box>
+      </Box>
+    </TableCell>
+  );
 
   // Fetch all approval requests
   const fetchApprovalRequests = async () => {

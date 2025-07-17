@@ -45,7 +45,7 @@ export const IntercomCard: React.FC<IntercomCardProps> = ({
   return (
     <Card
       sx={{
-        borderRadius: tokens.borderRadius.lg,
+        borderRadius: tokens.borderRadius.xs,
         boxShadow: borderless ? 'none' : tokens.shadows[2],
         border: borderless ? 'none' : '1px solid',
         borderColor: borderless ? 'transparent' : 'divider',
@@ -261,7 +261,7 @@ export const IntercomEmptyCard: React.FC<{
           sx={{
             mb: 3,
             p: 2,
-            borderRadius: '50%',
+            borderRadius: tokens.borderRadius.xs,
             backgroundColor: tokens.colors.grey[100],
             color: tokens.colors.grey[400],
             fontSize: '2rem',
