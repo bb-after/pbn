@@ -17,13 +17,13 @@ export async function validateUserToken(req: NextApiRequest) {
     ]);
 
     if (rows.length === 0) {
-      return { isValid: false, user_id: null, role: null };
+      return { isValid: false, user_id: null, name: null, role: null };
     }
 
     return {
       isValid: true,
       user_id: rows[0].id,
-      username: rows[0].username,
+      username: rows[0].name,
       role: rows[0].role || 'staff', // Default to 'staff' if role is not yet set
     };
   } catch (error) {
@@ -55,7 +55,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       valid: true,
       user: {
         id: rows[0].id,
-        username: rows[0].username,
+        username: rows[0].name,
         email: rows[0].email,
         role: rows[0].role || 'staff', // Include role in response
         // Include other user fields as needed

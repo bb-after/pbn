@@ -74,9 +74,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     case 'DELETE':
       // Assuming DELETE logic might involve S3 for versions, keep AWS/S3 for now
       return deleteApprovalRequest(requestId, res);
+    case 'PATCH':
+      return updateApprovalRequestDetails(req, res);
     default:
-      res.setHeader('Allow', ['GET', 'PUT', 'DELETE']);
-      return res.status(405).json({ error: 'Method not allowed' });
+      res.setHeader('Allow', ['GET', 'PUT', 'DELETE', 'PATCH']);
+      return res.status(405).json({ error: `Method ${req.method} Not Allowed` });
   }
 }
 
@@ -110,15 +112,20 @@ async function getApprovalRequest(
 
     // Query to get basic request details
     const requestQuery = `
-      SELECT ar.*, c.client_name, 
+      SELECT 
+        ar.*, 
+        c.client_name,
+        u.name as created_by_name,
+        u.email as created_by_email,
         u.name as approved_by_name,
         CASE 
           WHEN ar.approved_by_user_id IS NOT NULL THEN ar.updated_at
           ELSE NULL
-        END as staff_approved_at
+        END as staff_approved_at,
+        ar.project_slack_channel
       FROM client_approval_requests ar
       JOIN clients c ON ar.client_id = c.client_id
-      LEFT JOIN users u ON ar.approved_by_user_id = u.id
+      LEFT JOIN users u ON ar.created_by_id = u.id
       WHERE ar.request_id = ?
     `;
 
@@ -287,6 +294,7 @@ async function getApprovalRequest(
     responseData.approved_by_user_id = requestData.approved_by_user_id || null;
     responseData.approved_by_name = requestData.approved_by_name || null;
     responseData.staff_approved_at = requestData.staff_approved_at || null;
+    responseData.project_slack_channel = requestData.project_slack_channel || null;
     responseData.contacts = contactsWithViews;
     responseData.versions = versionRows;
     responseData.comments = standardComments;
@@ -588,8 +596,12 @@ async function updateApprovalRequest(
 
                   slackMessage += `\n\n<${requestUrl}|View Request>`;
 
-                  await postToSlack(slackMessage, process.env.SLACK_APPROVAL_UPDATES_CHANNEL);
-                  console.log('Client approval Slack notification sent');
+                  const channel =
+                    requestData.project_slack_channel || process.env.SLACK_APPROVAL_UPDATES_CHANNEL;
+                  await postToSlack(slackMessage, channel);
+                  console.log(
+                    `Client approval Slack notification sent to ${channel || 'default channel'}`
+                  );
                 } catch (slackError) {
                   console.error('Error sending Slack notification:', slackError);
                   // Don't let Slack errors affect the database transaction
@@ -669,15 +681,19 @@ async function updateApprovalRequest(
                     const requestUrl = `${appUrl}/client-approval/requests/${requestId}`;
 
                     const slackMessage =
-                      `🚨 *Content Manually Approved by Staff*\n\n` +
-                      `*${requestData.staff_name || 'Staff member'}* (${requestData.staff_email || 'No email'}) has manually approved content\n\n` +
+                      `✅ *Content Manually Approved* by staff\n\n` +
                       `*Request:* ${requestData.title}\n` +
                       `*Client:* ${requestData.client_name}\n` +
                       `*Owner:* ${requestData.owner_name || 'Content Owner'}\n\n` +
                       `<${requestUrl}|View Request>`;
 
-                    await postToSlack(slackMessage, process.env.SLACK_APPROVAL_UPDATES_CHANNEL);
-                    console.log('Staff approval Slack notification sent');
+                    const channel =
+                      requestData.project_slack_channel ||
+                      process.env.SLACK_APPROVAL_UPDATES_CHANNEL;
+                    await postToSlack(slackMessage, channel);
+                    console.log(
+                      `Staff approval Slack notification sent to ${channel || 'default channel'}`
+                    );
                   } catch (slackError) {
                     console.error(
                       'Error sending Slack notification for staff approval:',
@@ -802,6 +818,54 @@ async function deleteApprovalRequest(requestId: number, res: NextApiResponse) {
     return res.status(500).json({ error: 'Failed to delete approval request' });
   } finally {
     connection.release();
+  }
+}
+
+async function updateApprovalRequestDetails(req: NextApiRequest, res: NextApiResponse) {
+  const { id } = req.query;
+  const { project_slack_channel } = req.body;
+
+  // Staff authentication
+  const userInfo = await validateUserToken(req);
+  if (!userInfo.isValid) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (project_slack_channel === undefined) {
+    return res.status(400).json({ error: 'No update data provided.' });
+  }
+
+  // Sanitize the channel name
+  let channelToUpdate = project_slack_channel;
+  if (channelToUpdate && typeof channelToUpdate === 'string') {
+    channelToUpdate = channelToUpdate.trim();
+    if (channelToUpdate && !channelToUpdate.startsWith('#')) {
+      channelToUpdate = `#${channelToUpdate}`;
+    }
+  } else if (channelToUpdate === '' || channelToUpdate === null) {
+    channelToUpdate = null; // Use NULL to clear the field in the database
+  }
+
+  try {
+    const updateQuery = `
+      UPDATE client_approval_requests
+      SET project_slack_channel = ?
+      WHERE request_id = ?
+    `;
+
+    const [result] = await query(updateQuery, [channelToUpdate, id]);
+
+    if ((result as any).affectedRows === 0) {
+      return res.status(404).json({ error: 'Approval request not found.' });
+    }
+
+    return res.status(200).json({
+      message: 'Slack channel updated successfully.',
+      project_slack_channel: channelToUpdate,
+    });
+  } catch (error) {
+    console.error('Error updating approval request details:', error);
+    return res.status(500).json({ error: 'Failed to update approval request.' });
   }
 }
 

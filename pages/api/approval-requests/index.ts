@@ -1,5 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { query, transaction, getPool } from 'lib/db';
+import { ResultSetHeader } from 'mysql2';
 import { validateUserToken } from '../validate-user-token';
 import { postToSlack } from '../../../utils/postToSlack';
 
@@ -341,232 +342,209 @@ async function getApprovalRequests(req: NextApiRequest, res: NextApiResponse, us
 
 // Create a new approval request
 async function createApprovalRequest(req: NextApiRequest, res: NextApiResponse, userInfo: any) {
-  // Destructure request body with new contentType field
   const {
     clientId,
     title,
     description,
+    fileUrl,
     inlineContent,
     contactIds,
     googleDocId,
     contentType,
     requiredApprovals,
+    slackChannel, // Add this
   } = req.body;
 
-  console.log('Creating approval request with user_id:', userInfo.user_id);
-  console.log('Request content type:', contentType);
-  console.log('Required approvals:', requiredApprovals || contactIds.length);
-
-  // Validate required fields - check inlineContent instead of fileUrl
-  if (!clientId || !title || !inlineContent || !contactIds || !contactIds.length) {
-    // Updated error message
+  // Validate required fields
+  if (
+    !clientId ||
+    !title ||
+    (!fileUrl && !inlineContent) ||
+    !contactIds ||
+    contactIds.length === 0
+  ) {
     return res.status(400).json({
-      error: 'Client ID, title, content, and at least one contact are required',
+      error:
+        'Missing required fields: clientId, title, (fileUrl or inlineContent), and contactIds are required',
     });
   }
 
-  // Ensure required approvals is valid
-  const requiredApprovalsCount = requiredApprovals || contactIds.length;
-  if (requiredApprovalsCount < 1 || requiredApprovalsCount > contactIds.length) {
-    return res.status(400).json({
-      error: 'Required approvals must be at least 1 and not more than the number of contacts',
-    });
-  }
-
-  // Create a connection for transaction
-  const connection = await pool.getConnection();
-
+  // Use a transaction to ensure all or nothing is inserted
   try {
-    // Start transaction
-    await connection.beginTransaction();
-
-    // 1. Create the approval request
-    //    - Add content_type to track the type of content (google_doc or html)
-    //    - Store necessary Google Doc information
-    //    - Add required_approvals field
-    const createRequestQuery = `
-      INSERT INTO client_approval_requests
-        (client_id, title, description, file_url, file_type, inline_content, content_type, google_doc_id, created_by_id, required_approvals, status)
-      VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-
-    const requestValues = [
-      clientId,
-      title,
-      description || null,
-      null, // file_url is now null
-      null, // file_type is now null
-      inlineContent, // This will be the Google Doc URL if content_type is 'google_doc'
-      contentType || 'html', // Default to 'html' if not specified
-      googleDocId || null, // The Google Doc ID if applicable
-      userInfo.user_id, // Use the actual user ID from validation/session
-      requiredApprovalsCount, // Add the required approvals count
-      'pending', // Default status is 'pending'
-    ];
-
-    console.log('Inserting request with values:', {
-      clientId,
-      title,
-      hasDescription: !!description,
-      inlineContentLength: inlineContent ? inlineContent.length : 0,
-      contentType: contentType || 'html',
-      googleDocId: googleDocId || null,
-      userId: userInfo.user_id,
-      requiredApprovals: requiredApprovalsCount,
-    });
-
-    const [requestResult]: any = await connection.query(createRequestQuery, requestValues);
-    const requestId = requestResult.insertId;
-
-    // 2. Create the initial version
-    //    - Include inline_content, content_type, and google_doc_id for version record too
-    const createVersionQuery = `
-      INSERT INTO approval_request_versions
-        (request_id, version_number, file_url, inline_content, content_type, google_doc_id, created_by_id)
-      VALUES
-        (?, ?, ?, ?, ?, ?, ?)
-    `;
-
-    const versionValues = [
-      requestId,
-      1, // Initial version number
-      null, // file_url is null for the version record
-      inlineContent, // Same as the main request
-      contentType || 'html', // Default to 'html' if not specified
-      googleDocId || null, // Google Doc ID if applicable
-      userInfo.user_id,
-    ];
-
-    await connection.query(createVersionQuery, versionValues);
-
-    // 3. Associate contacts with the request
-    for (const contactId of contactIds) {
-      const query = `
-        INSERT INTO approval_request_contacts
-          (request_id, contact_id)
-        VALUES
-          (?, ?)
+    const result = await transaction(async connection => {
+      // 1. Insert into client_approval_requests
+      const approvalRequestQuery = `
+        INSERT INTO client_approval_requests 
+          (client_id, title, description, file_url, inline_content, created_by_id, content_type, google_doc_id, required_approvals, project_slack_channel) 
+        VALUES 
+          (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
-      await connection.query(query, [requestId, contactId]);
-    }
 
-    // Get the contacts for sending emails
-    const contactsQuery = `
-      SELECT
-        cc.contact_id,
-        cc.name,
-        cc.email,
-        c.client_id,
-        c.client_name
-      FROM
-        client_contacts cc
-      JOIN
-        clients c ON cc.client_id = c.client_id
-      WHERE
-        cc.contact_id IN (?) AND cc.is_active = 1 -- Ensure contacts are active
-    `;
+      const [approvalRequestResult] = await connection.query<ResultSetHeader>(
+        approvalRequestQuery,
+        [
+          clientId,
+          title,
+          description || null,
+          fileUrl || null,
+          inlineContent || null,
+          userInfo.user_id,
+          contentType || 'html',
+          googleDocId || null,
+          requiredApprovals || contactIds.length,
+          slackChannel || null, // Save the slack channel
+        ]
+      );
 
-    const [contactsResult] = await connection.query(contactsQuery, [contactIds]);
-    const contactsToSend = contactsResult as any[]; // Cast for iteration
+      const requestId = approvalRequestResult.insertId;
 
-    if (contactsToSend.length === 0) {
-      console.warn(`Request ${requestId} created, but no active contacts found to notify.`);
-      // Decide if this should be an error or just a warning
-    }
+      // 2. Create the initial version
+      //    - Include inline_content, content_type, and google_doc_id for version record too
+      const createVersionQuery = `
+        INSERT INTO approval_request_versions
+          (request_id, version_number, file_url, inline_content, content_type, google_doc_id, created_by_id)
+        VALUES
+          (?, ?, ?, ?, ?, ?, ?)
+      `;
 
-    // Get the created request data (including inline_content)
-    const getRequestQuery = `
-      SELECT * FROM client_approval_requests WHERE request_id = ?
-    `;
-    const [requestRows] = await connection.query(getRequestQuery, [requestId]);
-    const requestData = (requestRows as any[])[0];
+      const versionValues = [
+        requestId,
+        1, // Initial version number
+        null, // file_url is null for the version record
+        inlineContent, // Same as the main request
+        contentType || 'html', // Default to 'html' if not specified
+        googleDocId || null, // Google Doc ID if applicable
+        userInfo.user_id,
+      ];
 
-    // Commit transaction
-    await connection.commit();
+      await connection.query(createVersionQuery, versionValues);
 
-    // Send email notifications AFTER commit
-    if (contactsToSend.length > 0) {
-      try {
-        // Import required utility functions and modules
-        const { sendLoginEmail } = require('../../../utils/email');
-        const crypto = require('crypto');
+      // 3. Associate contacts with the request
+      for (const contactId of contactIds) {
+        const query = `
+          INSERT INTO approval_request_contacts
+            (request_id, contact_id)
+          VALUES
+            (?, ?)
+        `;
+        await connection.query(query, [requestId, contactId]);
+      }
 
-        // Loop through each contact and generate tokens + send emails
-        for (const contact of contactsToSend) {
-          try {
-            // Generate a token for this contact
-            const token = crypto.randomBytes(32).toString('hex');
-            const expiresAt = new Date();
-            expiresAt.setDate(expiresAt.getDate() + 7); // Token expires in 7 days
+      // Get the contacts for sending emails
+      const contactsQuery = `
+        SELECT
+          cc.contact_id,
+          cc.name,
+          cc.email,
+          c.client_id,
+          c.client_name
+        FROM
+          client_contacts cc
+        JOIN
+          clients c ON cc.client_id = c.client_id
+        WHERE
+          cc.contact_id IN (?) AND cc.is_active = 1 -- Ensure contacts are active
+      `;
 
-            // Store the token in the database
-            const insertTokenQuery = `
-              INSERT INTO client_auth_tokens (contact_id, token, expires_at, is_used)
-              VALUES (?, ?, ?, 0)
-            `;
-            await pool.query(insertTokenQuery, [contact.contact_id, token, expiresAt]);
+      const [contactsResult] = await connection.query(contactsQuery, [contactIds]);
+      const contactsToSend = contactsResult as any[]; // Cast for iteration
 
-            // Send the login email with the token
-            await sendLoginEmail(contact, token, requestData);
-            console.log(
-              `Authentication email sent successfully to ${contact.email} for request ${requestId}`
-            );
-          } catch (individualEmailError) {
-            console.error(
-              `Failed to send email to ${contact.email} for request ${requestId}:`,
-              individualEmailError
-            );
-            // Continue with other contacts even if one fails
+      if (contactsToSend.length === 0) {
+        console.warn(`Request ${requestId} created, but no active contacts found to notify.`);
+        // Decide if this should be an error or just a warning
+      }
+
+      // Get the created request data (including inline_content)
+      const getRequestQuery = `
+        SELECT * FROM client_approval_requests WHERE request_id = ?
+      `;
+      const [requestRows] = await connection.query(getRequestQuery, [requestId]);
+      const requestData = (requestRows as any[])[0];
+
+      // Commit transaction
+      await connection.commit();
+
+      // Send email notifications AFTER commit
+      if (contactsToSend.length > 0) {
+        try {
+          // Import required utility functions and modules
+          const { sendLoginEmail } = require('../../../utils/email');
+          const crypto = require('crypto');
+
+          // Loop through each contact and generate tokens + send emails
+          for (const contact of contactsToSend) {
+            try {
+              // Generate a token for this contact
+              const token = crypto.randomBytes(32).toString('hex');
+              const expiresAt = new Date();
+              expiresAt.setDate(expiresAt.getDate() + 7); // Token expires in 7 days
+
+              // Store the token in the database
+              const insertTokenQuery = `
+                INSERT INTO client_auth_tokens (contact_id, token, expires_at, is_used)
+                VALUES (?, ?, ?, 0)
+              `;
+              await pool.query(insertTokenQuery, [contact.contact_id, token, expiresAt]);
+
+              // Send the login email with the token
+              await sendLoginEmail(contact, token, requestData);
+              console.log(
+                `Authentication email sent successfully to ${contact.email} for request ${requestId}`
+              );
+            } catch (individualEmailError) {
+              console.error(
+                `Failed to send email to ${contact.email} for request ${requestId}:`,
+                individualEmailError
+              );
+              // Continue with other contacts even if one fails
+            }
           }
+        } catch (emailError) {
+          console.error(
+            `Request ${requestId} created, but failed to send email notifications:`,
+            emailError
+          );
+          // Log this error but don't fail the request creation itself
         }
-      } catch (emailError) {
-        console.error(
-          `Request ${requestId} created, but failed to send email notifications:`,
-          emailError
-        );
-        // Log this error but don't fail the request creation itself
       }
-    }
 
-    // Send Slack notification for new approval request
-    if (process.env.SLACK_WEBHOOK_URL) {
-      try {
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-        const requestUrl = `${appUrl}/client-approval/requests/${requestId}`;
+      // Send Slack notification for new approval request
+      if (process.env.SLACK_WEBHOOK_URL) {
+        try {
+          const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+          const requestUrl = `${appUrl}/client-approval/requests/${requestId}`;
 
-        // Get client name for the notification
-        const clientQuery = `SELECT client_name FROM clients WHERE client_id = ?`;
-        const [clientResult] = await pool.query(clientQuery, [clientId]);
-        const clientName = (clientResult as any[])[0]?.client_name || 'Unknown Client';
+          // Get client name for the notification
+          const clientQuery = `SELECT client_name FROM clients WHERE client_id = ?`;
+          const [clientResult] = await pool.query(clientQuery, [clientId]);
+          const clientName = (clientResult as any[])[0]?.client_name || 'Unknown Client';
 
-        const slackMessage =
-          `📝 *New Approval Request Submitted*\n\n` +
-          `*Request:* ${title}\n` +
-          `*Client:* ${clientName}\n` +
-          `*Contacts:* ${contactsToSend.length} contact(s) to approve\n` +
-          `*Required Approvals:* ${requiredApprovalsCount}\n` +
-          `*Content Type:* ${contentType || 'HTML'}\n\n` +
-          `<${requestUrl}|View Request>`;
+          const slackMessage =
+            `📝 *New Approval Request Submitted*\n\n` +
+            `*Request:* ${title}\n` +
+            `*Client:* ${clientName}\n` +
+            `*Contacts:* ${contactsToSend.length} contact(s) to approve\n` +
+            `*Required Approvals:* ${requiredApprovals}\n` +
+            `*Content Type:* ${contentType || 'HTML'}\n\n` +
+            `<${requestUrl}|View Request>`;
 
-        await postToSlack(slackMessage, process.env.SLACK_APPROVAL_UPDATES_CHANNEL);
-        console.log('Slack notification sent for new approval request');
-      } catch (slackError) {
-        console.error('Error sending Slack notification for new request:', slackError);
-        // Don't fail the request creation if Slack fails
+          const channel = slackChannel || process.env.SLACK_APPROVAL_UPDATES_CHANNEL;
+          await postToSlack(slackMessage, channel);
+          console.log(`Slack notification sent for new approval request to ${channel}`);
+        } catch (slackError) {
+          console.error('Error sending Slack notification for new request:', slackError);
+          // Don't fail the request creation if Slack fails
+        }
       }
-    }
 
-    return res
-      .status(201)
-      .json({ message: 'Approval request created successfully', request: requestData });
+      return res
+        .status(201)
+        .json({ message: 'Approval request created successfully', request: requestData });
+    });
   } catch (error) {
     // Rollback transaction on error
-    await connection.rollback();
+    // The transaction function already handles rollback on error
     console.error('Error creating approval request:', error);
     return res.status(500).json({ error: 'Failed to create approval request' });
-  } finally {
-    // Release connection back to the pool
-    connection.release();
   }
 }

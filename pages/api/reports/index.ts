@@ -118,7 +118,7 @@ async function getReports(req: NextApiRequest, res: NextApiResponse, userInfo: a
     console.log('Executing query:', queryStr);
     console.log('Query params:', queryParams);
 
-    const reports = await query(queryStr, queryParams);
+    const [reports] = (await query(queryStr, queryParams)) as any[];
 
     console.log('Found reports:', reports.length);
 

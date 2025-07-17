@@ -1,5 +1,6 @@
 import React, { useState, ReactNode } from 'react';
 import { useRouter } from 'next/router';
+import useValidateUserToken from '../../hooks/useValidateUserToken';
 import {
   Box,
   Drawer,
@@ -123,7 +124,11 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
 }) => {
   const theme = useTheme();
   const router = useRouter();
+  const { user } = useValidateUserToken();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  // Debug logging
+  console.log('IntercomLayout user object:', user);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [expandedItems, setExpandedItems] = useState<string[]>(['submissions']);
   const [profileAnchorEl, setProfileAnchorEl] = useState<null | HTMLElement>(null);
@@ -155,14 +160,14 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
 
     return (
       <React.Fragment key={item.id}>
-        <ListItem disablePadding>
+        <ListItem disablePadding sx={{ padding: 0, margin: 1 }}>
           <ListItemButton
             onClick={hasChildren ? () => handleExpandClick(item.id) : () => router.push(item.href!)}
             sx={{
               pl: `${paddingLeft}px`,
               borderRadius: 1.5,
-              mx: 1.5,
-              my: 0.5,
+              mx: 0,
+              my: 0,
               backgroundColor: isActive ? 'primary.main' : 'transparent',
               color: isActive ? 'primary.contrastText' : 'text.primary',
               transition: 'all 0.2s ease-in-out',
@@ -180,6 +185,7 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
           >
             <ListItemIcon
               sx={{
+                padding: 0,
                 minWidth: 40,
                 color: isActive ? 'primary.contrastText' : 'text.secondary',
                 transition: 'color 0.2s ease-in-out',
@@ -280,7 +286,9 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
       </Box>
 
       <Box sx={{ flex: 1, overflow: 'auto' }}>
-        <List sx={{ px: 2 }}>{navigationItems.map(item => renderNavigationItem(item))}</List>
+        <List sx={{ paddingLeft: 0, paddingRight: 2 }}>
+          {navigationItems.map(item => renderNavigationItem(item))}
+        </List>
       </Box>
 
       <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
@@ -303,12 +311,12 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
                   fontSize: '0.875rem',
                 }}
               >
-                JD
+                {user?.username ? user.username.charAt(0).toUpperCase() : '?'}
               </Avatar>
             </ListItemIcon>
             <ListItemText
-              primary="John Doe"
-              secondary="john@example.com"
+              primary={user?.username || 'Unknown User'}
+              secondary={user?.email || 'No email'}
               primaryTypographyProps={{
                 fontSize: '0.875rem',
                 fontWeight: 500,
@@ -447,7 +455,14 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
           },
         }}
       >
-        <MenuItem onClick={handleProfileClose}>Profile</MenuItem>
+        <MenuItem
+          onClick={() => {
+            handleProfileClose();
+            router.push('/profile');
+          }}
+        >
+          Profile
+        </MenuItem>
         <MenuItem onClick={handleProfileClose}>Settings</MenuItem>
         <Divider />
         <MenuItem onClick={handleProfileClose}>Logout</MenuItem>

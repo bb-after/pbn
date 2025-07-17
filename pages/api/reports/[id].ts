@@ -92,9 +92,26 @@ async function getReport(
 
     const report = reportResults[0];
 
+    // --- Start Debug Logging ---
+    console.log('--- Permission Check Debug ---');
+    console.log('User Info from Token:', {
+      isValid: userInfo.isValid,
+      userId: userInfo.user_id,
+      role: userInfo.role,
+    });
+    console.log('Report Owner from DB:', {
+      createdById: report.created_by_id,
+    });
+    console.log('Data Types:', {
+      userInfoUserIdType: typeof userInfo.user_id,
+      reportCreatedByIdType: typeof report.created_by_id,
+      userInfoRoleType: typeof userInfo.role,
+    });
+    // --- End Debug Logging ---
+
     // Check if user has permission to view this report
     const isAdmin = userInfo.role === 'admin';
-    const isOwner = userInfo.user_id === report.created_by_id;
+    const isOwner = String(userInfo.user_id) === String(report.created_by_id);
 
     if (!isAdmin && !isOwner) {
       return res.status(403).json({ error: 'Access denied' });

@@ -24,6 +24,7 @@ import Script from 'next/script';
 import ClientContactForm from './ClientContactForm';
 import type { ClientContact } from './ClientContactForm';
 import { GoogleOAuthProvider, useGoogleLogin } from '@react-oauth/google';
+import { IntercomButton } from './ui';
 
 // Import Quill CSS
 import 'react-quill/dist/quill.snow.css';
@@ -92,6 +93,9 @@ export default function ClientApprovalRequestForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // Add state for the new slack channel field
+  const [slackChannel, setSlackChannel] = useState('');
 
   // Contact form state
   const [contactFormOpen, setContactFormOpen] = useState(false);
@@ -300,7 +304,8 @@ export default function ClientApprovalRequestForm({
         googleDocId: googleDocId, // Also store the raw doc ID for reference
         contentType: 'google_doc', // Flag to indicate this is a Google Doc URL
         googleAccessToken,
-        requiredApprovals: requiredApprovals || selectedContacts.length, // Include requiredApprovals or default to all contacts
+        requiredApprovals: requiredApprovals || selectedContacts.length,
+        slackChannel: slackChannel, // Add this line
       };
 
       // Get auth token from localStorage
@@ -526,7 +531,7 @@ export default function ClientApprovalRequestForm({
                 />
               </Grid>
 
-              {/* Replace ReactQuill with Google Doc iframe */}
+              {/* Google Doc iframe */}
               <Grid item xs={12}>
                 <Box
                   sx={{
@@ -608,8 +613,6 @@ export default function ClientApprovalRequestForm({
                         height="100%"
                         frameBorder="0"
                       ></iframe>
-
-                      {/* Overlay button for direct access */}
                       {showOverlay && (
                         <Box
                           sx={{
@@ -636,132 +639,46 @@ export default function ClientApprovalRequestForm({
                               boxShadow: 3,
                             }}
                           >
-                            {editorMode.refreshKey > 0 && editorMode.refreshKey % 2 === 1 ? (
-                              // Show loading message when switching modes
-                              <>
-                                <Typography variant="h6" gutterBottom>
-                                  Switching Editor Mode
-                                </Typography>
-                                <Box
-                                  display="flex"
-                                  justifyContent="center"
-                                  alignItems="center"
-                                  my={3}
-                                >
-                                  <CircularProgress size={24} sx={{ mr: 2 }} />
-                                  <Typography>Reloading editor, please wait...</Typography>
-                                </Box>
-                              </>
-                            ) : (
-                              // Show regular account selection overlay
-                              <>
+                            <Button
+                              sx={{ position: 'absolute', right: -10, top: -10 }}
+                              size="small"
+                              onClick={() => setShowOverlay(false)}
+                            >
+                              ✕
+                            </Button>
+                            <Typography variant="h6" gutterBottom>
+                              Google Account Access
+                            </Typography>
+                            <Typography variant="body1" gutterBottom sx={{ mb: 3 }}>
+                              If you&apos;re having trouble accessing the document, try one of these
+                              options:
+                            </Typography>
+                            <Grid container spacing={2}>
+                              <Grid item xs={12}>
                                 <Button
-                                  sx={{ position: 'absolute', right: -10, top: -10 }}
-                                  size="small"
+                                  variant="contained"
+                                  color="primary"
+                                  href={`https://docs.google.com/document/d/${googleDocId}/edit?usp=sharing`}
+                                  target="_blank"
+                                  fullWidth
+                                >
+                                  Open in New Tab
+                                </Button>
+                              </Grid>
+                              <Grid item xs={12}>
+                                <Button
+                                  variant="text"
+                                  color="secondary"
                                   onClick={() => setShowOverlay(false)}
                                 >
-                                  ✕
+                                  Close
                                 </Button>
-                                <Typography variant="h6" gutterBottom>
-                                  Google Account Access
-                                </Typography>
-                                <Typography variant="body1" gutterBottom sx={{ mb: 3 }}>
-                                  If you&apos;re having trouble accessing the document due to Google
-                                  account permissions:
-                                </Typography>
-
-                                <Grid container spacing={2}>
-                                  <Grid item xs={12}>
-                                    <Button
-                                      variant="contained"
-                                      color="primary"
-                                      href={`https://docs.google.com/document/d/${googleDocId}/edit?usp=sharing${editorMode.isMinimal ? '&rm=minimal' : ''}`}
-                                      target="_blank"
-                                      fullWidth
-                                    >
-                                      Open in New Tab
-                                    </Button>
-                                  </Grid>
-
-                                  <Grid item xs={12}>
-                                    <Button
-                                      variant="outlined"
-                                      color="primary"
-                                      href={`https://accounts.google.com/AccountChooser?continue=${encodeURIComponent(`https://docs.google.com/document/d/${googleDocId}/edit?usp=sharing${editorMode.isMinimal ? '&rm=minimal' : ''}`)}`}
-                                      target="_blank"
-                                      fullWidth
-                                    >
-                                      Choose Google Account First
-                                    </Button>
-                                  </Grid>
-
-                                  <Grid item xs={12}>
-                                    <Alert severity="info" sx={{ mt: 2 }}>
-                                      <Typography variant="body2">
-                                        <strong>TIP:</strong> If editor modes are switching
-                                        accounts, try using the &quot;Choose Google Account&quot;
-                                        button above and explicitly select your work account.
-                                      </Typography>
-                                    </Alert>
-                                  </Grid>
-
-                                  <Grid item xs={12} sx={{ mt: 2 }}>
-                                    <Button
-                                      variant="text"
-                                      color="secondary"
-                                      onClick={() => setShowOverlay(false)}
-                                    >
-                                      Try embedded view anyway
-                                    </Button>
-                                  </Grid>
-                                </Grid>
-                              </>
-                            )}
+                              </Grid>
+                            </Grid>
                           </Box>
                         </Box>
                       )}
                     </Box>
-                  </Box>
-                ) : selectedClient && title.trim() ? (
-                  <Box
-                    display="flex"
-                    flexDirection="column"
-                    justifyContent="center"
-                    alignItems="center"
-                    height="300px"
-                    border="1px solid"
-                    borderColor="rgba(0, 0, 0, 0.23)"
-                    borderRadius={1}
-                  >
-                    <Typography variant="body1" gutterBottom>
-                      Ready to create document for:{' '}
-                      <strong>
-                        {selectedClient.client_name} - {title}
-                      </strong>
-                    </Typography>
-
-                    {(!accessToken && !googleAccessToken && googleClientId) || showLoginPrompt ? (
-                      <Box my={2} textAlign="center">
-                        <Alert severity="info" sx={{ mb: 2, fontSize: '0.8rem' }}>
-                          Please sign in with Google to create the document:
-                        </Alert>
-                        {googleClientId && (
-                          <GoogleOAuthProvider clientId={googleClientId}>
-                            <GoogleLoginButton />
-                          </GoogleOAuthProvider>
-                        )}
-                      </Box>
-                    ) : (
-                      <Button
-                        variant="contained"
-                        color="primary"
-                        onClick={handleCreateGoogleDoc}
-                        startIcon={<UploadIcon />}
-                        sx={{ mt: 2 }}
-                      >
-                        Create Document
-                      </Button>
-                    )}
                   </Box>
                 ) : (
                   <Box
@@ -774,9 +691,44 @@ export default function ClientApprovalRequestForm({
                     borderColor="rgba(0, 0, 0, 0.23)"
                     borderRadius={1}
                   >
-                    <Typography variant="body1" gutterBottom color="text.secondary">
-                      Please select a client and enter a title to create your document.
-                    </Typography>
+                    {selectedClient && title.trim() ? (
+                      <>
+                        <Typography variant="body1" gutterBottom>
+                          Ready to create document for:{' '}
+                          <strong>
+                            {selectedClient.client_name} - {title}
+                          </strong>
+                        </Typography>
+
+                        {(!accessToken && !googleAccessToken && googleClientId) ||
+                        showLoginPrompt ? (
+                          <Box my={2} textAlign="center">
+                            <Alert severity="info" sx={{ mb: 2, fontSize: '0.8rem' }}>
+                              Please sign in with Google to create the document:
+                            </Alert>
+                            {googleClientId && (
+                              <GoogleOAuthProvider clientId={googleClientId}>
+                                <GoogleLoginButton />
+                              </GoogleOAuthProvider>
+                            )}
+                          </Box>
+                        ) : (
+                          <Button
+                            variant="contained"
+                            color="primary"
+                            onClick={handleCreateGoogleDoc}
+                            startIcon={<UploadIcon />}
+                            sx={{ mt: 2 }}
+                          >
+                            Create Document
+                          </Button>
+                        )}
+                      </>
+                    ) : (
+                      <Typography variant="body1" color="text.secondary">
+                        Please select a client and enter a title to create your document.
+                      </Typography>
+                    )}
                   </Box>
                 )}
               </Grid>
@@ -838,94 +790,88 @@ export default function ClientApprovalRequestForm({
                                 onChange={() => handleContactToggle(contact)}
                               />
                             }
-                            label={
-                              <React.Fragment>
-                                {contact.name}
-                                {contact.job_title && (
-                                  <span>
-                                    {' '}
-                                    (<i>{contact.job_title}</i>)
-                                  </span>
-                                )}
-                                {' - '}
-                                {contact.email}
-                              </React.Fragment>
-                            }
+                            label={`${contact.name} - ${contact.email}`}
                           />
                         ))}
                       </FormGroup>
                     </Box>
                   )}
-
                   <FormHelperText>
                     These contacts will receive an email to review the content
                   </FormHelperText>
                 </FormControl>
               </Grid>
 
-              {/* Required Approvals: Only show if more than one contact is selected */}
+              {/* Required Approvals & Slack Channel */}
               {selectedContacts.length > 1 && (
-                <Grid item xs={12} mt={2}>
+                <Grid item xs={12} sm={6}>
                   <FormControl fullWidth>
                     <FormLabel component="legend">Required Approvals</FormLabel>
-                    <Box display="flex" alignItems="center" mt={1}>
-                      <TextField
-                        type="number"
-                        label="Number of approvals required"
-                        value={requiredApprovals}
-                        onChange={e => {
-                          const numValue = parseInt(e.target.value, 10);
-                          if (
-                            !isNaN(numValue) &&
-                            numValue >= 1 &&
-                            numValue <= selectedContacts.length
-                          ) {
-                            setRequiredApprovals(numValue);
-                          }
-                        }}
-                        InputProps={{
-                          inputProps: {
-                            min: 1,
-                            max: selectedContacts.length,
-                          },
-                        }}
-                        sx={{ width: '250px' }}
-                      />
-                      <Box ml={2} flex={1}>
-                        <Typography variant="body2" color="text.secondary">
-                          {requiredApprovals === selectedContacts.length
-                            ? selectedContacts.length === 2
-                              ? 'Both selected contacts must approve for content to be considered approved.'
-                              : `All ${selectedContacts.length} selected contacts must approve for content to be considered approved.`
-                            : `At least ${requiredApprovals} out of ${selectedContacts.length} selected contacts must approve for content to be considered approved.`}
-                        </Typography>
-                      </Box>
-                    </Box>
+                    <TextField
+                      type="number"
+                      value={requiredApprovals}
+                      onChange={e => {
+                        const numValue = parseInt(e.target.value, 10);
+                        if (
+                          !isNaN(numValue) &&
+                          numValue >= 1 &&
+                          numValue <= selectedContacts.length
+                        ) {
+                          setRequiredApprovals(numValue);
+                        }
+                      }}
+                      InputProps={{
+                        inputProps: {
+                          min: 1,
+                          max: selectedContacts.length,
+                        },
+                      }}
+                      helperText={`Approvals needed: ${requiredApprovals} of ${selectedContacts.length}`}
+                      margin="normal"
+                    />
                   </FormControl>
                 </Grid>
               )}
-
-              {/* Submit Button */}
-              <Grid item xs={12}>
-                <Divider sx={{ mb: 2 }} />
-                <Box display="flex" justifyContent="flex-end">
-                  <Button
-                    type="submit"
-                    variant="contained"
-                    color="primary"
-                    disabled={
-                      submitting ||
-                      !selectedClient ||
-                      selectedContacts.length === 0 ||
-                      !googleDocId ||
-                      !title.trim()
-                    }
-                  >
-                    {submitting ? <CircularProgress size={24} /> : 'Submit for Approval'}
-                  </Button>
-                </Box>
+              <Grid item xs={12} sm={selectedContacts.length > 1 ? 6 : 12}>
+                <FormControl fullWidth>
+                  <FormLabel component="legend">Slack Notifications (Optional)</FormLabel>
+                  <TextField
+                    label="Project Slack Channel"
+                    value={slackChannel}
+                    onChange={e => {
+                      let value = e.target.value;
+                      // Automatically prepend '#' if it's missing and the field is not empty
+                      if (value && !value.startsWith('#')) {
+                        value = '#' + value;
+                      }
+                      setSlackChannel(value);
+                    }}
+                    margin="normal"
+                    placeholder="e.g., #project-approvals"
+                    helperText="Overrides default notification channel."
+                  />
+                </FormControl>
               </Grid>
             </Grid>
+
+            {/* Submit Button */}
+            <Divider sx={{ my: 3 }} />
+            <Box display="flex" justifyContent="flex-end">
+              <Button
+                type="submit"
+                variant="contained"
+                color="primary"
+                disabled={
+                  submitting ||
+                  !selectedClient ||
+                  selectedContacts.length === 0 ||
+                  !googleDocId ||
+                  !title.trim()
+                }
+              >
+                {submitting ? <CircularProgress size={24} /> : 'Submit for Approval'}
+              </Button>
+            </Box>
           </form>
         )}
       </Paper>

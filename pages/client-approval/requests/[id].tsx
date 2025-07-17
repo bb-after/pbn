@@ -60,6 +60,7 @@ import {
   Delete as DeleteIcon,
   Article as ArticleIcon,
   Add as AddIcon,
+  Edit as EditIcon,
 } from '@mui/icons-material';
 import LayoutContainer from '../../../components/LayoutContainer';
 import StyledHeader from '../../../components/StyledHeader';
@@ -70,6 +71,7 @@ import {
   IntercomButton,
   IntercomCard,
   IntercomInput,
+  useToast,
 } from '../../../components/ui';
 import { useRouter } from 'next/router';
 import useValidateUserToken from 'hooks/useValidateUserToken';
@@ -163,6 +165,7 @@ interface ApprovalRequest {
     commenter_name?: string;
   }> | null;
   section_comments?: SectionComment[];
+  project_slack_channel?: string | null; // Added for the new notifications card
 }
 
 // Define the structure for a single view record
@@ -297,6 +300,10 @@ export default function ApprovalRequestDetailPage() {
   const [clientsToNotify, setClientsToNotify] = useState<number[]>([]);
   const [isSubmittingApproval, setIsSubmittingApproval] = useState(false);
 
+  // Add state for editing the slack channel
+  const [slackChannel, setSlackChannel] = useState('');
+  const [isEditingSlack, setIsEditingSlack] = useState(false);
+
   // Set up axios interceptor for handling 404 errors
   useEffect(() => {
     // Create response interceptor
@@ -365,6 +372,12 @@ export default function ApprovalRequestDetailPage() {
       setPublishedUrl('');
     }
   }, [request?.published_url]);
+
+  useEffect(() => {
+    if (request) {
+      setSlackChannel(request.project_slack_channel || '');
+    }
+  }, [request]);
 
   useEffect(() => {
     // Redirect to login if user is not valid and loading is finished
@@ -713,6 +726,30 @@ export default function ApprovalRequestDetailPage() {
     }
   };
 
+  const handleSlackChannelUpdate = async () => {
+    if (!request) return;
+
+    try {
+      const token = localStorage.getItem('usertoken');
+      await axios.patch(
+        `/api/approval-requests/${request.request_id}`,
+        { project_slack_channel: slackChannel },
+        { headers: { 'x-auth-token': token } }
+      );
+      // Optimistically update the local state
+      setRequest(prev => (prev ? { ...prev, project_slack_channel: slackChannel } : null));
+      setIsEditingSlack(false);
+      showToast('Slack channel updated successfully!');
+    } catch (error) {
+      console.error('Error updating Slack channel:', error);
+      showToast('Failed to update Slack channel.');
+    }
+  };
+
+  const handleAddReviewers = () => {
+    setIsAddReviewersModalOpen(true);
+  };
+
   // Helper function to show toast messages
   const showToast = (
     message: string,
@@ -760,6 +797,580 @@ export default function ApprovalRequestDetailPage() {
   }
 
   function ClientApprovalRequestContent() {
+    const router = useRouter();
+    const { isValidUser, isLoading } = useValidateUserToken();
+    const { showError, showSuccess } = useToast();
+
+    // State for request data
+    const [request, setRequest] = useState<ApprovalRequest | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [redirecting, setRedirecting] = useState(false);
+
+    // Add isMinimalMode state
+    const [isMinimalMode, setIsMinimalMode] = useState(true);
+
+    // State for tabs
+    const [tabValue, setTabValue] = useState(0);
+
+    // State for published URL input
+    const [publishedUrl, setPublishedUrl] = useState('');
+    const [updatingUrl, setUpdatingUrl] = useState(false);
+
+    // State for comments
+    const [newComment, setNewComment] = useState('');
+    const [submittingComment, setSubmittingComment] = useState(false);
+
+    // State for resending notification
+    const [resendingContactId, setResendingContactId] = useState<number | null>(null);
+    const [removingContactId, setRemovingContactId] = useState<number | null>(null);
+    const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
+    const [contactToRemove, setContactToRemove] = useState<{ id: number; name: string } | null>(
+      null
+    );
+
+    // State for toast notifications
+    const [toastOpen, setToastOpen] = useState(false);
+    const [toastMessage, setToastMessage] = useState('');
+    const [toastSeverity, setToastSeverity] = useState<'success' | 'error' | 'warning' | 'info'>(
+      'success'
+    );
+
+    // --- Add State for View Log Modal ---
+    const [viewLogModalOpen, setViewLogModalOpen] = useState(false);
+    const [selectedContactViews, setSelectedContactViews] = useState<ContactWithViews | null>(null);
+    // --- End State for View Log Modal ---
+
+    // --- Add State for Version Content Modal ---
+    const [versionContentModalOpen, setVersionContentModalOpen] = useState(false);
+    const [selectedVersion, setSelectedVersion] = useState<{
+      version_id: number;
+      version_number: number;
+      file_url: string | null;
+      inline_content?: string | null;
+      content_type?: string;
+      google_doc_id?: string | null;
+      comments: string | null;
+      created_by_id: string | null;
+      created_at: string;
+    } | null>(null);
+    // --- End State for Version Content Modal ---
+
+    // --- Add State for New Version Dialog ---
+    const [newVersionDialogOpen, setNewVersionDialogOpen] = useState(false);
+    const [newVersionGoogleDocUrl, setNewVersionGoogleDocUrl] = useState('');
+    const [newVersionComment, setNewVersionComment] = useState('');
+    const [isSubmittingVersion, setIsSubmittingVersion] = useState(false);
+    // --- End State for New Version Dialog ---
+
+    // --- Add State for Add Reviewers Modal ---
+    const [isAddReviewersModalOpen, setIsAddReviewersModalOpen] = useState(false);
+
+    // Add Recogito Refs & State
+    const contentRef = useRef<HTMLDivElement>(null);
+
+    // Add state for approval dialog
+    const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
+    const [notifyClientsOnApproval, setNotifyClientsOnApproval] = useState(true);
+    const [clientsToNotify, setClientsToNotify] = useState<number[]>([]);
+    const [isSubmittingApproval, setIsSubmittingApproval] = useState(false);
+
+    // Add state for editing the slack channel
+    const [slackChannel, setSlackChannel] = useState('');
+    const [isEditingSlack, setIsEditingSlack] = useState(false);
+
+    // Set up axios interceptor for handling 404 errors
+    useEffect(() => {
+      // Create response interceptor
+      const interceptor = axios.interceptors.response.use(
+        response => response, // Pass successful responses through
+        error => {
+          if (error.response && router.pathname.includes('/client-approval/requests/')) {
+            // Handle 404 not found errors
+            if (error.response.status === 404) {
+              console.log('Request not found - redirecting to dashboard');
+              setRedirecting(true);
+              router.push('/client-approval?error=request_not_found');
+              // Return a resolved promise to prevent the error from propagating
+              return Promise.resolve({ data: null, status: 404 });
+            }
+          }
+          // Let other errors propagate
+          return Promise.reject(error);
+        }
+      );
+
+      // Clean up interceptor on component unmount
+      return () => {
+        axios.interceptors.response.eject(interceptor);
+      };
+    }, [router]);
+
+    // Fetch request details
+    const fetchRequestDetails = useCallback(async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const response = await axios.get(`/api/approval-requests/${id}`);
+
+        // Debug logging
+        console.log('API Response for Request:', response.data);
+        if (response.data.content_type === 'google_doc') {
+          console.log('Google Doc Details:');
+          console.log('content_type:', response.data.content_type);
+          console.log('inline_content:', response.data.inline_content);
+          console.log('google_doc_id:', response.data.google_doc_id);
+        }
+
+        setRequest(response.data);
+      } catch (error) {
+        console.error('Error fetching approval request details:', error);
+        setError('Failed to load request details');
+      } finally {
+        setLoading(false);
+      }
+    }, [id]);
+
+    // Fetch request data when component mounts or ID changes
+    useEffect(() => {
+      if (id && isValidUser) {
+        fetchRequestDetails();
+      }
+    }, [id, isValidUser, fetchRequestDetails]);
+
+    // Update published URL state when request data changes
+    useEffect(() => {
+      if (request?.published_url) {
+        setPublishedUrl(request.published_url);
+      } else {
+        setPublishedUrl('');
+      }
+    }, [request?.published_url]);
+
+    useEffect(() => {
+      if (request) {
+        setSlackChannel(request.project_slack_channel || '');
+      }
+    }, [request]);
+
+    useEffect(() => {
+      // Redirect to login if user is not valid and loading is finished
+      if (!isLoading && !isValidUser) {
+        router.push('/login'); // Redirect to your staff login page
+      }
+    }, [isLoading, isValidUser, router]);
+
+    // Handle tab change
+    const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+      setTabValue(newValue);
+    };
+
+    // Handle published URL update
+    const handleUpdatePublishedUrl = async () => {
+      if (!publishedUrl.trim() && !request?.published_url) {
+        return;
+      }
+
+      setUpdatingUrl(true);
+
+      try {
+        const headers: Record<string, string> = {};
+        if (token) {
+          headers['x-auth-token'] = token;
+        }
+
+        await axios.put(
+          `/api/approval-requests/${id}`,
+          {
+            publishedUrl: publishedUrl.trim(),
+          },
+          { headers }
+        );
+
+        fetchRequestDetails();
+      } catch (error) {
+        console.error('Error updating published URL:', error);
+        setError('Failed to update published URL');
+      } finally {
+        setUpdatingUrl(false);
+      }
+    };
+
+    // Handle submitting a new comment
+    const handleSubmitComment = async () => {
+      if (!newComment.trim()) {
+        return;
+      }
+
+      setSubmittingComment(true);
+
+      try {
+        // Prepare headers
+        const headers: Record<string, string> = {};
+        if (token) {
+          headers['x-auth-token'] = token;
+        }
+
+        await axios.post(
+          `/api/approval-requests/${id}/comments`,
+          {
+            comment: newComment,
+            versionId: request?.versions[0]?.version_id,
+          },
+          { headers } // Pass headers to axios
+        );
+
+        setNewComment('');
+        fetchRequestDetails();
+      } catch (error) {
+        console.error('Error submitting comment:', error);
+        setError('Failed to submit comment');
+      } finally {
+        setSubmittingComment(false);
+      }
+    };
+
+    // Handle archiving the request
+    const handleArchiveRequest = async () => {
+      try {
+        const headers: Record<string, string> = {};
+        if (token) {
+          headers['x-auth-token'] = token;
+        }
+
+        await axios.put(`/api/approval-requests/${id}`, { isArchived: true }, { headers });
+
+        router.push('/client-approval');
+      } catch (error) {
+        console.error('Error archiving request:', error);
+        setError('Failed to archive request');
+      }
+    };
+
+    // Handle resending notification to a specific contact
+    const handleResendNotification = async (contactId: number) => {
+      if (resendingContactId) return; // Prevent concurrent resends
+
+      setResendingContactId(contactId);
+      setError(null);
+
+      try {
+        const headers: Record<string, string> = {};
+        if (token) {
+          headers['x-auth-token'] = token;
+        }
+
+        await axios.post(
+          `/api/approval-requests/${id}/resend-notification`,
+          { contactId }, // Send contactId in the body
+          { headers }
+        );
+
+        // Find the contact name for the success message
+        const contact = request?.contacts.find(c => c.contact_id === contactId);
+        const contactName = contact?.name || `Contact ${contactId}`;
+
+        showSuccess(`Notification sent successfully to ${contactName}`);
+      } catch (err: any) {
+        console.error('Error resending notification:', err);
+        const errorMessage = err.response?.data?.error || 'Failed to send notification';
+        setError(errorMessage);
+        showError(errorMessage);
+      } finally {
+        setResendingContactId(null);
+      }
+    };
+
+    // --- Contact Removal Functions ---
+    const handleOpenRemoveDialog = (contact: { id: number; name: string }) => {
+      setContactToRemove(contact);
+      setConfirmRemoveOpen(true);
+    };
+
+    const handleCloseRemoveDialog = () => {
+      setConfirmRemoveOpen(false);
+      setContactToRemove(null);
+    };
+
+    const handleConfirmRemoveContact = async () => {
+      if (!contactToRemove) return;
+
+      setRemovingContactId(contactToRemove.id);
+      setError(null);
+      handleCloseRemoveDialog(); // Close dialog immediately
+
+      try {
+        const headers: Record<string, string> = {};
+        if (token) {
+          headers['x-auth-token'] = token;
+        }
+
+        await axios.post(
+          `/api/approval-requests/${id}/remove-contact`,
+          { contactId: contactToRemove.id }, // Send contactId in the body
+          { headers }
+        );
+
+        // Refresh request details to update the list
+        fetchRequestDetails();
+        console.log(`Contact ${contactToRemove.name} removed successfully`);
+      } catch (err: any) {
+        console.error('Error removing contact:', err);
+        setError(err.response?.data?.error || 'Failed to remove contact');
+      } finally {
+        setRemovingContactId(null);
+      }
+    };
+
+    // --- Add Modal Handlers ---
+    const handleOpenViewLog = (contact: ContactWithViews) => {
+      setSelectedContactViews(contact);
+      setViewLogModalOpen(true);
+    };
+
+    const handleCloseViewLog = () => {
+      setViewLogModalOpen(false);
+      setSelectedContactViews(null);
+    };
+    // --- End Modal Handlers ---
+
+    // --- Add Version Modal Handlers ---
+    const handleOpenVersionContent = (version: {
+      version_id: number;
+      version_number: number;
+      file_url: string | null;
+      inline_content?: string | null;
+      content_type?: string;
+      google_doc_id?: string | null;
+      comments: string | null;
+      created_by_id: string | null;
+      created_at: string;
+    }) => {
+      setSelectedVersion(version);
+      setVersionContentModalOpen(true);
+    };
+
+    const handleCloseVersionContent = () => {
+      setVersionContentModalOpen(false);
+      setSelectedVersion(null);
+    };
+    // --- End Version Modal Handlers ---
+
+    // --- Add New Version Dialog Handlers ---
+    const handleOpenNewVersionDialog = () => {
+      setNewVersionGoogleDocUrl('');
+      setNewVersionComment('');
+      setNewVersionDialogOpen(true);
+    };
+
+    const handleCloseNewVersionDialog = () => {
+      setNewVersionDialogOpen(false);
+    };
+
+    const handleNewVersionGoogleDocUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      setNewVersionGoogleDocUrl(e.target.value);
+    };
+
+    const handleSubmitNewVersion = async () => {
+      if (!newVersionGoogleDocUrl.trim()) {
+        setError('Google Doc URL is required');
+        return;
+      }
+
+      // Validate if it's a valid Google Doc URL
+      if (!newVersionGoogleDocUrl.includes('docs.google.com')) {
+        setError('Please enter a valid Google Doc URL');
+        return;
+      }
+
+      setIsSubmittingVersion(true);
+      setError(null);
+
+      try {
+        const headers: Record<string, string> = {};
+        if (token) {
+          headers['x-auth-token'] = token;
+        }
+
+        // Extract Google Doc ID from URL
+        const docIdMatch = newVersionGoogleDocUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+        const googleDocId = docIdMatch ? docIdMatch[1] : null;
+
+        if (!googleDocId) {
+          setError('Could not extract Google Doc ID from URL');
+          setIsSubmittingVersion(false);
+          return;
+        }
+
+        // Send the new version with the Google Doc URL and ID
+        const response = await axios.post(
+          `/api/approval-requests/${id}/versions`,
+          {
+            googleDocId: googleDocId,
+            inlineContent: newVersionGoogleDocUrl,
+            contentType: 'google_doc',
+            comments: newVersionComment.trim() || null,
+          },
+          { headers }
+        );
+
+        setNewVersionDialogOpen(false);
+        setNewVersionGoogleDocUrl('');
+        setNewVersionComment('');
+        fetchRequestDetails();
+      } catch (error: any) {
+        console.error('Error submitting new version:', error);
+        setError(error.response?.data?.error || 'Failed to add new version');
+      } finally {
+        setIsSubmittingVersion(false);
+      }
+    };
+    // --- End New Version Dialog Handlers ---
+
+    // Add this near the other handler functions
+    const handleOpenApprovalDialog = () => {
+      // Pre-select all clients for notification
+      if (request) {
+        setClientsToNotify(request.contacts.map(contact => contact.contact_id));
+      }
+      setApprovalDialogOpen(true);
+    };
+
+    const handleCloseApprovalDialog = () => {
+      setApprovalDialogOpen(false);
+    };
+
+    const handleToggleClientNotification = (contactId: number) => {
+      setClientsToNotify(prev => {
+        const newSelection = prev.includes(contactId)
+          ? prev.filter(id => id !== contactId)
+          : [...prev, contactId];
+
+        // If no clients are selected, automatically uncheck the notification checkbox
+        if (newSelection.length === 0) {
+          setNotifyClientsOnApproval(false);
+        }
+
+        return newSelection;
+      });
+    };
+
+    const handleNotifyClientsCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const checked = e.target.checked;
+      setNotifyClientsOnApproval(checked);
+
+      // If turning on notifications but no clients selected, select all clients
+      if (checked && clientsToNotify.length === 0 && request?.contacts) {
+        setClientsToNotify(request.contacts.map(contact => contact.contact_id));
+      }
+    };
+
+    const handleManualApproval = async () => {
+      if (!request) return;
+
+      setIsSubmittingApproval(true);
+      setError(null);
+
+      try {
+        const headers: Record<string, string> = {};
+        if (token) {
+          headers['x-auth-token'] = token;
+        }
+
+        // First, update the request status to approved
+        await axios.put(`/api/approval-requests/${id}`, { status: 'approved' }, { headers });
+
+        // Then, if notifications are enabled, notify selected clients
+        if (notifyClientsOnApproval && clientsToNotify.length > 0) {
+          await axios.post(
+            `/api/approval-requests/${id}/notify-approval`,
+            { contactIds: clientsToNotify },
+            { headers }
+          );
+        }
+
+        // Close dialog and refresh data
+        handleCloseApprovalDialog();
+        fetchRequestDetails();
+      } catch (err: any) {
+        console.error('Error approving request:', err);
+        setError(err.response?.data?.error || 'Failed to approve request');
+      } finally {
+        setIsSubmittingApproval(false);
+      }
+    };
+
+    const handleSlackChannelUpdate = async () => {
+      if (!request) return;
+
+      try {
+        const token = localStorage.getItem('usertoken');
+        await axios.patch(
+          `/api/approval-requests/${request.request_id}`,
+          { project_slack_channel: slackChannel },
+          { headers: { 'x-auth-token': token } }
+        );
+        // Optimistically update the local state
+        setRequest(prev => (prev ? { ...prev, project_slack_channel: slackChannel } : null));
+        setIsEditingSlack(false);
+        showSuccess('Slack channel updated successfully!');
+      } catch (error) {
+        console.error('Error updating Slack channel:', error);
+        showError('Failed to update Slack channel.');
+      }
+    };
+
+    const handleAddReviewers = () => {
+      setIsAddReviewersModalOpen(true);
+    };
+
+    // Helper function to show toast messages
+    const showToast = (
+      message: string,
+      severity: 'success' | 'error' | 'warning' | 'info' = 'success'
+    ) => {
+      setToastMessage(message);
+      setToastSeverity(severity);
+      setToastOpen(true);
+    };
+
+    // Handle closing the toast
+    const handleCloseToast = () => {
+      setToastOpen(false);
+    };
+
+    if (isLoading || (loading && !request)) {
+      return (
+        <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
+          <CircularProgress />
+        </Box>
+      );
+    }
+
+    if (redirecting) {
+      return (
+        <Box
+          display="flex"
+          flexDirection="column"
+          justifyContent="center"
+          alignItems="center"
+          height="100vh"
+        >
+          <CircularProgress sx={{ mb: 2 }} />
+          <Typography variant="body1">Redirecting to dashboard...</Typography>
+        </Box>
+      );
+    }
+
+    if (error && !request) {
+      return (
+        <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
+          <Alert severity="error">{error}</Alert>
+        </Box>
+      );
+    }
+
     return (
       <>
         <IntercomLayout
@@ -785,7 +1396,9 @@ export default function ApprovalRequestDetailPage() {
                         <Typography variant="h5">{request.title}</Typography>
                         <Box ml={2}>
                           <Chip
-                            label={request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                            label={
+                              request.status?.charAt(0).toUpperCase() + request.status?.slice(1)
+                            }
                             color={
                               request.status === 'approved'
                                 ? 'success'
@@ -876,6 +1489,46 @@ export default function ApprovalRequestDetailPage() {
                               {request.contacts.length}
                             </Typography>
                           </Box>
+                        </Box>
+                      </IntercomCard>
+
+                      <IntercomCard title="Notifications" sx={{ mt: 2 }}>
+                        <Box p={2}>
+                          <Typography variant="body2" color="text.secondary" gutterBottom>
+                            Project Slack Channel
+                          </Typography>
+                          {isEditingSlack ? (
+                            <Box display="flex" alignItems="center" gap={1}>
+                              <TextField
+                                value={slackChannel}
+                                onChange={e => {
+                                  let value = e.target.value.trim();
+                                  if (value && !value.startsWith('#')) {
+                                    value = '#' + value;
+                                  }
+                                  setSlackChannel(value);
+                                }}
+                                placeholder="#channel-name"
+                                size="small"
+                                fullWidth
+                              />
+                              <IconButton onClick={handleSlackChannelUpdate} color="primary">
+                                <CheckIcon />
+                              </IconButton>
+                              <IconButton onClick={() => setIsEditingSlack(false)}>
+                                <CloseIcon />
+                              </IconButton>
+                            </Box>
+                          ) : (
+                            <Box display="flex" alignItems="center" gap={1}>
+                              <Typography variant="body1">
+                                {request?.project_slack_channel || 'Using default channel'}
+                              </Typography>
+                              <IconButton onClick={() => setIsEditingSlack(true)} size="small">
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            </Box>
+                          )}
                         </Box>
                       </IntercomCard>
                     </Grid>
@@ -1587,7 +2240,7 @@ export default function ApprovalRequestDetailPage() {
             currentReviewerIds={request.contacts.map(c => c.contact_id)}
             onReviewersAdded={() => {
               fetchRequestDetails();
-              showToast('Reviewers updated successfully.', 'success');
+              showSuccess('Reviewers updated successfully.');
             }}
           />
         )}
