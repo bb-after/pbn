@@ -742,13 +742,8 @@ export default function ClientApprovalRequestForm({
 
                     {(!accessToken && !googleAccessToken && googleClientId) || showLoginPrompt ? (
                       <Box my={2} textAlign="center">
-                        <Typography variant="body2" gutterBottom>
-                          Please sign in with Google to create the document:
-                        </Typography>
                         <Alert severity="info" sx={{ mb: 2, fontSize: '0.8rem' }}>
-                          Debug: accessToken={accessToken ? 'exists' : 'null'}, googleAccessToken=
-                          {googleAccessToken ? 'exists' : 'null'}, googleClientId=
-                          {googleClientId ? 'exists' : 'null'}, showLoginPrompt={showLoginPrompt}
+                          Please sign in with Google to create the document:
                         </Alert>
                         {googleClientId && (
                           <GoogleOAuthProvider clientId={googleClientId}>
