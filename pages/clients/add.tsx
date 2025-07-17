@@ -1,13 +1,12 @@
 import React from 'react';
 import { useRouter } from 'next/router';
-import { Container, Paper, Typography, Box } from '@mui/material';
-import LayoutContainer from '../../components/LayoutContainer';
-import StyledHeader from '../../components/StyledHeader';
+import { Typography, Box, Grid } from '@mui/material';
+import { IntercomLayout, ThemeProvider, ToastProvider, IntercomCard } from '../../components/ui';
 import ClientForm from '../../components/ClientForm';
 import UnauthorizedAccess from 'components/UnauthorizedAccess';
 import useValidateUserToken from 'hooks/useValidateUserToken';
 
-export default function AddClientPage() {
+function AddClientPageContent() {
   const router = useRouter();
   const { isValidUser } = useValidateUserToken();
 
@@ -24,28 +23,44 @@ export default function AddClientPage() {
   }
 
   return (
-    <LayoutContainer>
-      <StyledHeader />
-      <Container maxWidth="xl">
-        <Paper elevation={3} sx={{ p: 3, mt: 3 }}>
-          <ClientForm client={null} onSave={handleSave} onCancel={handleCancel} />
-          <div style={{ marginTop: 40 }}>
-            <hr style={{ margin: '32px 0' }} />
-            <Typography variant="h6" gutterBottom>
-              Client Contacts
-            </Typography>
-            <Typography variant="body1" color="textSecondary">
-              You must save the client before you can add contacts.
-            </Typography>
-            <ul style={{ color: '#888', marginTop: 16 }}>
-              <li>After saving, you can add, edit, or remove client contacts.</li>
-              <li>
-                Contacts are associated with each client and can be managed from the edit screen.
-              </li>
-            </ul>
-          </div>
-        </Paper>
-      </Container>
-    </LayoutContainer>
+    <IntercomLayout
+      title="Add New Client"
+      breadcrumbs={[{ label: 'Clients', href: '/clients' }, { label: 'Add Client' }]}
+    >
+      <Grid container spacing={3}>
+        <Grid item xs={12} md={8}>
+          <IntercomCard title="Client Details">
+            <Box p={3}>
+              <ClientForm client={null} onSave={handleSave} onCancel={handleCancel} />
+            </Box>
+          </IntercomCard>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <IntercomCard title="Client Contacts">
+            <Box p={3}>
+              <Typography variant="body1" color="text.secondary">
+                You must save the client before you can add contacts.
+              </Typography>
+              <ul style={{ color: '#888', marginTop: 16, paddingLeft: 20 }}>
+                <li>After saving, you can add, edit, or remove client contacts.</li>
+                <li>
+                  Contacts are associated with each client and can be managed from the edit screen.
+                </li>
+              </ul>
+            </Box>
+          </IntercomCard>
+        </Grid>
+      </Grid>
+    </IntercomLayout>
+  );
+}
+
+export default function AddClientPage() {
+  return (
+    <ThemeProvider>
+      <ToastProvider>
+        <AddClientPageContent />
+      </ToastProvider>
+    </ThemeProvider>
   );
 }

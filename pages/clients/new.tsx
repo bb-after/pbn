@@ -1,13 +1,12 @@
 import React from 'react';
-import { Container, Paper, Typography, Box } from '@mui/material';
-import LayoutContainer from '../../components/LayoutContainer';
-import StyledHeader from '../../components/StyledHeader';
-import ClientForm from '../../components/ClientForm';
 import { useRouter } from 'next/router';
+import { Typography, Box } from '@mui/material';
+import { IntercomLayout, ThemeProvider, ToastProvider, IntercomCard } from '../../components/ui';
+import ClientForm from '../../components/ClientForm';
 import UnauthorizedAccess from '../../components/UnauthorizedAccess';
 import useValidateUserToken from 'hooks/useValidateUserToken';
 
-export default function NewClientPage() {
+function NewClientPageContent() {
   const router = useRouter();
   const { isValidUser } = useValidateUserToken();
 
@@ -24,16 +23,28 @@ export default function NewClientPage() {
   }
 
   return (
-    <LayoutContainer>
-      <StyledHeader />
-      <Container maxWidth="lg">
-        <Paper elevation={3} sx={{ p: 4, mt: 3, mb: 3 }}>
+    <IntercomLayout
+      title="Add New Client"
+      breadcrumbs={[{ label: 'Clients', href: '/clients' }, { label: 'New Client' }]}
+    >
+      <IntercomCard>
+        <Box p={3}>
           <Typography variant="h5" gutterBottom>
-            Add New Client
+            Client Details
           </Typography>
           <ClientForm client={null} onSave={handleSave} onCancel={handleCancel} />
-        </Paper>
-      </Container>
-    </LayoutContainer>
+        </Box>
+      </IntercomCard>
+    </IntercomLayout>
+  );
+}
+
+export default function NewClientPage() {
+  return (
+    <ThemeProvider>
+      <ToastProvider>
+        <NewClientPageContent />
+      </ToastProvider>
+    </ThemeProvider>
   );
 }

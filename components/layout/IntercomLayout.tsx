@@ -35,6 +35,7 @@ import {
   Article as ArticleIcon,
   Star as StarIcon,
   Explore as ExploreIcon,
+  Assessment as AssessmentIcon,
   Notifications as NotificationsIcon,
   Help as HelpIcon,
   ExpandLess,
@@ -97,6 +98,12 @@ const navigationItems: NavigationItem[] = [
         href: '/superstar-sites',
       },
     ],
+  },
+  {
+    id: 'reports',
+    label: 'Reports',
+    icon: <AssessmentIcon />,
+    href: '/reports',
   },
   {
     id: 'content-compass',
