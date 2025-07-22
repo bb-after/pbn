@@ -1,7 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
-  Container,
-  Paper,
   Typography,
   Button,
   Box,
@@ -18,10 +16,6 @@ import {
   CircularProgress,
   Chip,
   FormControl,
-  FormLabel,
-  RadioGroup,
-  FormControlLabel,
-  Radio,
   Select,
   MenuItem,
   InputLabel,
@@ -37,8 +31,13 @@ import ErrorIcon from '@mui/icons-material/Error';
 import MappingIcon from '@mui/icons-material/AccountTree';
 import BusinessIcon from '@mui/icons-material/Business';
 import PersonIcon from '@mui/icons-material/Person';
-import LayoutContainer from 'components/LayoutContainer';
-import StyledHeader from 'components/StyledHeader';
+import {
+  IntercomLayout,
+  ThemeProvider,
+  ToastProvider,
+  IntercomCard,
+  IntercomButton,
+} from '../components/ui';
 import UnauthorizedAccess from 'components/UnauthorizedAccess';
 import useValidateUserToken from 'hooks/useValidateUserToken';
 import axios from 'axios';
@@ -95,7 +94,7 @@ interface User {
 
 type ListType = 'company' | 'individual' | 'blp';
 
-export default function LeadEnricherPage() {
+function LeadEnricherContent() {
   const router = useRouter();
   const { isValidUser, token, user } = useValidateUserToken();
   const [listType, setListType] = useState<ListType>('company');
@@ -632,10 +631,12 @@ export default function LeadEnricherPage() {
 
   if (submitted) {
     return (
-      <LayoutContainer>
-        <StyledHeader />
-        <Container maxWidth="md" sx={{ mt: 4, mb: 4 }}>
-          <Paper sx={{ p: 4, textAlign: 'center' }}>
+      <IntercomLayout
+        title="Submission Successful"
+        breadcrumbs={[{ label: 'Lead Enricher' }, { label: 'Success' }]}
+      >
+        <IntercomCard>
+          <Box p={4} textAlign="center">
             <CheckCircleIcon sx={{ fontSize: 80, color: 'success.main', mb: 2 }} />
             <Typography variant="h4" gutterBottom>
               Success!
@@ -644,25 +645,23 @@ export default function LeadEnricherPage() {
               Your data has been successfully submitted and added to the enrichment queue.
             </Typography>
             <Stack direction="row" spacing={2} justifyContent="center">
-              <Button variant="contained" onClick={resetForm}>
+              <IntercomButton variant="primary" onClick={resetForm}>
                 Submit Another List
-              </Button>
-              <Button variant="outlined" onClick={() => router.push('/')}>
+              </IntercomButton>
+              <IntercomButton variant="secondary" onClick={() => router.push('/')}>
                 Back to Dashboard
-              </Button>
+              </IntercomButton>
             </Stack>
-          </Paper>
-        </Container>
-      </LayoutContainer>
+          </Box>
+        </IntercomCard>
+      </IntercomLayout>
     );
   }
 
   return (
-    <LayoutContainer>
-      <StyledHeader />
-
-      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-        <Paper sx={{ p: 3 }}>
+    <IntercomLayout title="Lead Enricher" breadcrumbs={[{ label: 'Lead Enricher' }]}>
+      <IntercomCard>
+        <Box p={3}>
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 4 }}>
             <Box sx={{ height: 120, width: 'auto', position: 'relative', mb: 2 }}>
               <Image
@@ -921,15 +920,15 @@ export default function LeadEnricherPage() {
                       disabled={uploading}
                     />
                     <label htmlFor="csv-upload">
-                      <Button
-                        variant="contained"
+                      <IntercomButton
+                        variant="primary"
                         component="span"
-                        startIcon={uploading ? <CircularProgress size={20} /> : <CloudUploadIcon />}
+                        leftIcon={uploading ? <CircularProgress size={20} /> : <CloudUploadIcon />}
                         disabled={uploading}
                         size="large"
                       >
                         {uploading ? 'Processing...' : 'Choose CSV File'}
-                      </Button>
+                      </IntercomButton>
                     </label>
                   </CardContent>
                 </Card>
@@ -1040,17 +1039,17 @@ export default function LeadEnricherPage() {
 
                   {/* Action Buttons */}
                   <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Button variant="outlined" onClick={resetForm} disabled={submitting}>
+                    <IntercomButton variant="secondary" onClick={resetForm} disabled={submitting}>
                       Upload Different File
-                    </Button>
-                    <Button
-                      variant="contained"
+                    </IntercomButton>
+                    <IntercomButton
+                      variant="primary"
                       onClick={handleSubmit}
                       disabled={!isValid || submitting}
-                      startIcon={submitting ? <CircularProgress size={20} /> : undefined}
+                      leftIcon={submitting ? <CircularProgress size={20} /> : undefined}
                     >
                       {submitting ? 'Submitting...' : 'Submit for Enrichment'}
-                    </Button>
+                    </IntercomButton>
                   </Box>
                 </Stack>
               )
@@ -1078,15 +1077,15 @@ export default function LeadEnricherPage() {
                       disabled={uploading}
                     />
                     <label htmlFor="csv-upload">
-                      <Button
-                        variant="contained"
+                      <IntercomButton
+                        variant="primary"
                         component="span"
-                        startIcon={uploading ? <CircularProgress size={20} /> : <CloudUploadIcon />}
+                        leftIcon={uploading ? <CircularProgress size={20} /> : <CloudUploadIcon />}
                         disabled={uploading}
                         size="large"
                       >
                         {uploading ? 'Processing...' : 'Choose CSV File'}
-                      </Button>
+                      </IntercomButton>
                     </label>
                   </CardContent>
                 </Card>
@@ -1209,17 +1208,17 @@ export default function LeadEnricherPage() {
 
                   {/* Action Buttons */}
                   <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Button variant="outlined" onClick={resetForm} disabled={submitting}>
+                    <IntercomButton variant="secondary" onClick={resetForm} disabled={submitting}>
                       Upload Different File
-                    </Button>
-                    <Button
-                      variant="contained"
+                    </IntercomButton>
+                    <IntercomButton
+                      variant="primary"
                       onClick={handleSubmit}
                       disabled={!isValid || submitting}
-                      startIcon={submitting ? <CircularProgress size={20} /> : undefined}
+                      leftIcon={submitting ? <CircularProgress size={20} /> : undefined}
                     >
                       {submitting ? 'Submitting...' : 'Submit for Enrichment'}
-                    </Button>
+                    </IntercomButton>
                   </Box>
                 </Stack>
               )
@@ -1248,15 +1247,15 @@ export default function LeadEnricherPage() {
                     disabled={uploading}
                   />
                   <label htmlFor="csv-upload">
-                    <Button
-                      variant="contained"
+                    <IntercomButton
+                      variant="primary"
                       component="span"
-                      startIcon={uploading ? <CircularProgress size={20} /> : <CloudUploadIcon />}
+                      leftIcon={uploading ? <CircularProgress size={20} /> : <CloudUploadIcon />}
                       disabled={uploading}
                       size="large"
                     >
                       {uploading ? 'Processing...' : 'Choose CSV File'}
-                    </Button>
+                    </IntercomButton>
                   </label>
                 </CardContent>
               </Card>
@@ -1383,23 +1382,23 @@ export default function LeadEnricherPage() {
 
                 {/* Action Buttons */}
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Button variant="outlined" onClick={resetForm} disabled={submitting}>
+                  <IntercomButton variant="secondary" onClick={resetForm} disabled={submitting}>
                     Upload Different File
-                  </Button>
-                  <Button
-                    variant="contained"
+                  </IntercomButton>
+                  <IntercomButton
+                    variant="primary"
                     onClick={handleSubmit}
                     disabled={!isValid || submitting}
-                    startIcon={submitting ? <CircularProgress size={20} /> : undefined}
+                    leftIcon={submitting ? <CircularProgress size={20} /> : undefined}
                   >
                     {submitting ? 'Submitting...' : 'Submit for Enrichment'}
-                  </Button>
+                  </IntercomButton>
                 </Box>
               </Stack>
             )}
           </Box>
-        </Paper>
-      </Container>
+        </Box>
+      </IntercomCard>
 
       {/* Field Mapping Modal */}
       <Dialog
@@ -1534,9 +1533,11 @@ export default function LeadEnricherPage() {
           </TableContainer>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowMapping(false)}>Cancel</Button>
-          <Button
-            variant="contained"
+          <IntercomButton variant="secondary" onClick={() => setShowMapping(false)}>
+            Cancel
+          </IntercomButton>
+          <IntercomButton
+            variant="primary"
             onClick={applyMapping}
             disabled={
               (listType === 'company'
@@ -1549,9 +1550,19 @@ export default function LeadEnricherPage() {
             }
           >
             Apply Mapping
-          </Button>
+          </IntercomButton>
         </DialogActions>
       </Dialog>
-    </LayoutContainer>
+    </IntercomLayout>
+  );
+}
+
+export default function LeadEnricherPage() {
+  return (
+    <ThemeProvider>
+      <ToastProvider>
+        <LeadEnricherContent />
+      </ToastProvider>
+    </ThemeProvider>
   );
 }

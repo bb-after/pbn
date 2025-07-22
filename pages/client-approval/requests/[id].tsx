@@ -2254,11 +2254,9 @@ export default function ApprovalRequestDetailPage() {
       <Head>
         <title>Request Details - {request?.title || id}</title>
       </Head>
-      <ThemeProvider>
-        <ToastProvider>
-          <ClientApprovalRequestContent />
-        </ToastProvider>
-      </ThemeProvider>
+      <ToastProvider>
+        <ClientApprovalRequestContent />
+      </ToastProvider>
     </>
   );
 }

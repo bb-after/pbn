@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Container,
   Typography,
-  Paper,
   Stepper,
   Step,
   StepLabel,
@@ -10,7 +8,6 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Button,
   Box,
   Card,
   CardContent,
@@ -18,7 +15,6 @@ import {
   Grid,
   CircularProgress,
   Divider,
-  Link as MuiLink,
   Chip,
   TextField,
   Autocomplete,
@@ -35,8 +31,16 @@ import axios from 'axios';
 import { useRouter } from 'next/router';
 import debounce from 'lodash/debounce';
 import { SelectChangeEvent } from '@mui/material/Select';
-import StyledHeader from 'components/StyledHeader';
-import LayoutContainer from 'components/LayoutContainer';
+import {
+  IntercomLayout,
+  ThemeProvider,
+  ToastProvider,
+  IntercomCard,
+  IntercomButton,
+} from '../components/ui';
+import useValidateUserToken from '../hooks/useValidateUserToken';
+import UnauthorizedAccess from '../components/UnauthorizedAccess';
+import { Link as LinkIcon, Create as CreateIcon } from '@mui/icons-material';
 
 // Types for our data
 interface Industry {
@@ -76,8 +80,9 @@ interface Client {
 // Step titles for the new flow
 const steps = ['Select Client', 'Choose Article Type', 'Select Target', 'View Blogs'];
 
-export default function ContentCompass() {
+function ContentCompassPage() {
   const router = useRouter();
+  const { isValidUser, isLoading: isAuthLoading } = useValidateUserToken();
 
   // State for current step
   const [activeStep, setActiveStep] = useState(0);
@@ -528,9 +533,9 @@ export default function ContentCompass() {
       </Box>
 
       <Box mt={4}>
-        <Button onClick={handleBack} variant="outlined" sx={{ mr: 1 }}>
+        <IntercomButton onClick={handleBack} variant="secondary">
           Back
-        </Button>
+        </IntercomButton>
       </Box>
     </Box>
   );
@@ -544,9 +549,9 @@ export default function ContentCompass() {
           <Typography variant="h6" gutterBottom>
             Select Target for {selectedClientName}
           </Typography>
-          <Button onClick={handleBack} variant="outlined" sx={{ mt: 1 }}>
+          <IntercomButton onClick={handleBack} variant="secondary" sx={{ mt: 1 }}>
             Back
-          </Button>
+          </IntercomButton>
         </Box>
 
         {articleType === 'specific' ? renderTopicSelection() : renderGeneralArticleTargets()}
@@ -562,7 +567,7 @@ export default function ContentCompass() {
           <CircularProgress />
         </Box>
       ) : topics.length > 0 ? (
-        <TableContainer component={Paper} sx={{ mt: 2 }}>
+        <TableContainer component={Box} sx={{ mt: 2 }}>
           <Table aria-label="topics table">
             <TableHead>
               <TableRow>
@@ -604,9 +609,8 @@ export default function ContentCompass() {
                       />
                     </TableCell>
                     <TableCell align="center">
-                      <Button
-                        variant="contained"
-                        color="primary"
+                      <IntercomButton
+                        variant="primary"
                         size="small"
                         onClick={e => {
                           e.stopPropagation();
@@ -614,7 +618,7 @@ export default function ContentCompass() {
                         }}
                       >
                         Select
-                      </Button>
+                      </IntercomButton>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -783,9 +787,9 @@ export default function ContentCompass() {
           <Box
             sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}
           >
-            <Button onClick={handleBack} variant="outlined">
+            <IntercomButton onClick={handleBack} variant="secondary">
               Back
-            </Button>
+            </IntercomButton>
 
             <Box>
               <FormControl size="small" sx={{ minWidth: 200 }}>
@@ -842,31 +846,22 @@ export default function ContentCompass() {
                   </CardContent>
                   <Divider />
                   <CardActions sx={{ justifyContent: 'space-between', px: 2, py: 1 }}>
-                    <Button
+                    <IntercomButton
                       size="small"
-                      color="primary"
+                      variant="secondary"
                       onClick={() => window.open(`${blog.domain}`, '_blank')}
-                      startIcon={
-                        <Box component="span" sx={{ fontSize: '18px' }}>
-                          🔗
-                        </Box>
-                      }
+                      leftIcon={<LinkIcon />}
                     >
                       Visit Blog
-                    </Button>
-                    <Button
+                    </IntercomButton>
+                    <IntercomButton
                       size="small"
-                      color="secondary"
-                      variant="contained"
+                      variant="primary"
                       onClick={() => handleSubmitPostClick(blog)}
-                      startIcon={
-                        <Box component="span" sx={{ fontSize: '18px' }}>
-                          ✏️
-                        </Box>
-                      }
+                      leftIcon={<CreateIcon />}
                     >
                       Submit Post
-                    </Button>
+                    </IntercomButton>
                   </CardActions>
                 </Card>
               </Grid>
@@ -879,9 +874,9 @@ export default function ContentCompass() {
         )}
 
         <Box mt={4}>
-          <Button onClick={handleReset} variant="contained" color="primary">
+          <IntercomButton onClick={handleReset} variant="primary">
             Start Over
-          </Button>
+          </IntercomButton>
         </Box>
       </Box>
     );
@@ -903,16 +898,26 @@ export default function ContentCompass() {
     }
   };
 
-  return (
-    <LayoutContainer>
-      <StyledHeader />
+  if (isAuthLoading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+        <CircularProgress />
+      </Box>
+    );
+  }
 
-      <Container maxWidth="lg">
-        <Paper elevation={3} sx={{ p: 4, mt: 8, mb: 8 }}>
+  if (!isValidUser) {
+    return <UnauthorizedAccess />;
+  }
+
+  return (
+    <IntercomLayout title="Content Compass" breadcrumbs={[{ label: 'Content Compass' }]}>
+      <IntercomCard>
+        <Box p={4}>
           <Typography variant="h4" align="center" gutterBottom>
             Content Compass
           </Typography>
-          <Typography variant="subtitle1" align="center" color="textSecondary" paragraph>
+          <Typography variant="subtitle1" align="center" color="text.secondary" paragraph>
             Navigate to the perfect content placement for your clients
           </Typography>
 
@@ -933,8 +938,18 @@ export default function ContentCompass() {
           )}
 
           {getStepContent(activeStep)}
-        </Paper>
-      </Container>
-    </LayoutContainer>
+        </Box>
+      </IntercomCard>
+    </IntercomLayout>
+  );
+}
+
+export default function ContentCompass() {
+  return (
+    <ThemeProvider>
+      <ToastProvider>
+        <ContentCompassPage />
+      </ToastProvider>
+    </ThemeProvider>
   );
 }

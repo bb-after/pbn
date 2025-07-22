@@ -182,14 +182,17 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 boxShadow: tokens.shadows[4],
                 minWidth: 320,
                 maxWidth: 480,
+                // marginTop: 0.75,
                 '& .MuiAlert-icon': {
                   color: colors.iconColor,
                 },
                 '& .MuiAlert-message': {
-                  padding: 0,
+                  // padding: 0,
+                  // marginTop: 0.75,
                 },
                 '& .MuiAlert-action': {
-                  padding: 0,
+                  // padding: 0,
+                  // marginTop: 0.75,
                   marginRight: 0,
                 },
               }}
@@ -209,7 +212,7 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                     style={{
                       fontSize: '0.8125rem',
                       opacity: 0.9,
-                      lineHeight: 1.4,
+                      lineHeight: 1,
                     }}
                   >
                     {toast.message}

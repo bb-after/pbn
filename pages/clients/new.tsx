@@ -41,10 +41,8 @@ function NewClientPageContent() {
 
 export default function NewClientPage() {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <NewClientPageContent />
-      </ToastProvider>
-    </ThemeProvider>
+    <ToastProvider>
+      <NewClientPageContent />
+    </ToastProvider>
   );
 }

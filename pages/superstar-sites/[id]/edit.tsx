@@ -4,24 +4,26 @@ import axios from 'axios';
 import {
   Typography,
   TextField,
-  Button,
-  Container,
   Box,
   FormControl,
   InputLabel,
   Select,
   MenuItem,
   CircularProgress,
-  Divider,
   Grid,
-  Paper,
-  Chip,
 } from '@mui/material';
 import Autocomplete from '@mui/material/Autocomplete';
 import IndustryMappingSelector from '../../../components/IndustryMappingSelector';
 import RegionMappingSelector from '../../../components/RegionMappingSelector';
-import StyledHeader from 'components/StyledHeader';
-import LayoutContainer from 'components/LayoutContainer';
+import useValidateUserToken from 'hooks/useValidateUserToken';
+import {
+  IntercomLayout,
+  ThemeProvider,
+  ToastProvider,
+  IntercomCard,
+  IntercomButton,
+} from '../../../components/ui';
+import UnauthorizedAccess from '../../../components/UnauthorizedAccess';
 
 interface Industry {
   industry_id: number;
@@ -52,7 +54,7 @@ interface SuperstarSite {
   regions?: Region[];
 }
 
-const EditTopics: React.FC = () => {
+function EditSitePage() {
   const router = useRouter();
   const { id } = router.query;
   const [site, setSite] = useState<SuperstarSite | null>(null);
@@ -68,7 +70,8 @@ const EditTopics: React.FC = () => {
   const [regions, setRegions] = useState<Region[]>([]);
   const [selectedIndustries, setSelectedIndustries] = useState<Industry[]>([]);
   const [selectedRegions, setSelectedRegions] = useState<Region[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
+  const { isLoading: isAuthLoading, isValidUser } = useValidateUserToken();
 
   // Helper function to flatten nested regions for Autocomplete
   const flattenRegions = (regions: Region[]): Region[] => {
@@ -99,7 +102,7 @@ const EditTopics: React.FC = () => {
       } catch (error) {
         console.error('Error fetching mapping data:', error);
       } finally {
-        setLoading(false);
+        // setLoading(false);
       }
     };
 
@@ -130,6 +133,8 @@ const EditTopics: React.FC = () => {
           }
         } catch (error) {
           console.error('Error fetching site:', error);
+        } finally {
+          setLoading(false);
         }
       };
 
@@ -156,144 +161,152 @@ const EditTopics: React.FC = () => {
     }
   };
 
-  // Sort regions alphabetically within each type group
-  const sortedRegions = flattenRegions(regions).sort((a, b) => {
-    // First sort by region_type to maintain groups
-    if (a.region_type !== b.region_type) {
-      // Custom order for region types
-      const typeOrder = {
-        continent: 1,
-        country: 2,
-        us_region: 3,
-        state: 4,
-        city: 5,
-      };
-      return (
-        (typeOrder[a.region_type as keyof typeof typeOrder] || 99) -
-        (typeOrder[b.region_type as keyof typeof typeOrder] || 99)
-      );
-    }
-    // Then sort alphabetically within each type
-    return a.region_name.localeCompare(b.region_name);
-  });
+  const handleCancel = () => {
+    router.push('/superstar-sites');
+  };
+
+  if (isAuthLoading || loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (!isValidUser) {
+    return <UnauthorizedAccess />;
+  }
 
   return (
-    <LayoutContainer>
-      <StyledHeader />
-      <Box my={4}>
-        <Typography variant="h4" gutterBottom>
-          Edit Site: {site?.domain}
-        </Typography>
-        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Site Details
-          </Typography>
+    <IntercomLayout
+      title={`Edit Site: ${site?.domain}`}
+      breadcrumbs={[{ label: 'Superstar Sites', href: '/superstar-sites' }, { label: 'Edit Site' }]}
+      actions={
+        <Box display="flex" gap={2}>
+          <IntercomButton variant="secondary" onClick={handleCancel}>
+            Cancel
+          </IntercomButton>
+          <IntercomButton variant="primary" onClick={handleSave}>
+            Save Changes
+          </IntercomButton>
+        </Box>
+      }
+    >
+      <Grid container spacing={3}>
+        <Grid item xs={12} md={8}>
+          <IntercomCard title="Site Details">
+            <Box p={3}>
+              <Grid container spacing={3}>
+                <Grid item xs={12}>
+                  <Autocomplete
+                    multiple
+                    freeSolo
+                    options={[]}
+                    value={topics}
+                    onChange={(event, newValue) => setTopics(newValue as string[])}
+                    renderInput={params => (
+                      <TextField
+                        {...params}
+                        variant="outlined"
+                        label="Topics"
+                        placeholder="Add topics"
+                      />
+                    )}
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    variant="outlined"
+                    label="WordPress Username"
+                    fullWidth
+                    value={wpUsername}
+                    onChange={e => setWpUsername(e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    variant="outlined"
+                    label="WordPress Password"
+                    type="password"
+                    fullWidth
+                    value={wpPassword}
+                    onChange={e => setWpPassword(e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    variant="outlined"
+                    label="WordPress Application Password"
+                    type="password"
+                    fullWidth
+                    value={wpAppPassword}
+                    onChange={e => setWpAppPassword(e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    variant="outlined"
+                    label="Custom Prompt"
+                    multiline
+                    rows={4}
+                    fullWidth
+                    value={customPrompt}
+                    onChange={e => setCustomPrompt(e.target.value)}
+                    placeholder="Enter a custom prompt to override the default prompt for this site"
+                    helperText="Leave empty to use the default prompt."
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <FormControl fullWidth>
+                    <InputLabel id="active-label">Status</InputLabel>
+                    <Select
+                      labelId="active-label"
+                      label="Status"
+                      value={active}
+                      onChange={e => setActive(e.target.value as string)}
+                    >
+                      <MenuItem value="1">Active</MenuItem>
+                      <MenuItem value="0">Inactive</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+              </Grid>
+            </Box>
+          </IntercomCard>
+        </Grid>
+        <Grid item xs={12} md={4}>
           <Grid container spacing={3}>
             <Grid item xs={12}>
-              <Autocomplete
-                multiple
-                freeSolo
-                options={[]}
-                value={topics}
-                onChange={(event, newValue) => setTopics(newValue as string[])}
-                renderInput={params => (
-                  <TextField
-                    {...params}
-                    variant="outlined"
-                    label="Topics"
-                    placeholder="Add topics"
-                  />
-                )}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                variant="outlined"
-                label="WordPress Username"
-                fullWidth
-                value={wpUsername}
-                onChange={e => setWpUsername(e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                variant="outlined"
-                label="WordPress Password"
-                type="password"
-                fullWidth
-                value={wpPassword}
-                onChange={e => setWpPassword(e.target.value)}
-              />
+              <IntercomCard>
+                <IndustryMappingSelector
+                  selectedIndustries={selectedIndustries}
+                  onChange={setSelectedIndustries}
+                  description="Select industries that this client specializes in."
+                />
+              </IntercomCard>
             </Grid>
             <Grid item xs={12}>
-              <TextField
-                variant="outlined"
-                label="WordPress Application Password"
-                type="password"
-                fullWidth
-                value={wpAppPassword}
-                onChange={e => setWpAppPassword(e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                variant="outlined"
-                label="Custom Prompt"
-                multiline
-                rows={4}
-                fullWidth
-                value={customPrompt}
-                onChange={e => setCustomPrompt(e.target.value)}
-                placeholder="Enter a custom prompt to override the default prompt when generating content for this site"
-                helperText="Leave empty to use the default prompt"
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <FormControl fullWidth>
-                <InputLabel id="active-label">Status</InputLabel>
-                <Select
-                  labelId="active-label"
-                  value={active}
-                  onChange={e => setActive(e.target.value as string)}
-                >
-                  <MenuItem value="1">Active</MenuItem>
-                  <MenuItem value="0">Inactive</MenuItem>
-                </Select>
-              </FormControl>
+              <IntercomCard>
+                <RegionMappingSelector
+                  selectedRegions={selectedRegions}
+                  onChange={setSelectedRegions}
+                  description="Select geographic regions that this client targets."
+                />
+              </IntercomCard>
             </Grid>
           </Grid>
-        </Paper>
-
-        {/* <Grid item xs={12}> */}
-        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-          <Divider sx={{ my: 1 }} />
-          <IndustryMappingSelector
-            selectedIndustries={selectedIndustries}
-            onChange={setSelectedIndustries}
-            description="Select industries that this client specializes in."
-          />
-        </Paper>
-
-        <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-          <Divider sx={{ my: 1 }} />
-          <RegionMappingSelector
-            selectedRegions={selectedRegions}
-            onChange={setSelectedRegions}
-            description="Select geographic regions that this client targets."
-          />
-        </Paper>
-
-        <Box mt={3} mb={5} display="flex" justifyContent="space-between">
-          <Button variant="outlined" onClick={() => router.push('/superstar-sites')}>
-            Cancel
-          </Button>
-          <Button variant="contained" color="primary" onClick={handleSave}>
-            Save Changes
-          </Button>
-        </Box>
-      </Box>
-    </LayoutContainer>
+        </Grid>
+      </Grid>
+    </IntercomLayout>
   );
-};
+}
 
-export default EditTopics;
+export default function EditTopics() {
+  return (
+    <ThemeProvider>
+      <ToastProvider>
+        <EditSitePage />
+      </ToastProvider>
+    </ThemeProvider>
+  );
+}

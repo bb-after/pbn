@@ -1,18 +1,25 @@
 // pages/pbn-site-submissions.js
 
-import { TableContainer, Paper } from "@mui/material";
-import LayoutContainer from "components/LayoutContainer";
-import StyledHeader from "components/StyledHeader";
-import PbnSiteSubmissionsTable from "../components/PbnSiteSubmissionsTable";
+import { IntercomLayout, ThemeProvider, ToastProvider, IntercomCard } from '../components/ui';
+import PbnSiteSubmissionsTable from '../components/PbnSiteSubmissionsTable';
+import { Box } from '@mui/material';
 
 const PbnSiteSubmissionsPage = () => {
   return (
-    <LayoutContainer>
-      <StyledHeader />
-      <TableContainer component={Paper} style={{ padding: "0.5rem" }}>
-        <PbnSiteSubmissionsTable />;
-      </TableContainer>
-    </LayoutContainer>
+    <ThemeProvider>
+      <ToastProvider>
+        <IntercomLayout
+          title="PBN Submissions"
+          breadcrumbs={[{ label: 'PBNJ' }, { label: 'Submissions' }]}
+        >
+          <IntercomCard>
+            <Box p={3}>
+              <PbnSiteSubmissionsTable />
+            </Box>
+          </IntercomCard>
+        </IntercomLayout>
+      </ToastProvider>
+    </ThemeProvider>
   );
 };
 

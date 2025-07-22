@@ -16,12 +16,6 @@ import {
   MenuItem,
   TablePagination,
   CircularProgress,
-  Tooltip,
-  Chip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Alert,
   Snackbar,
   FormControl,
@@ -30,6 +24,7 @@ import useValidateUserToken from '../hooks/useValidateUserToken';
 import Image from 'next/image';
 import { useRouter } from 'next/router';
 import UnauthorizedAccess from './UnauthorizedAccess';
+import { IntercomButton } from './ui';
 
 const handleDeleteSubmission = async (
   submissionId: number,
@@ -662,30 +657,35 @@ const SuperstarSiteSubmissionsTable = () => {
                   </TableCell>
                   <TableCell>{submission.created}</TableCell>
                   <TableCell>
-                    <Link href={submission.submission_response} underline="none" target="_blank">
-                      <Button size="small" variant="outlined" color="primary">
+                    <Box display="flex" gap={1}>
+                      <IntercomButton
+                        size="small"
+                        variant="primary"
+                        onClick={() => window.open(submission.submission_response, '_blank')}
+                      >
                         View
-                      </Button>
-                    </Link>
-                    <Link href={`/editSuperStarPost/${submission.id}`}>
-                      <Button size="small" variant="outlined">
+                      </IntercomButton>
+                      <IntercomButton
+                        size="small"
+                        variant="secondary"
+                        onClick={() => router.push(`/editSuperStarPost/${submission.id}`)}
+                      >
                         Edit
-                      </Button>
-                    </Link>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      color="error"
-                      onClick={() =>
-                        handleDeleteSubmission(
-                          submission.id,
-                          submission.submission_response,
-                          'superstar'
-                        )
-                      }
-                    >
-                      Delete
-                    </Button>
+                      </IntercomButton>
+                      <IntercomButton
+                        size="small"
+                        variant="danger"
+                        onClick={() =>
+                          handleDeleteSubmission(
+                            submission.id,
+                            submission.submission_response,
+                            'superstar'
+                          )
+                        }
+                      >
+                        Delete
+                      </IntercomButton>
+                    </Box>
                   </TableCell>
                 </TableRow>
               );

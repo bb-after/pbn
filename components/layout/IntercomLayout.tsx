@@ -43,6 +43,12 @@ import {
   ExpandMore,
   Home as HomeIcon,
   ChevronRight as ChevronRightIcon,
+  AddCircleOutline as AddCircleOutlineIcon,
+  Build as BuildIcon,
+  Insights as InsightsIcon,
+  Link as LinkIcon,
+  TravelExplore as TravelExploreIcon,
+  Wallpaper as WallpaperIcon,
 } from '@mui/icons-material';
 import { tokens } from '../../theme/intercom-theme';
 
@@ -82,21 +88,46 @@ const navigationItems: NavigationItem[] = [
     href: '/client-approval',
   },
   {
-    id: 'submissions',
-    label: 'Submissions',
-    icon: <AssignmentIcon />,
+    id: 'pbnj',
+    label: 'PBNJ',
+    icon: <ArticleIcon />,
     children: [
       {
         id: 'pbn-submissions',
         label: 'PBN Submissions',
-        icon: <ArticleIcon />,
-        href: '/pbn-submissions',
+        icon: <AssignmentIcon />,
+        href: '/pbn-site-submissions',
+      },
+      {
+        id: 'pbn-create-new',
+        label: 'Create New Submission',
+        icon: <AddCircleOutlineIcon />,
+        href: '/pbn-form',
+      },
+    ],
+  },
+  {
+    id: 'superstar',
+    label: 'Superstar',
+    icon: <StarIcon />,
+    children: [
+      {
+        id: 'superstar-sites',
+        label: 'Superstar Sites',
+        icon: <StarIcon />,
+        href: '/superstar-sites',
       },
       {
         id: 'superstar-submissions',
         label: 'Superstar Submissions',
-        icon: <StarIcon />,
-        href: '/superstar-sites',
+        icon: <AssignmentIcon />,
+        href: '/superstar-site-submissions',
+      },
+      {
+        id: 'superstar-create-new',
+        label: 'Create New Site',
+        icon: <AddCircleOutlineIcon />,
+        href: '/superstar-sites/new',
       },
     ],
   },
@@ -111,6 +142,37 @@ const navigationItems: NavigationItem[] = [
     label: 'Content Compass',
     icon: <ExploreIcon />,
     href: '/content-compass',
+  },
+  {
+    id: 'other-tooling',
+    label: 'Other Tooling',
+    icon: <BuildIcon />,
+    children: [
+      {
+        id: 'lead-enricher',
+        label: 'Lead Enricher',
+        icon: <InsightsIcon />,
+        href: '/lead-enricher',
+      },
+      {
+        id: 'backlink-buddy',
+        label: 'Backlink Buddy',
+        icon: <LinkIcon />,
+        href: '/backlink-buddy',
+      },
+      {
+        id: 'wiki-scraper',
+        label: 'Wiki Scraper',
+        icon: <TravelExploreIcon />,
+        href: '/company-info',
+      },
+      {
+        id: 'zoom-backdrop',
+        label: 'Zoom Backdrop',
+        icon: <WallpaperIcon />,
+        href: '/zoom',
+      },
+    ],
   },
 ];
 
@@ -130,7 +192,11 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
   // Debug logging
   console.log('IntercomLayout user object:', user);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [expandedItems, setExpandedItems] = useState<string[]>(['submissions']);
+  const [expandedItems, setExpandedItems] = useState<string[]>([
+    'pbnj',
+    'superstar',
+    'other-tooling',
+  ]);
   const [profileAnchorEl, setProfileAnchorEl] = useState<null | HTMLElement>(null);
   const [searchValue, setSearchValue] = useState('');
 
@@ -299,6 +365,13 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
               borderRadius: 1,
               '&:hover': {
                 backgroundColor: 'action.hover',
+                // Ensure text colors have enough contrast on hover
+                '& .MuiListItemText-primary': {
+                  color: 'text.primary',
+                },
+                '& .MuiListItemText-secondary': {
+                  color: 'text.secondary',
+                },
               },
             }}
           >
@@ -463,7 +536,14 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
         >
           Profile
         </MenuItem>
-        <MenuItem onClick={handleProfileClose}>Settings</MenuItem>
+        <MenuItem
+          onClick={() => {
+            handleProfileClose();
+            router.push('/settings');
+          }}
+        >
+          Settings
+        </MenuItem>
         <Divider />
         <MenuItem onClick={handleProfileClose}>Logout</MenuItem>
       </Menu>

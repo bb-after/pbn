@@ -466,10 +466,8 @@ function ReportDetailPageContent() {
 
 export default function ReportDetailPage() {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <ReportDetailPageContent />
-      </ToastProvider>
-    </ThemeProvider>
+    <ToastProvider>
+      <ReportDetailPageContent />
+    </ToastProvider>
   );
 }

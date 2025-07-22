@@ -1,18 +1,23 @@
-import { TableContainer, Paper } from "@mui/material";
-import LayoutContainer from "components/LayoutContainer";
-import StyledHeader from "components/StyledHeader";
-import SuperstarSiteSubmissionsTable from "../components/SuperstarSiteSubmissionsTable";
+import { IntercomLayout, ThemeProvider, ToastProvider, IntercomCard } from '../components/ui';
+import SuperstarSiteSubmissionsTable from '../components/SuperstarSiteSubmissionsTable';
+import { Box } from '@mui/material';
 
 const SuperstarSiteSubmissionsPage = () => {
   return (
-    <LayoutContainer>
-      <StyledHeader />
-      <TableContainer component={Paper} style={{ padding: "0.5rem" }}>
-        <h1>Superstar Sites</h1>
-
-        <SuperstarSiteSubmissionsTable />
-      </TableContainer>
-    </LayoutContainer>
+    <ThemeProvider>
+      <ToastProvider>
+        <IntercomLayout
+          title="Superstar Submissions"
+          breadcrumbs={[{ label: 'Superstar' }, { label: 'Submissions' }]}
+        >
+          <IntercomCard>
+            <Box p={3}>
+              <SuperstarSiteSubmissionsTable />
+            </Box>
+          </IntercomCard>
+        </IntercomLayout>
+      </ToastProvider>
+    </ThemeProvider>
   );
 };
 

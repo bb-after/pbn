@@ -57,10 +57,8 @@ function AddClientPageContent() {
 
 export default function AddClientPage() {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <AddClientPageContent />
-      </ToastProvider>
-    </ThemeProvider>
+    <ToastProvider>
+      <AddClientPageContent />
+    </ToastProvider>
   );
 }

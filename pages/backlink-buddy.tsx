@@ -1,10 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Container,
-  Paper,
   Typography,
-  TextField,
-  Button,
   Box,
   Chip,
   InputAdornment,
@@ -32,14 +28,20 @@ import {
   ListItem,
   ListItemText,
   ListItemSecondaryAction,
+  TextField,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ShuffleIcon from '@mui/icons-material/Shuffle';
-import LayoutContainer from 'components/LayoutContainer';
-import StyledHeader from 'components/StyledHeader';
+import {
+  IntercomLayout,
+  ThemeProvider,
+  ToastProvider,
+  IntercomCard,
+  IntercomButton,
+} from '../components/ui';
 import ClientDropdown from 'components/ClientDropdown';
 import useValidateUserToken from 'hooks/useValidateUserToken';
 import dynamic from 'next/dynamic';
@@ -146,7 +148,7 @@ const shuffleArray = <T extends unknown>(array: T[]): T[] => {
   return newArray;
 };
 
-export default function BacklinkBuddyPage() {
+function BacklinkBuddyContent() {
   const router = useRouter();
   const { isValidUser, token } = useValidateUserToken();
   const [activeStep, setActiveStep] = useState(0);
@@ -787,20 +789,20 @@ export default function BacklinkBuddyPage() {
                       sx={{ mb: 2 }}
                       action={
                         <>
-                          <Button
+                          <IntercomButton
                             color="inherit"
                             size="small"
                             onClick={() => setShowBacklinksWarning(null)}
                           >
                             Cancel
-                          </Button>
-                          <Button
+                          </IntercomButton>
+                          <IntercomButton
                             color="warning"
                             size="small"
                             onClick={() => applyBacklinksToggle(article.id)}
                           >
                             Continue
-                          </Button>
+                          </IntercomButton>
                         </>
                       }
                     >
@@ -993,15 +995,14 @@ export default function BacklinkBuddyPage() {
                       ))}
 
                       {article.backlinks.length < MAX_BACKLINKS_PER_ARTICLE && (
-                        <Button
-                          variant="outlined"
-                          color="primary"
-                          startIcon={<AddIcon />}
+                        <IntercomButton
+                          variant="secondary"
                           onClick={() => handleAddBacklink(article.id)}
                           sx={{ mt: 1 }}
+                          leftIcon={<AddIcon />}
                         >
                           Add Backlink
-                        </Button>
+                        </IntercomButton>
                       )}
                     </>
                   )}
@@ -1028,14 +1029,9 @@ export default function BacklinkBuddyPage() {
             ))}
 
             <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<AddIcon />}
-                onClick={handleAddArticle}
-              >
+              <IntercomButton variant="primary" onClick={handleAddArticle} leftIcon={<AddIcon />}>
                 Add Another Article
-              </Button>
+              </IntercomButton>
             </Box>
           </Stack>
         );
@@ -1122,17 +1118,22 @@ export default function BacklinkBuddyPage() {
                   )}
                 </CardContent>
                 <CardActions>
-                  <Button startIcon={<EditIcon />} onClick={() => handleArticleEdit(index)}>
+                  <IntercomButton
+                    variant="secondary"
+                    onClick={() => handleArticleEdit(index)}
+                    leftIcon={<EditIcon />}
+                  >
                     {article.isEditing ? 'Save Changes' : 'Edit Article'}
-                  </Button>
-                  <Button
-                    startIcon={<RefreshIcon />}
+                  </IntercomButton>
+                  <IntercomButton
+                    variant="secondary"
+                    color="primary"
                     onClick={() => handleRegenerateArticle(article.articleId)}
                     disabled={regeneratingArticles[article.articleId]}
-                    color="secondary"
+                    leftIcon={<RefreshIcon />}
                   >
                     {regeneratingArticles[article.articleId] ? 'Regenerating...' : 'Regenerate'}
-                  </Button>
+                  </IntercomButton>
                 </CardActions>
               </Card>
             ))}
@@ -1186,71 +1187,78 @@ export default function BacklinkBuddyPage() {
   }
 
   return (
-    <LayoutContainer>
-      <StyledHeader />
-
-      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-        {!isValidUser ? (
-          <Alert severity="warning">
-            You need to be logged in to use this tool. Please log in and try again.
-          </Alert>
-        ) : (
-          <Paper sx={{ p: 3 }}>
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 4 }}>
-              <Box sx={{ height: 200, width: 'auto', position: 'relative', mb: 2 }}>
-                <Image
-                  src="/images/backlink-buddy-logo.png"
-                  alt="Backlink Buddy Logo"
-                  width={400}
-                  height={200}
-                  style={{ objectFit: 'contain' }}
-                  priority
-                />
-              </Box>
+    <IntercomLayout title="Backlink Buddy" breadcrumbs={[{ label: 'Backlink Buddy' }]}>
+      <IntercomCard>
+        <Box p={3}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 4 }}>
+            <Box sx={{ height: 200, width: 'auto', position: 'relative', mb: 2 }}>
+              <Image
+                src="/images/backlink-buddy-logo.png"
+                alt="Backlink Buddy Logo"
+                width={400}
+                height={200}
+                style={{ objectFit: 'contain' }}
+                priority
+              />
             </Box>
+          </Box>
 
-            <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
-              {steps.map(label => (
-                <Step key={label}>
-                  <StepLabel>{label}</StepLabel>
-                </Step>
-              ))}
-            </Stepper>
+          <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
+            {steps.map(label => (
+              <Step key={label}>
+                <StepLabel>{label}</StepLabel>
+              </Step>
+            ))}
+          </Stepper>
 
-            {error && (
-              <Alert severity="error" sx={{ mb: 3 }}>
-                {error}
-              </Alert>
+          {error && (
+            <Alert severity="error" sx={{ mb: 3 }}>
+              {error}
+            </Alert>
+          )}
+
+          {renderStepContent()}
+
+          <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between' }}>
+            <IntercomButton
+              variant="secondary"
+              onClick={handleBack}
+              disabled={activeStep === 0 || generating || submitting}
+            >
+              Back
+            </IntercomButton>
+            {activeStep === steps.length - 1 ? (
+              <IntercomButton
+                variant="primary"
+                onClick={handlePublish}
+                disabled={submitting}
+                leftIcon={submitting ? <CircularProgress size={20} /> : undefined}
+              >
+                {submitting ? 'Publishing...' : 'Publish Articles'}
+              </IntercomButton>
+            ) : (
+              <IntercomButton
+                variant="primary"
+                onClick={handleNext}
+                disabled={generating || submitting}
+                leftIcon={generating ? <CircularProgress size={20} /> : undefined}
+              >
+                {generating ? 'Generating Articles...' : 'Next'}
+              </IntercomButton>
             )}
+          </Box>
+        </Box>
+      </IntercomCard>
+    </IntercomLayout>
+  );
+}
 
-            {renderStepContent()}
-
-            <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between' }}>
-              <Button onClick={handleBack} disabled={activeStep === 0 || generating || submitting}>
-                Back
-              </Button>
-              {activeStep === steps.length - 1 ? (
-                <Button
-                  variant="contained"
-                  color="primary"
-                  onClick={handlePublish}
-                  disabled={submitting}
-                >
-                  {submitting ? 'Publishing...' : 'Publish Articles'}
-                </Button>
-              ) : (
-                <Button
-                  variant="contained"
-                  onClick={handleNext}
-                  disabled={generating || submitting}
-                >
-                  {generating ? 'Generating Articles...' : 'Next'}
-                </Button>
-              )}
-            </Box>
-          </Paper>
-        )}
-      </Container>
-    </LayoutContainer>
+export default function BacklinkBuddyPage() {
+  return (
+    <ThemeProvider>
+      <ToastProvider>
+        <BacklinkBuddyContent />
+      </ToastProvider>
+    </ThemeProvider>
   );
 }
