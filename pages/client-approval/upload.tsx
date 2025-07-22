@@ -65,10 +65,8 @@ function UploadApprovalRequestPageContent() {
 
 export default function UploadApprovalRequestPage() {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <UploadApprovalRequestPageContent />
-      </ToastProvider>
-    </ThemeProvider>
+    <ToastProvider>
+      <UploadApprovalRequestPageContent />
+    </ToastProvider>
   );
 }

@@ -1218,10 +1218,8 @@ function ClientApprovalPageContent() {
 
 export default function ClientApprovalPage() {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <ClientApprovalPageContent />
-      </ToastProvider>
-    </ThemeProvider>
+    <ToastProvider>
+      <ClientApprovalPageContent />
+    </ToastProvider>
   );
 }

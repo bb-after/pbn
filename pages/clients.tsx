@@ -549,10 +549,8 @@ export default function ClientsPage() {
   }
 
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <ClientsPageContent />
-      </ToastProvider>
-    </ThemeProvider>
+    <ToastProvider>
+      <ClientsPageContent />
+    </ToastProvider>
   );
 }

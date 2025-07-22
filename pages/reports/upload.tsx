@@ -52,10 +52,8 @@ function UploadReportPageContent() {
 
 export default function UploadReportPage() {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <UploadReportPageContent />
-      </ToastProvider>
-    </ThemeProvider>
+    <ToastProvider>
+      <UploadReportPageContent />
+    </ToastProvider>
   );
 }

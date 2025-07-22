@@ -6,6 +6,7 @@ import { validateUserToken } from '../validate-user-token'; // Ensure this impor
 import * as nodemailer from 'nodemailer';
 import axios from 'axios';
 import { postToSlack } from '../../../utils/postToSlack';
+import { RowDataPacket } from 'mysql2';
 
 // Use centralized connection pool instead of creating a new one
 const pool = getPool();
@@ -657,17 +658,20 @@ async function updateApprovalRequest(
               ]);
 
               const requestDetailsQuery = `
-                SELECT ar.*, c.client_name, u.name as owner_name, u.email as owner_email, u.id as owner_id
+                SELECT ar.title, ar.client_id, c.client_name, u.name as owner_name, ar.project_slack_channel
                 FROM client_approval_requests ar
                 JOIN clients c ON ar.client_id = c.client_id
                 LEFT JOIN users u ON ar.created_by_id = u.id
                 WHERE ar.request_id = ?
               `;
 
-              const [requestDetails] = await connection.query(requestDetailsQuery, [requestId]);
+              const [requestDetailsRows] = await connection.query<RowDataPacket[]>(
+                requestDetailsQuery,
+                [requestId]
+              );
 
-              if ((requestDetails as any[]).length > 0) {
-                const requestData = (requestDetails as any[])[0];
+              if (requestDetailsRows.length > 0) {
+                const requestData = requestDetailsRows[0];
                 console.log('SLACK_WEBHOOK_URL', process.env.SLACK_WEBHOOK_URL);
                 console.log(
                   '🔍 STAFF APPROVAL - CHECKING SLACK WEBHOOK URL:',
@@ -687,9 +691,14 @@ async function updateApprovalRequest(
                       `*Owner:* ${requestData.owner_name || 'Content Owner'}\n\n` +
                       `<${requestUrl}|View Request>`;
 
-                    const channel =
-                      requestData.project_slack_channel ||
-                      process.env.SLACK_APPROVAL_UPDATES_CHANNEL;
+                    // Fetch the project-specific slack channel separately to ensure it's available
+                    const [channelRows] = await query<RowDataPacket[]>(
+                      'SELECT project_slack_channel FROM client_approval_requests WHERE request_id = ?',
+                      [requestId]
+                    );
+                    const specificChannel = channelRows[0]?.project_slack_channel;
+
+                    const channel = specificChannel || process.env.SLACK_APPROVAL_UPDATES_CHANNEL;
                     await postToSlack(slackMessage, channel);
                     console.log(
                       `Staff approval Slack notification sent to ${channel || 'default channel'}`

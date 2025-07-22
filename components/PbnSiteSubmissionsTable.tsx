@@ -17,6 +17,7 @@ import {
   TablePagination,
 } from '@mui/material';
 import { useRouter } from 'next/router';
+import { IntercomButton } from './ui';
 
 const handleDeleteSubmission = async (submissionId: number, submissionUrl: string, type: 'pbn') => {
   try {
@@ -199,14 +200,7 @@ const PbnSiteSubmissionsTable = () => {
         `}
       </style>
 
-      <div
-        style={{
-          padding: '2rem',
-          borderRadius: '3px',
-          margin: '2rem',
-          background: '#fff',
-        }}
-      >
+      <div>
         <Typography variant="h5" gutterBottom>
           <Link href="https://sales.statuscrawl.io">Portal</Link> &raquo; PBN Site Submissions
         </Typography>
@@ -313,7 +307,24 @@ const PbnSiteSubmissionsTable = () => {
               {submissions.map((submission: any) => (
                 <TableRow key={submission.id}>
                   <TableCell>{submission.id}</TableCell>
-                  <TableCell>{submission.title}</TableCell>
+                  <TableCell>
+                    {submission.submission_title ? (
+                      <Link
+                        href={`/editPost/${submission.id}`}
+                        sx={{
+                          color: 'primary.main',
+                          textDecoration: 'underline',
+                          '&:hover': {
+                            textDecoration: 'none',
+                          },
+                        }}
+                      >
+                        {submission.submission_title}
+                      </Link>
+                    ) : (
+                      'No title'
+                    )}
+                  </TableCell>
                   <TableCell>
                     {expandedRows[submission.id] ? (
                       <div dangerouslySetInnerHTML={renderHTML(submission?.content)} />
@@ -337,26 +348,35 @@ const PbnSiteSubmissionsTable = () => {
                   </TableCell>
                   <TableCell>{submission.created}</TableCell>
                   <TableCell>
-                    <Link href={submission.submission_response} underline="none" target="_blank">
-                      <Button size="small" variant="outlined" color="primary">
+                    <Box display="flex" gap={1}>
+                      <IntercomButton
+                        size="small"
+                        variant="primary"
+                        onClick={() => window.open(submission.submission_response, '_blank')}
+                      >
                         View
-                      </Button>
-                    </Link>
-                    <Link href={`/editPost/${submission.id}`}>
-                      <Button size="small" variant="outlined">
+                      </IntercomButton>
+                      <IntercomButton
+                        size="small"
+                        variant="secondary"
+                        onClick={() => router.push(`/editPost/${submission.id}`)}
+                      >
                         Edit
-                      </Button>
-                    </Link>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      color="error"
-                      onClick={() =>
-                        handleDeleteSubmission(submission.id, submission.submission_response, 'pbn')
-                      }
-                    >
-                      Delete
-                    </Button>
+                      </IntercomButton>
+                      <IntercomButton
+                        size="small"
+                        variant="danger"
+                        onClick={() =>
+                          handleDeleteSubmission(
+                            submission.id,
+                            submission.submission_response,
+                            'pbn'
+                          )
+                        }
+                      >
+                        Delete
+                      </IntercomButton>
+                    </Box>
                   </TableCell>
                 </TableRow>
               ))}

@@ -677,10 +677,8 @@ function ReportsPageContent() {
 
 export default function ReportsPage() {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <ReportsPageContent />
-      </ToastProvider>
-    </ThemeProvider>
+    <ToastProvider>
+      <ReportsPageContent />
+    </ToastProvider>
   );
 }

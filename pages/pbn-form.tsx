@@ -1,36 +1,55 @@
-// pages/pbn-form.tsx
-import React from "react";
-import PbnSubmissionForm from "../components/PbnSubmissionForm"; // Adjust the import path
-import { EditorState, ContentState, convertFromHTML } from "draft-js";
-import { Typography, Link, TableContainer, Paper } from "@mui/material";
-import LayoutContainer from "components/LayoutContainer";
-import StyledHeader from "components/StyledHeader";
+import React from 'react';
+import Form from '../components/Form';
+import Image from 'next/image';
+import { IntercomLayout, ThemeProvider, ToastProvider, IntercomCard } from '../components/ui';
+import { Box, Typography } from '@mui/material';
+import useValidateUserToken from 'hooks/useValidateUserToken';
+import UnauthorizedAccess from 'components/UnauthorizedAccess';
 
-const PbnFormPage: React.FC = () => {
-  // Define any initial values for the props if needed
-  const initialArticleTitle = "";
-  const content = "";
-  const initialEditorState = EditorState.createEmpty();
+const pageTitle = 'Create New PBN Post';
+
+function PbnFormPage() {
+  const { token } = useValidateUserToken();
+
+  if (!token) {
+    return <UnauthorizedAccess />;
+  }
 
   return (
-    <LayoutContainer>
-      <StyledHeader />
+    <IntercomLayout
+      title={pageTitle}
+      breadcrumbs={[{ label: 'PBNJ' }, { label: 'Create New Submission' }]}
+    >
+      <IntercomCard>
+        <Box p={3}>
+          <Box display="flex" alignItems="center" mb={3}>
+            <Image
+              priority
+              src="/images/pbnj.png"
+              height={60}
+              width={60}
+              style={{ marginRight: '1rem' }}
+              alt="PBNJ Logo"
+            />
+            <Typography variant="h5" component="h1">
+              {pageTitle}
+            </Typography>
+          </Box>
+          <Form />
+        </Box>
+      </IntercomCard>
+    </IntercomLayout>
+  );
+}
 
-      <TableContainer component={Paper} style={{ padding: "1rem" }}>
-        <Typography variant="h5" gutterBottom>
-          <Link href="https://sales.statuscrawl.io">Portal</Link> &raquo; Post
-          an Article to the PBN
-        </Typography>
-        <PbnSubmissionForm
-          articleTitle={initialArticleTitle}
-          content={content}
-          onSubmit={function (title: string, content: string): void {
-            throw new Error("Function not implemented.");
-          }}
-        />
-      </TableContainer>
-    </LayoutContainer>
+const CreateNewPbnPost: React.FC = () => {
+  return (
+    <ThemeProvider>
+      <ToastProvider>
+        <PbnFormPage />
+      </ToastProvider>
+    </ThemeProvider>
   );
 };
 
-export default PbnFormPage;
+export default CreateNewPbnPost;
