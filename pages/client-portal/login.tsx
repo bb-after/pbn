@@ -13,6 +13,7 @@ import {
 import { Email as EmailIcon } from '@mui/icons-material';
 import axios from 'axios';
 import { useRouter } from 'next/router';
+import { ThemeProvider, ToastProvider } from '../../components/ui';
 
 // Wrap axios to suppress 401 errors specifically on the login page
 const safeGet = async (url: string) => {
@@ -25,7 +26,7 @@ const safeGet = async (url: string) => {
   }
 };
 
-export default function ClientPortalLoginPage() {
+function ClientPortalLoginContent() {
   const router = useRouter();
   const { error, status } = router.query;
 
@@ -136,7 +137,7 @@ export default function ClientPortalLoginPage() {
                 Log in to your account
               </Typography>
 
-              <Typography variant="body1" align="center" color="textSecondary" paragraph>
+              <Typography variant="body1" align="center" color="text.secondary" paragraph>
                 Enter your email address to receive a secure login link.
               </Typography>
 
@@ -183,12 +184,22 @@ export default function ClientPortalLoginPage() {
 
           <Divider sx={{ my: 4 }} />
 
-          <Typography variant="body2" color="textSecondary" align="center">
+          <Typography variant="body2" color="text.secondary" align="center">
             This is a secure, passwordless login system. You will receive an email with a link that
             will log you in automatically.
           </Typography>
         </Paper>
       </Box>
     </Container>
+  );
+}
+
+export default function ClientPortalLoginPage() {
+  return (
+    <ThemeProvider>
+      <ToastProvider>
+        <ClientPortalLoginContent />
+      </ToastProvider>
+    </ThemeProvider>
   );
 }

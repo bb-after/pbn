@@ -569,19 +569,24 @@ export default function ClientPortalPage() {
   function ClientPortalPageContent() {
     return (
       <ClientPortalLayout
-        title="Content Portal"
-        breadcrumbs={[{ label: 'Content Portal', href: '/client-portal' }]}
-        clientInfo={clientInfo}
+        title="Content Requests"
+        breadcrumbs={[
+          { label: 'Dashboard', href: '/client-portal/dashboard' },
+          { label: 'Content Requests' },
+        ]}
+        clientInfo={clientInfo ? { name: clientInfo.name, email: clientInfo.email } : null}
       >
         <Box>
-          <Typography variant="h4" gutterBottom>
-            Content Approval Dashboard
-          </Typography>
+          <Paper elevation={0} sx={{ p: 4, mb: 3 }}>
+            <Typography variant="h4" gutterBottom>
+              Content Approval Dashboard
+            </Typography>
 
-          <Typography variant="body1" paragraph>
-            Welcome back, {clientInfo?.name}. Here you can review and approve content before
-            it&apos;s published.
-          </Typography>
+            <Typography variant="body1" paragraph>
+              Welcome back, {clientInfo?.name}. Here you can review and approve content before
+              it&apos;s published.
+            </Typography>
+          </Paper>
 
           {/* Tabs and View Toggle */}
           <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
@@ -726,20 +731,22 @@ export default function ClientPortalPage() {
   }
 
   return (
-    <ToastProvider>
-      <ClientPortalPageContent />
+    <ThemeProvider>
+      <ToastProvider>
+        <ClientPortalPageContent />
 
-      {/* Toast Notification */}
-      <Snackbar
-        open={toastOpen}
-        autoHideDuration={6000}
-        onClose={handleCloseToast}
-        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
-      >
-        <Alert onClose={handleCloseToast} severity="warning" sx={{ width: '100%' }}>
-          {toastMessage}
-        </Alert>
-      </Snackbar>
-    </ToastProvider>
+        {/* Toast Notification */}
+        <Snackbar
+          open={toastOpen}
+          autoHideDuration={6000}
+          onClose={handleCloseToast}
+          anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        >
+          <Alert onClose={handleCloseToast} severity="warning" sx={{ width: '100%' }}>
+            {toastMessage}
+          </Alert>
+        </Snackbar>
+      </ToastProvider>
+    </ThemeProvider>
   );
 }

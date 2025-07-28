@@ -58,16 +58,22 @@ interface ClientPortalLayoutProps {
 
 const clientPortalNavigationItems: NavigationItem[] = [
   {
-    id: 'content-portal',
-    label: 'Content Portal',
+    id: 'dashboard',
+    label: 'Dashboard',
     icon: <DashboardIcon />,
+    href: '/client-portal/dashboard',
+  },
+  {
+    id: 'content-portal',
+    label: 'Content Requests',
+    icon: <DocumentIcon />,
     href: '/client-portal',
   },
   {
     id: 'reports',
     label: 'Reports',
     icon: <ReportsIcon />,
-    href: '/reports',
+    href: '/client-portal/reports',
   },
 ];
 
@@ -116,7 +122,7 @@ export const ClientPortalLayout: React.FC<ClientPortalLayoutProps> = ({
               transition: 'all 0.2s ease-in-out',
               '&:hover': {
                 backgroundColor: isActive ? 'primary.dark' : 'action.hover',
-                color: isActive ? 'white' : 'inherit',
+                color: isActive ? 'white' : 'text.primary',
                 '& .MuiListItemText-primary': {
                   color: isActive ? 'white' : 'text.primary',
                 },
@@ -217,6 +223,12 @@ export const ClientPortalLayout: React.FC<ClientPortalLayoutProps> = ({
               borderRadius: 1,
               '&:hover': {
                 backgroundColor: 'action.hover',
+                '& .MuiListItemText-primary': {
+                  color: 'text.primary',
+                },
+                '& .MuiListItemText-secondary': {
+                  color: 'text.secondary',
+                },
               },
             }}
           >
@@ -279,7 +291,7 @@ export const ClientPortalLayout: React.FC<ClientPortalLayoutProps> = ({
                 <Link
                   underline="hover"
                   color="inherit"
-                  href="/client-portal"
+                  href="/client-portal/dashboard"
                   sx={{ display: 'flex', alignItems: 'center' }}
                 >
                   <HomeIcon sx={{ mr: 0.5, fontSize: 16 }} />
@@ -359,7 +371,7 @@ export const ClientPortalLayout: React.FC<ClientPortalLayoutProps> = ({
           p: 3,
           width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
           mt: 8,
-          backgroundColor: 'background.default',
+          backgroundColor: 'background.paper',
           minHeight: '100vh',
         }}
       >
@@ -391,8 +403,7 @@ export const ClientPortalLayout: React.FC<ClientPortalLayoutProps> = ({
         <MenuItem
           onClick={() => {
             handleProfileClose();
-            // Add settings functionality here
-            console.log('Settings clicked');
+            router.push('/client-portal/settings');
           }}
         >
           Settings
