@@ -375,9 +375,9 @@ async function createApprovalRequest(req: NextApiRequest, res: NextApiResponse, 
       // 1. Insert into client_approval_requests
       const approvalRequestQuery = `
         INSERT INTO client_approval_requests 
-          (client_id, title, description, file_url, inline_content, created_by_id, content_type, google_doc_id, required_approvals, project_slack_channel) 
+          (client_id, title, description, file_url, inline_content, created_by_id, content_type, google_doc_id, required_approvals, project_slack_channel, status) 
         VALUES 
-          (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
       const [approvalRequestResult] = await connection.query<ResultSetHeader>(
@@ -393,6 +393,7 @@ async function createApprovalRequest(req: NextApiRequest, res: NextApiResponse, 
           googleDocId || null,
           requiredApprovals || contactIds.length,
           slackChannel || null, // Save the slack channel
+          'pending', // Explicitly set status to 'pending'
         ]
       );
 

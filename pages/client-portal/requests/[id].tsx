@@ -342,7 +342,8 @@ const getEmbeddableGoogleDocUrl = (
     // This allows commenting and relies on Google's cookie-based authentication.
     if (status === 'pending' && isAuthenticated && email) {
       // Add a parameter to help Google identify the user in the iframe
-      const authUrl = `https://docs.google.com/document/d/${docId}/edit?embedded=true&rm=minimal&authuser=${email}`;
+      // Use mode=comment to ensure client has comment-only access
+      const authUrl = `https://docs.google.com/document/d/${docId}/edit?embedded=true&rm=minimal&mode=comment&authuser=${email}`;
 
       // If we have the staff email, we can suggest inviting them.
       if (staffEmail) {
@@ -515,6 +516,7 @@ export default function ClientRequestDetailPage() {
 
     return (
       <iframe
+        key={googleAccessToken || 'anonymous'}
         src={iframeUrl}
         width="100%"
         height="100%"
@@ -1116,7 +1118,7 @@ export default function ClientRequestDetailPage() {
     }
 
     return (
-      <Chip label={status.charAt(0).toUpperCase() + status.slice(1)} color={color} size="small" />
+      <Chip label={status?.charAt(0).toUpperCase() + status?.slice(1)} color={color} size="small" />
     );
   };
 
@@ -1487,6 +1489,7 @@ export default function ClientRequestDetailPage() {
           { label: 'Content Review' },
         ]}
         actions={actionButtons}
+        clientInfo={clientInfo ? { name: clientInfo.name, email: clientInfo.email } : null}
       >
         {/* Error alert */}
         {error && (
@@ -1867,6 +1870,7 @@ export default function ClientRequestDetailPage() {
                             }}
                           >
                             <iframe
+                              key={`${currentVersionId}-${googleAccessToken || 'anonymous'}`}
                               src={getEmbeddableGoogleDocUrl(
                                 versionContent,
                                 request.status,

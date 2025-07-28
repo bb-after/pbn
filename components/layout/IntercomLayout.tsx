@@ -79,13 +79,26 @@ const navigationItems: NavigationItem[] = [
     id: 'clients',
     label: 'Clients',
     icon: <PeopleIcon />,
-    href: '/clients',
-  },
-  {
-    id: 'client-approval',
-    label: 'Client Approval',
-    icon: <CheckCircleIcon />,
-    href: '/client-approval',
+    children: [
+      {
+        id: 'view-clients',
+        label: 'View Clients',
+        icon: <PeopleIcon />,
+        href: '/clients',
+      },
+      {
+        id: 'client-approval',
+        label: 'Client Approval',
+        icon: <CheckCircleIcon />,
+        href: '/client-approval',
+      },
+      {
+        id: 'content-compass',
+        label: 'Content Compass',
+        icon: <ExploreIcon />,
+        href: '/content-compass',
+      },
+    ],
   },
   {
     id: 'pbnj',
@@ -136,12 +149,6 @@ const navigationItems: NavigationItem[] = [
     label: 'Reports',
     icon: <AssessmentIcon />,
     href: '/reports',
-  },
-  {
-    id: 'content-compass',
-    label: 'Content Compass',
-    icon: <ExploreIcon />,
-    href: '/content-compass',
   },
   {
     id: 'other-tooling',

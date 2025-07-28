@@ -222,8 +222,8 @@ export const createIntercomTheme = (mode: PaletteMode = 'light'): ThemeOptions =
       },
       grey: intercomColors.grey,
       background: {
-        default: isDark ? intercomColors.grey[900] : intercomColors.grey[50],
-        paper: isDark ? intercomColors.grey[800] : '#ffffff',
+        default: isDark ? intercomColors.grey[900] : intercomColors.grey[100],
+        paper: isDark ? intercomColors.grey[800] : intercomColors.grey[50],
       },
       text: {
         primary: isDark ? intercomColors.grey[50] : intercomColors.grey[900],
@@ -239,6 +239,49 @@ export const createIntercomTheme = (mode: PaletteMode = 'light'): ThemeOptions =
     },
     shadows: intercomShadows as any,
     components: {
+      MuiCssBaseline: {
+        styleOverrides: {
+          body: {
+            transition: 'background-color 0.3s ease-in-out, color 0.3s ease-in-out',
+          },
+          '*': {
+            transition:
+              'background-color 0.3s ease-in-out, color 0.3s ease-in-out, border-color 0.3s ease-in-out',
+          },
+        },
+      },
+      MuiPaper: {
+        styleOverrides: {
+          root: {
+            borderRadius: intercomBorderRadius.md,
+            boxShadow: intercomShadows[2],
+            transition:
+              'background-color 0.3s ease-in-out, color 0.3s ease-in-out, border-color 0.3s ease-in-out',
+          },
+        },
+      },
+      MuiAppBar: {
+        styleOverrides: {
+          root: {
+            backgroundColor: isDark ? intercomColors.grey[800] : intercomColors.grey[50],
+            color: isDark ? intercomColors.grey[50] : intercomColors.grey[800],
+            boxShadow: intercomShadows[1],
+            borderBottom: `1px solid ${isDark ? intercomColors.grey[700] : intercomColors.grey[200]}`,
+            transition:
+              'background-color 0.3s ease-in-out, color 0.3s ease-in-out, border-color 0.3s ease-in-out',
+          },
+        },
+      },
+      MuiDrawer: {
+        styleOverrides: {
+          paper: {
+            backgroundColor: isDark ? intercomColors.grey[800] : intercomColors.grey[50],
+            borderRight: `1px solid ${isDark ? intercomColors.grey[700] : intercomColors.grey[200]}`,
+            boxShadow: intercomShadows[3],
+            transition: 'background-color 0.3s ease-in-out, border-color 0.3s ease-in-out',
+          },
+        },
+      },
       MuiButton: {
         styleOverrides: {
           root: {
@@ -247,6 +290,7 @@ export const createIntercomTheme = (mode: PaletteMode = 'light'): ThemeOptions =
             fontWeight: 500,
             fontSize: '0.875rem',
             boxShadow: 'none',
+            transition: 'all 0.3s ease-in-out',
             '&:hover': {
               boxShadow: intercomShadows[2],
             },
@@ -265,17 +309,19 @@ export const createIntercomTheme = (mode: PaletteMode = 'light'): ThemeOptions =
             },
           },
           outlined: {
-            borderColor: intercomColors.grey[300],
-            color: intercomColors.grey[700],
+            borderColor: isDark ? intercomColors.grey[600] : intercomColors.grey[300],
+            color: isDark ? intercomColors.grey[200] : intercomColors.grey[700],
+            transition: 'all 0.3s ease-in-out',
             '&:hover': {
-              borderColor: intercomColors.grey[400],
-              backgroundColor: intercomColors.grey[50],
+              borderColor: isDark ? intercomColors.grey[500] : intercomColors.grey[400],
+              backgroundColor: isDark ? intercomColors.grey[700] : intercomColors.grey[50],
             },
           },
           text: {
-            color: intercomColors.grey[700],
+            color: isDark ? intercomColors.grey[200] : intercomColors.grey[700],
+            transition: 'all 0.3s ease-in-out',
             '&:hover': {
-              backgroundColor: intercomColors.grey[100],
+              backgroundColor: isDark ? intercomColors.grey[700] : intercomColors.grey[100],
             },
           },
         },
@@ -285,7 +331,8 @@ export const createIntercomTheme = (mode: PaletteMode = 'light'): ThemeOptions =
           root: {
             borderRadius: intercomBorderRadius.xs,
             boxShadow: intercomShadows[3],
-            border: `1px solid ${intercomColors.grey[200]}`,
+            border: `1px solid ${isDark ? intercomColors.grey[700] : intercomColors.grey[200]}`,
+            transition: 'background-color 0.3s ease-in-out, border-color 0.3s ease-in-out',
           },
         },
       },
@@ -294,10 +341,12 @@ export const createIntercomTheme = (mode: PaletteMode = 'light'): ThemeOptions =
           root: {
             '& .MuiOutlinedInput-root': {
               borderRadius: intercomBorderRadius.md,
-              backgroundColor: isDark ? intercomColors.grey[800] : '#ffffff',
+              backgroundColor: isDark ? intercomColors.grey[800] : intercomColors.grey[50],
               color: isDark ? intercomColors.grey[50] : intercomColors.grey[900],
+              transition: 'all 0.3s ease-in-out',
               '& fieldset': {
                 borderColor: isDark ? intercomColors.grey[600] : intercomColors.grey[300],
+                transition: 'border-color 0.3s ease-in-out',
               },
               '&:hover fieldset': {
                 borderColor: isDark ? intercomColors.grey[500] : intercomColors.grey[400],
@@ -308,36 +357,10 @@ export const createIntercomTheme = (mode: PaletteMode = 'light'): ThemeOptions =
               },
             },
             '& .MuiInputLabel-root': {
-              color: intercomColors.grey[600],
+              color: isDark ? intercomColors.grey[400] : intercomColors.grey[600],
               fontSize: '0.875rem',
+              transition: 'color 0.3s ease-in-out',
             },
-          },
-        },
-      },
-      MuiPaper: {
-        styleOverrides: {
-          root: {
-            borderRadius: intercomBorderRadius.md,
-            boxShadow: intercomShadows[2],
-          },
-        },
-      },
-      MuiAppBar: {
-        styleOverrides: {
-          root: {
-            backgroundColor: '#ffffff',
-            color: intercomColors.grey[800],
-            boxShadow: intercomShadows[1],
-            borderBottom: `1px solid ${intercomColors.grey[200]}`,
-          },
-        },
-      },
-      MuiDrawer: {
-        styleOverrides: {
-          paper: {
-            backgroundColor: isDark ? intercomColors.grey[800] : '#ffffff',
-            borderRight: `1px solid ${intercomColors.grey[200]}`,
-            boxShadow: intercomShadows[3],
           },
         },
       },
@@ -346,14 +369,15 @@ export const createIntercomTheme = (mode: PaletteMode = 'light'): ThemeOptions =
           root: {
             borderRadius: intercomBorderRadius.md,
             margin: '2px 8px',
+            transition: 'all 0.3s ease-in-out',
             '&:hover': {
-              backgroundColor: intercomColors.grey[100],
+              backgroundColor: isDark ? intercomColors.grey[700] : intercomColors.grey[100],
             },
             '&.Mui-selected': {
-              backgroundColor: intercomColors.primary[50],
-              color: intercomColors.primary[700],
+              backgroundColor: isDark ? intercomColors.primary[900] : intercomColors.primary[50],
+              color: isDark ? intercomColors.primary[200] : intercomColors.primary[700],
               '&:hover': {
-                backgroundColor: intercomColors.primary[100],
+                backgroundColor: isDark ? intercomColors.primary[800] : intercomColors.primary[100],
               },
             },
           },
@@ -365,6 +389,7 @@ export const createIntercomTheme = (mode: PaletteMode = 'light'): ThemeOptions =
             borderRadius: intercomBorderRadius.xl,
             fontSize: '0.75rem',
             fontWeight: 500,
+            transition: 'all 0.3s ease-in-out',
           },
         },
       },
@@ -373,6 +398,7 @@ export const createIntercomTheme = (mode: PaletteMode = 'light'): ThemeOptions =
           root: {
             borderRadius: intercomBorderRadius.md,
             boxShadow: intercomShadows[2],
+            transition: 'background-color 0.3s ease-in-out, border-color 0.3s ease-in-out',
           },
         },
       },
