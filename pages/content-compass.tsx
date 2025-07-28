@@ -946,10 +946,8 @@ function ContentCompassPage() {
 
 export default function ContentCompass() {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <ContentCompassPage />
-      </ToastProvider>
-    </ThemeProvider>
+    <ToastProvider>
+      <ContentCompassPage />
+    </ToastProvider>
   );
 }

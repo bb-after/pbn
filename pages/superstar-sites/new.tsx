@@ -187,10 +187,8 @@ function NewSitePage() {
 
 export default function NewSite() {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <NewSitePage />
-      </ToastProvider>
-    </ThemeProvider>
+    <ToastProvider>
+      <NewSitePage />
+    </ToastProvider>
   );
 }

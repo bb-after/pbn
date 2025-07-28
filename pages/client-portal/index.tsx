@@ -571,6 +571,7 @@ export default function ClientPortalPage() {
       <ClientPortalLayout
         title="Content Portal"
         breadcrumbs={[{ label: 'Content Portal', href: '/client-portal' }]}
+        clientInfo={clientInfo}
       >
         <Box>
           <Typography variant="h4" gutterBottom>
@@ -725,22 +726,20 @@ export default function ClientPortalPage() {
   }
 
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <ClientPortalPageContent />
+    <ToastProvider>
+      <ClientPortalPageContent />
 
-        {/* Toast Notification */}
-        <Snackbar
-          open={toastOpen}
-          autoHideDuration={6000}
-          onClose={handleCloseToast}
-          anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
-        >
-          <Alert onClose={handleCloseToast} severity="warning" sx={{ width: '100%' }}>
-            {toastMessage}
-          </Alert>
-        </Snackbar>
-      </ToastProvider>
-    </ThemeProvider>
+      {/* Toast Notification */}
+      <Snackbar
+        open={toastOpen}
+        autoHideDuration={6000}
+        onClose={handleCloseToast}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert onClose={handleCloseToast} severity="warning" sx={{ width: '100%' }}>
+          {toastMessage}
+        </Alert>
+      </Snackbar>
+    </ToastProvider>
   );
 }

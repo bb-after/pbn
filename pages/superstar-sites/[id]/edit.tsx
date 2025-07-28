@@ -303,10 +303,8 @@ function EditSitePage() {
 
 export default function EditTopics() {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <EditSitePage />
-      </ToastProvider>
-    </ThemeProvider>
+    <ToastProvider>
+      <EditSitePage />
+    </ToastProvider>
   );
 }

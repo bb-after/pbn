@@ -42,10 +42,8 @@ function CompanyInfoContent() {
 
 export default function CompanyInfo() {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <CompanyInfoContent />
-      </ToastProvider>
-    </ThemeProvider>
+    <ToastProvider>
+      <CompanyInfoContent />
+    </ToastProvider>
   );
 }

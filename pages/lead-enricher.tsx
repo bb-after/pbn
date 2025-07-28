@@ -1559,10 +1559,8 @@ function LeadEnricherContent() {
 
 export default function LeadEnricherPage() {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <LeadEnricherContent />
-      </ToastProvider>
-    </ThemeProvider>
+    <ToastProvider>
+      <LeadEnricherContent />
+    </ToastProvider>
   );
 }

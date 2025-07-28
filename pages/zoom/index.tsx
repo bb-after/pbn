@@ -42,10 +42,8 @@ function ZoomPageContent() {
 
 export default function ZoomPage() {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <ZoomPageContent />
-      </ToastProvider>
-    </ThemeProvider>
+    <ToastProvider>
+      <ZoomPageContent />
+    </ToastProvider>
   );
 }

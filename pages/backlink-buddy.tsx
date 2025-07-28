@@ -1255,10 +1255,8 @@ function BacklinkBuddyContent() {
 
 export default function BacklinkBuddyPage() {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <BacklinkBuddyContent />
-      </ToastProvider>
-    </ThemeProvider>
+    <ToastProvider>
+      <BacklinkBuddyContent />
+    </ToastProvider>
   );
 }

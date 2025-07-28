@@ -44,11 +44,9 @@ function PbnFormPage() {
 
 const CreateNewPbnPost: React.FC = () => {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <PbnFormPage />
-      </ToastProvider>
-    </ThemeProvider>
+    <ToastProvider>
+      <PbnFormPage />
+    </ToastProvider>
   );
 };
 
