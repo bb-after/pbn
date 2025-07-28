@@ -492,10 +492,8 @@ function SuperstarSitesPage() {
 
 export default function SuperstarSites() {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <SuperstarSitesPage />
-      </ToastProvider>
-    </ThemeProvider>
+    <ToastProvider>
+      <SuperstarSitesPage />
+    </ToastProvider>
   );
 }

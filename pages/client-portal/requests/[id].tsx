@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Container,
   Typography,
@@ -64,6 +64,151 @@ import ReactionPicker from 'components/ReactionPicker';
 import { createRoot } from 'react-dom/client';
 import { initVersionRecogito } from 'utils/recogito';
 import { GoogleOAuthProvider, useGoogleLogin } from '@react-oauth/google';
+
+// Separate Comments Component to prevent iframe re-renders
+const CommentsSection: React.FC<{
+  requestId: string | string[] | undefined;
+  clientInfo: any;
+  request: ApprovalRequest | null;
+  clientAuthToken: string | null;
+  onRequestUpdate: () => void;
+}> = ({ requestId, clientInfo, request, clientAuthToken, onRequestUpdate }) => {
+  const [newComment, setNewComment] = useState('');
+  const [submittingComment, setSubmittingComment] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Handle submitting a new comment
+  const handleSubmitComment = async () => {
+    if (!newComment.trim()) {
+      return;
+    }
+
+    setSubmittingComment(true);
+    setError(null);
+
+    try {
+      const headers = {
+        'x-client-portal': 'true',
+        'x-client-contact-id': clientInfo?.contact_id.toString(),
+      };
+
+      await axios.post(
+        `/api/approval-requests/${requestId}/comments`,
+        {
+          comment: newComment,
+          contactId: clientInfo?.contact_id,
+        },
+        { headers }
+      );
+
+      setNewComment('');
+      onRequestUpdate(); // Trigger parent to refresh data
+    } catch (error) {
+      console.error('Error submitting comment:', error);
+      setError('Failed to submit comment');
+    } finally {
+      setSubmittingComment(false);
+    }
+  };
+
+  return (
+    <Paper elevation={2} sx={{ p: 3 }}>
+      <Typography variant="h6" gutterBottom>
+        Comments
+      </Typography>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+
+      <Box mt={2} mb={3}>
+        <TextField
+          fullWidth
+          multiline
+          rows={3}
+          label="Add a comment"
+          placeholder="Enter your feedback here..."
+          value={newComment}
+          onChange={e => setNewComment(e.target.value)}
+        />
+        <Box display="flex" justifyContent="flex-end" mt={2}>
+          <Button
+            variant="contained"
+            startIcon={<SendIcon />}
+            onClick={handleSubmitComment}
+            disabled={submittingComment || !newComment.trim()}
+          >
+            {submittingComment ? <CircularProgress size={24} /> : 'Send Feedback'}
+          </Button>
+        </Box>
+      </Box>
+
+      <Divider sx={{ my: 2 }} />
+
+      {request?.comments && request.comments.length > 0 ? (
+        <Box sx={{ maxHeight: '400px', overflow: 'auto' }}>
+          <List>
+            {request.comments.map(comment => (
+              <React.Fragment key={comment.comment_id}>
+                <ListItem alignItems="flex-start">
+                  <ListItemAvatar>
+                    <Avatar>
+                      {comment.contact_name ? comment.contact_name.charAt(0).toUpperCase() : 'S'}
+                    </Avatar>
+                  </ListItemAvatar>
+                  <ListItemText
+                    primary={
+                      <Box display="flex" justifyContent="space-between">
+                        <Typography variant="subtitle2">
+                          {comment.contact_name || 'Staff'}
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          {new Date(comment.created_at).toLocaleString(undefined, {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            timeZoneName: 'short',
+                          })}
+                        </Typography>
+                      </Box>
+                    }
+                    secondary={
+                      <Typography
+                        component="span"
+                        variant="body2"
+                        color="textPrimary"
+                        sx={{ mt: 1, display: 'block' }}
+                      >
+                        {comment.comment}
+                        <ReactionPicker
+                          targetType="comment"
+                          targetId={comment.comment_id}
+                          requestId={Number(requestId)}
+                          isClientPortal={true}
+                          clientContactId={clientInfo?.contact_id}
+                          token={clientAuthToken || undefined}
+                        />
+                      </Typography>
+                    }
+                  />
+                </ListItem>
+                <Divider variant="inset" component="li" />
+              </React.Fragment>
+            ))}
+          </List>
+        </Box>
+      ) : (
+        <Typography variant="body2" color="textSecondary" align="center">
+          No comments yet
+        </Typography>
+      )}
+    </Paper>
+  );
+};
 
 /// <reference path="./recogito.d.ts" />
 
@@ -182,41 +327,35 @@ interface ApprovalRequest {
 const getEmbeddableGoogleDocUrl = (
   url: string,
   status: string,
-  isAuthenticated = false
+  isAuthenticated = false,
+  email: string | null = null,
+  staffEmail: string | null = null
 ): string => {
   try {
     if (!url.includes('docs.google.com')) return url;
 
-    // Extract document ID from the URL
     const docIdMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
-    const docId = docIdMatch ? docIdMatch[1] : '';
+    if (!docIdMatch) return url;
+    const docId = docIdMatch[1];
 
-    // Determine mode based on authentication and status
-    let mode = 'view'; // Default to view mode
-    if (status === 'pending' && isAuthenticated) {
-      mode = 'comment'; // Allow commenting only if authenticated and pending
-    }
+    // For pending requests where the user is authenticated, use the standard /edit URL.
+    // This allows commenting and relies on Google's cookie-based authentication.
+    if (status === 'pending' && isAuthenticated && email) {
+      // Add a parameter to help Google identify the user in the iframe
+      const authUrl = `https://docs.google.com/document/d/${docId}/edit?embedded=true&rm=minimal&authuser=${email}`;
 
-    if (docId) {
-      return `https://docs.google.com/document/d/${docId}/edit?mode=${mode}&embedded=true&rm=minimal&usp=sharing`;
-    }
-    try {
-      const urlObj = new URL(url);
-      urlObj.searchParams.set('mode', mode);
-      urlObj.searchParams.set('embedded', 'true');
-      urlObj.searchParams.set('rm', 'minimal');
-      if (urlObj.searchParams.has('chrome')) urlObj.searchParams.delete('chrome');
-      if (urlObj.searchParams.has('headers')) urlObj.searchParams.delete('headers');
-      return urlObj.toString();
-    } catch (error) {
-      if (url.includes('?')) {
-        return `${url}&mode=${mode}&rm=minimal`;
-      } else {
-        return `${url}?mode=${mode}&rm=minimal`;
+      // If we have the staff email, we can suggest inviting them.
+      if (staffEmail) {
+        return `${authUrl}&usp=sharing_eip&userstoinvite=${encodeURIComponent(staffEmail)}`;
       }
+      return authUrl;
     }
+
+    // For all other cases (not pending, or not authenticated), use the safer /preview endpoint.
+    return `https://docs.google.com/document/d/${docId}/preview?embedded=true`;
   } catch (error) {
-    return url;
+    console.error('Error processing Google Doc URL:', error);
+    return url; // Fallback to original URL
   }
 };
 
@@ -334,11 +473,66 @@ export default function ClientRequestDetailPage() {
   // State to store the staff member's email
   const [staffEmail, setStaffEmail] = useState<string | null>(null);
 
+  // State for Google user's email
+  const [googleUserEmail, setGoogleUserEmail] = useState<string | null>(null);
+
   // Google authentication state
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
   const [isGoogleAuthenticating, setIsGoogleAuthenticating] = useState(false);
   const [showGoogleAuthPrompt, setShowGoogleAuthPrompt] = useState(false);
   const [userChosenMode, setUserChosenMode] = useState<'google_comment' | 'readonly' | null>(null);
+
+  // Memoized iframe component to prevent re-renders when typing in comments
+  const GoogleDocIframe = useMemo(() => {
+    if (
+      !request?.inline_content ||
+      !(
+        request?.content_type === 'google_doc' ||
+        (request?.inline_content.includes('docs.google.com') &&
+          !request?.inline_content.startsWith('<'))
+      )
+    ) {
+      return null;
+    }
+
+    if (!userChosenMode && request.status === 'pending') {
+      return null;
+    }
+
+    const iframeUrl = request.inline_content
+      ? getEmbeddableGoogleDocUrl(
+          request.inline_content,
+          request.status,
+          userChosenMode === 'google_comment' && !!googleAccessToken,
+          googleUserEmail,
+          staffEmail
+        )
+      : '';
+
+    if (!iframeUrl) {
+      return null; // Don't render iframe if URL is empty
+    }
+
+    return (
+      <iframe
+        src={iframeUrl}
+        width="100%"
+        height="100%"
+        frameBorder="0"
+        style={{ border: 'none' }}
+        allow="autoplay; encrypted-media"
+        allowFullScreen
+      />
+    );
+  }, [
+    request?.inline_content,
+    request?.content_type,
+    request?.status,
+    userChosenMode,
+    googleAccessToken,
+    googleUserEmail,
+    staffEmail,
+  ]);
 
   // Get client token from localStorage
   useEffect(() => {
@@ -349,9 +543,25 @@ export default function ClientRequestDetailPage() {
   }, []);
 
   // Handle successful Google login
-  const handleGoogleLoginSuccess = (tokenResponse: any) => {
+  const handleGoogleLoginSuccess = async (tokenResponse: any) => {
     console.log('Google login successful');
-    setGoogleAccessToken(tokenResponse.access_token);
+    const accessToken = tokenResponse.access_token;
+    setGoogleAccessToken(accessToken);
+
+    try {
+      const userInfoResponse = await axios.get('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      const userEmail = userInfoResponse.data.email;
+      setGoogleUserEmail(userEmail);
+      console.log('Google user email:', userEmail);
+    } catch (error) {
+      console.error('Error fetching user info from Google:', error);
+      setError('Failed to fetch user profile from Google. Please try again.');
+    }
+
     setUserChosenMode('google_comment');
     setShowGoogleAuthPrompt(false);
     setIsGoogleAuthenticating(false);
@@ -856,39 +1066,6 @@ export default function ClientRequestDetailPage() {
       setError('Failed to submit feedback');
     } finally {
       setSubmittingFeedback(false);
-    }
-  };
-
-  // Handle submitting a new comment
-  const handleSubmitComment = async () => {
-    if (!newComment.trim()) {
-      return;
-    }
-
-    setSubmittingComment(true);
-
-    try {
-      const headers = {
-        'x-client-portal': 'true',
-        'x-client-contact-id': clientInfo?.contact_id.toString(),
-      };
-
-      await axios.post(
-        `/api/approval-requests/${id}/comments`,
-        {
-          comment: newComment,
-          contactId: clientInfo?.contact_id,
-        },
-        { headers }
-      );
-
-      setNewComment('');
-      fetchRequestDetails();
-    } catch (error) {
-      console.error('Error submitting comment:', error);
-      setError('Failed to submit comment');
-    } finally {
-      setSubmittingComment(false);
     }
   };
 
@@ -1563,19 +1740,7 @@ export default function ClientRequestDetailPage() {
                                 overflow: 'hidden',
                               }}
                             >
-                              <iframe
-                                src={getEmbeddableGoogleDocUrl(
-                                  request.inline_content,
-                                  request.status,
-                                  userChosenMode === 'google_comment' && !!googleAccessToken
-                                )}
-                                width="100%"
-                                height="100%"
-                                frameBorder="0"
-                                style={{ border: 'none' }}
-                                allow="autoplay; encrypted-media"
-                                allowFullScreen
-                              ></iframe>
+                              {GoogleDocIframe}
                             </Box>
                           )}
                         </Box>
@@ -1643,97 +1808,13 @@ export default function ClientRequestDetailPage() {
                   </Paper>
 
                   {/* Comments section */}
-                  <Paper elevation={2} sx={{ p: 3 }}>
-                    <Typography variant="h6" gutterBottom>
-                      Comments
-                    </Typography>
-
-                    <Box mt={2} mb={3}>
-                      <TextField
-                        fullWidth
-                        multiline
-                        rows={3}
-                        label="Add a comment"
-                        placeholder="Enter your feedback here..."
-                        value={newComment}
-                        onChange={e => setNewComment(e.target.value)}
-                      />
-                      <Box display="flex" justifyContent="flex-end" mt={2}>
-                        <Button
-                          variant="contained"
-                          startIcon={<SendIcon />}
-                          onClick={handleSubmitComment}
-                          disabled={submittingComment || !newComment.trim()}
-                        >
-                          {submittingComment ? <CircularProgress size={24} /> : 'Send Feedback'}
-                        </Button>
-                      </Box>
-                    </Box>
-
-                    <Divider sx={{ my: 2 }} />
-
-                    {request.comments && request.comments.length > 0 ? (
-                      <Box sx={{ maxHeight: '400px', overflow: 'auto' }}>
-                        <List>
-                          {request.comments.map(comment => (
-                            <React.Fragment key={comment.comment_id}>
-                              <ListItem alignItems="flex-start">
-                                <ListItemAvatar>
-                                  <Avatar>
-                                    {comment.contact_name
-                                      ? comment.contact_name.charAt(0).toUpperCase()
-                                      : 'S'}
-                                  </Avatar>
-                                </ListItemAvatar>
-                                <ListItemText
-                                  primary={
-                                    <Box display="flex" justifyContent="space-between">
-                                      <Typography variant="subtitle2">
-                                        {comment.contact_name || 'Staff'}
-                                      </Typography>
-                                      <Typography variant="caption" color="textSecondary">
-                                        {new Date(comment.created_at).toLocaleString(undefined, {
-                                          year: 'numeric',
-                                          month: 'short',
-                                          day: 'numeric',
-                                          hour: '2-digit',
-                                          minute: '2-digit',
-                                          timeZoneName: 'short',
-                                        })}
-                                      </Typography>
-                                    </Box>
-                                  }
-                                  secondary={
-                                    <Typography
-                                      component="span"
-                                      variant="body2"
-                                      color="textPrimary"
-                                      sx={{ mt: 1, display: 'block' }}
-                                    >
-                                      {comment.comment}
-                                      <ReactionPicker
-                                        targetType="comment"
-                                        targetId={comment.comment_id}
-                                        requestId={Number(id)}
-                                        isClientPortal={true}
-                                        clientContactId={clientInfo?.contact_id}
-                                        token={clientAuthToken || undefined}
-                                      />
-                                    </Typography>
-                                  }
-                                />
-                              </ListItem>
-                              <Divider variant="inset" component="li" />
-                            </React.Fragment>
-                          ))}
-                        </List>
-                      </Box>
-                    ) : (
-                      <Typography variant="body2" color="textSecondary" align="center">
-                        No comments yet
-                      </Typography>
-                    )}
-                  </Paper>
+                  <CommentsSection
+                    requestId={id}
+                    clientInfo={clientInfo}
+                    request={request}
+                    clientAuthToken={clientAuthToken}
+                    onRequestUpdate={fetchRequestDetails}
+                  />
                 </Grid>
               </Grid>
             ) : (
@@ -1789,7 +1870,9 @@ export default function ClientRequestDetailPage() {
                               src={getEmbeddableGoogleDocUrl(
                                 versionContent,
                                 request.status,
-                                userChosenMode === 'google_comment' && !!googleAccessToken
+                                userChosenMode === 'google_comment' && !!googleAccessToken,
+                                googleUserEmail,
+                                staffEmail
                               )}
                               width="100%"
                               height="100%"

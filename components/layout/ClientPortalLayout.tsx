@@ -32,6 +32,7 @@ import {
   Help as HelpIcon,
   Home as HomeIcon,
   ChevronRight as ChevronRightIcon,
+  Description as DocumentIcon,
 } from '@mui/icons-material';
 import { tokens } from '../../theme/intercom-theme';
 
@@ -42,11 +43,17 @@ interface NavigationItem {
   href?: string;
 }
 
+interface ClientInfo {
+  name: string;
+  email: string;
+}
+
 interface ClientPortalLayoutProps {
-  children: ReactNode;
+  children: React.ReactNode;
   title?: string;
   breadcrumbs?: Array<{ label: string; href?: string }>;
-  actions?: ReactNode;
+  actions?: React.ReactNode;
+  clientInfo?: ClientInfo | null;
 }
 
 const clientPortalNavigationItems: NavigationItem[] = [
@@ -68,9 +75,10 @@ const DRAWER_WIDTH = 280;
 
 export const ClientPortalLayout: React.FC<ClientPortalLayoutProps> = ({
   children,
-  title = 'Content Portal',
+  title = 'Dashboard',
   breadcrumbs = [],
   actions,
+  clientInfo,
 }) => {
   const theme = useTheme();
   const router = useRouter();
@@ -110,10 +118,10 @@ export const ClientPortalLayout: React.FC<ClientPortalLayoutProps> = ({
                 backgroundColor: isActive ? 'primary.dark' : 'action.hover',
                 color: isActive ? 'white' : 'inherit',
                 '& .MuiListItemText-primary': {
-                  color: isActive ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                  color: isActive ? 'white' : 'text.primary',
                 },
                 '& .MuiListItemIcon-root': {
-                  color: isActive ? 'white' : 'rgba(0, 0, 0, 0.54)',
+                  color: isActive ? 'white' : 'text.secondary',
                 },
               },
             }}
@@ -213,20 +221,13 @@ export const ClientPortalLayout: React.FC<ClientPortalLayoutProps> = ({
             }}
           >
             <ListItemIcon sx={{ minWidth: 40 }}>
-              <Avatar
-                sx={{
-                  width: 32,
-                  height: 32,
-                  backgroundColor: 'primary.main',
-                  fontSize: '0.875rem',
-                }}
-              >
-                CP
+              <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
+                {clientInfo?.name ? clientInfo.name.charAt(0).toUpperCase() : '?'}
               </Avatar>
             </ListItemIcon>
             <ListItemText
-              primary="Client User"
-              secondary="client@example.com"
+              primary={clientInfo?.name || 'Client User'}
+              secondary={clientInfo?.email || 'client@example.com'}
               primaryTypographyProps={{
                 fontSize: '0.875rem',
                 fontWeight: 500,
@@ -306,11 +307,24 @@ export const ClientPortalLayout: React.FC<ClientPortalLayoutProps> = ({
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2 }}>{actions}</Box>
           )}
 
-          <IconButton color="inherit" sx={{ mr: 1 }}>
+          <IconButton
+            color="inherit"
+            sx={{ mr: 1 }}
+            onClick={() => {
+              console.log('Notifications clicked');
+              // Add notifications functionality here
+            }}
+          >
             <NotificationsIcon />
           </IconButton>
 
-          <IconButton color="inherit">
+          <IconButton
+            color="inherit"
+            onClick={() => {
+              console.log('Help clicked');
+              // Add help functionality here
+            }}
+          >
             <HelpIcon />
           </IconButton>
         </Toolbar>
@@ -365,10 +379,35 @@ export const ClientPortalLayout: React.FC<ClientPortalLayoutProps> = ({
           },
         }}
       >
-        <MenuItem onClick={handleProfileClose}>Profile</MenuItem>
-        <MenuItem onClick={handleProfileClose}>Settings</MenuItem>
+        <MenuItem
+          onClick={() => {
+            handleProfileClose();
+            // Add profile functionality here
+            console.log('Profile clicked');
+          }}
+        >
+          Profile
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            handleProfileClose();
+            // Add settings functionality here
+            console.log('Settings clicked');
+          }}
+        >
+          Settings
+        </MenuItem>
         <Divider />
-        <MenuItem onClick={handleProfileClose}>Logout</MenuItem>
+        <MenuItem
+          onClick={() => {
+            handleProfileClose();
+            // Add logout functionality here
+            console.log('Logout clicked');
+            // You can add actual logout logic here
+          }}
+        >
+          Logout
+        </MenuItem>
       </Menu>
     </Box>
   );

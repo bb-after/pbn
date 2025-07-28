@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Paper, Typography, Box, CircularProgress } from '@mui/material';
-import LayoutContainer from '../../../components/LayoutContainer';
-import StyledHeader from '../../../components/StyledHeader';
+import { Typography, Box, CircularProgress, Grid } from '@mui/material';
 import ClientForm from '../../../components/ClientForm';
 import ClientContactList from '../../../components/ClientContactList';
 import { useRouter } from 'next/router';
 import useValidateUserToken from 'hooks/useValidateUserToken';
 import axios from 'axios';
+import { IntercomLayout, ThemeProvider, ToastProvider, IntercomCard } from 'components/ui';
+import UnauthorizedAccess from 'components/UnauthorizedAccess';
 
 interface Client {
   client_id: number;
@@ -16,7 +16,7 @@ interface Client {
   updated_at?: string;
 }
 
-export default function EditClientPage() {
+function EditClientPageContent() {
   const router = useRouter();
   const { id } = router.query;
   const { isValidUser } = useValidateUserToken();
@@ -45,20 +45,12 @@ export default function EditClientPage() {
 
   const handleSave = () => {
     setFormSaved(true);
-    // No redirection - stay on the page
+    // Optionally, you could refetch the client data here if needed
   };
 
   const handleCancel = () => {
     router.push('/clients');
   };
-
-  if (!isValidUser) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
-        <Typography variant="h6">Unauthorized access. Please log in.</Typography>
-      </Box>
-    );
-  }
 
   if (loading) {
     return (
@@ -68,36 +60,58 @@ export default function EditClientPage() {
     );
   }
 
+  if (!isValidUser) {
+    return <UnauthorizedAccess />;
+  }
+
   if (error || !client) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
-        <Typography variant="h6" color="error">
-          {error || 'Client not found'}
-        </Typography>
-      </Box>
+      <IntercomLayout title="Error">
+        <Box display="flex" justifyContent="center" alignItems="center" height="100%">
+          <Typography variant="h6" color="error">
+            {error || 'Client not found'}
+          </Typography>
+        </Box>
+      </IntercomLayout>
     );
   }
 
   return (
-    <LayoutContainer>
-      <StyledHeader />
-      <Container maxWidth="lg">
-        <Paper elevation={3} sx={{ p: 4, mt: 3, mb: 3 }}>
-          <Typography variant="h5" gutterBottom>
-            Edit Client: {client.client_name}
-          </Typography>
-
-          <ClientForm client={client} onSave={handleSave} onCancel={handleCancel} />
-
-          {formSaved && (
-            <Box mt={3}>
-              <Typography variant="subtitle1" color="success.main" gutterBottom>
-                Client information saved successfully!
-              </Typography>
+    <IntercomLayout
+      title={`Edit Client: ${client.client_name}`}
+      breadcrumbs={[{ label: 'Clients', href: '/clients' }, { label: 'Edit Client' }]}
+    >
+      <Grid container spacing={3}>
+        <Grid item xs={12} md={8}>
+          <IntercomCard title="Client Details">
+            <Box p={3}>
+              <ClientForm client={client} onSave={handleSave} onCancel={handleCancel} />
+              {formSaved && (
+                <Box mt={2}>
+                  <Typography variant="body2" color="success.main">
+                    Client information saved successfully!
+                  </Typography>
+                </Box>
+              )}
             </Box>
-          )}
-        </Paper>
-      </Container>
-    </LayoutContainer>
+          </IntercomCard>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <IntercomCard title="Client Contacts">
+            <ClientContactList clientId={client.client_id} clientName={client.client_name} />
+          </IntercomCard>
+        </Grid>
+      </Grid>
+    </IntercomLayout>
+  );
+}
+
+export default function EditClientPage() {
+  return (
+    <ThemeProvider>
+      <ToastProvider>
+        <EditClientPageContent />
+      </ToastProvider>
+    </ThemeProvider>
   );
 }

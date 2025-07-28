@@ -241,10 +241,10 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
                 backgroundColor: isActive ? 'primary.dark' : 'action.hover',
                 color: isActive ? 'white' : 'inherit',
                 '& .MuiListItemText-primary': {
-                  color: isActive ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                  color: isActive ? 'white' : 'text.primary',
                 },
                 '& .MuiListItemIcon-root': {
-                  color: isActive ? 'white' : 'rgba(0, 0, 0, 0.54)',
+                  color: isActive ? 'white' : 'text.secondary',
                 },
               },
             }}

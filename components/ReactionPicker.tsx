@@ -298,10 +298,12 @@ const ReactionPicker: React.FC<ReactionPickerProps> = ({
             mb: 0.5,
             borderRadius: '12px',
             border: '1px solid',
-            borderColor: 'grey.300',
-            backgroundColor: 'grey.50',
+            borderColor: 'divider',
+            backgroundColor: 'transparent',
+            color: 'text.secondary',
             '&:hover': {
-              backgroundColor: 'grey.200',
+              backgroundColor: 'action.hover',
+              borderColor: 'text.primary',
             },
             fontSize: '0.75rem',
           }}
