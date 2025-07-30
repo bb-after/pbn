@@ -3,6 +3,7 @@ import { query, transaction, getPool } from 'lib/db';
 import { ResultSetHeader } from 'mysql2';
 import { validateUserToken } from '../validate-user-token';
 import { postToSlack } from '../../../utils/postToSlack';
+import { google } from 'googleapis';
 
 // Use centralized connection pool
 const pool = getPool();
@@ -464,6 +465,53 @@ async function createApprovalRequest(req: NextApiRequest, res: NextApiResponse, 
 
       // Commit transaction
       await connection.commit();
+
+      // If this is a Google Doc, share it with the service account and Brett
+      if (googleDocId) {
+        console.log(`Sharing Google Doc ${googleDocId} with service account and Brett...`);
+        try {
+          const auth = new google.auth.GoogleAuth({
+            credentials: {
+              client_email: process.env.GOOGLE_CLIENT_EMAIL_CONTENT_APPROVAL,
+              private_key: process.env.GOOGLE_PRIVATE_KEY_CONTENT_APPROVAL?.replace(/\\n/g, '\n'),
+            },
+            scopes: ['https://www.googleapis.com/auth/drive'],
+          });
+          const drive = google.drive({ version: 'v3', auth });
+
+          // Add service account as editor
+          if (process.env.GOOGLE_CLIENT_EMAIL_CONTENT_APPROVAL) {
+            await drive.permissions.create({
+              fileId: googleDocId,
+              requestBody: {
+                role: 'writer', // 'writer' is equivalent to 'editor'
+                type: 'user',
+                emailAddress: process.env.GOOGLE_CLIENT_EMAIL_CONTENT_APPROVAL,
+              },
+              sendNotificationEmail: false,
+            });
+            console.log(`Doc ${googleDocId} shared with service account.`);
+          }
+
+          // Also ensure Brett always has editor access
+          const brettsEmail = 'brett@statuslabs.com';
+          if (userInfo.email.toLowerCase() !== brettsEmail.toLowerCase()) {
+            await drive.permissions.create({
+              fileId: googleDocId,
+              requestBody: {
+                role: 'writer',
+                type: 'user',
+                emailAddress: brettsEmail,
+              },
+              sendNotificationEmail: false,
+            });
+            console.log(`Doc ${googleDocId} shared with ${brettsEmail}.`);
+          }
+        } catch (sharingError) {
+          console.error(`Failed to share Google Doc ${googleDocId}:`, sharingError);
+          // Do not fail the request, just log the error
+        }
+      }
 
       // Send email notifications AFTER commit
       if (contactsToSend.length > 0) {
