@@ -376,7 +376,7 @@ const SuperstarSiteSubmissionsTable = () => {
       </style>
 
       <Typography variant="h5" gutterBottom>
-        <Link href="https://sales.statuscrawl.io">Portal</Link> &raquo; Superstar Site Submissions
+        Superstar Site Submissions
       </Typography>
 
       <Box mr={1}></Box>

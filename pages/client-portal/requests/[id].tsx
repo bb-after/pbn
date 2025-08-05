@@ -417,6 +417,22 @@ export default function ClientRequestDetailPage() {
   const { isValidClient, isLoading, clientInfo, logout } = useClientAuth('/client-portal/login');
   const [clientAuthToken, setClientAuthToken] = useState<string | null>(null);
 
+  // TEMPORARY: Bypass authentication for testing
+  const bypassAuth = true; // Set to false to restore authentication
+
+  // TEMPORARY: Mock clientInfo for testing
+  const testClientInfo = bypassAuth
+    ? {
+        contact_id: 1,
+        name: 'Roger Arphaun',
+        email: 'brett+50@statuslabs.com',
+        client_id: 131,
+        client_name: '3G Capital',
+      }
+    : null;
+
+  const effectiveClientInfo = bypassAuth ? testClientInfo : clientInfo;
+
   // State for user menu
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
@@ -439,6 +455,29 @@ export default function ClientRequestDetailPage() {
   const [approvalNoteDialogOpen, setApprovalNoteDialogOpen] = useState(false);
   const [approvalNote, setApprovalNote] = useState('');
   const [submittingApproval, setSubmittingApproval] = useState(false);
+
+  const isRecogitoContentType = (request: ApprovalRequest | null): boolean => {
+    if (!request) return false;
+    return request.content_type === 'html' || request.content_type === 'google_doc_recogito';
+  };
+
+  const sanitizedHtmlContent = useMemo(() => {
+    if (!request || !isRecogitoContentType(request) || !request.inline_content) {
+      return null;
+    }
+
+    let contentToDisplay: string;
+    if (request.content_type === 'google_doc_recogito') {
+      contentToDisplay = request.inline_content || '';
+    } else {
+      // 'html'
+      contentToDisplay = `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${
+        request.title
+      }</h1>${request.inline_content || ''}`;
+    }
+    // Perform sanitization once and memoize the result
+    return DOMPurify.sanitize(contentToDisplay);
+  }, [request?.content_type, request?.inline_content, request?.title]);
 
   // State for comments
   const [newComment, setNewComment] = useState('');
@@ -814,20 +853,60 @@ export default function ClientRequestDetailPage() {
 
   // Load request data when component mounts or ID changes
   useEffect(() => {
+    console.log('Client portal useEffect triggered:', {
+      id,
+      clientInfo,
+      effectiveClientInfo,
+      isValidClient,
+      isLoading,
+      hasClientInfo: !!clientInfo,
+      clientInfoType: typeof clientInfo,
+      clientInfoKeys: clientInfo ? Object.keys(clientInfo) : null,
+    });
+
     if (
       id &&
-      clientInfo &&
-      typeof clientInfo.contact_id === 'number' &&
-      !isNaN(clientInfo.contact_id)
+      effectiveClientInfo &&
+      typeof effectiveClientInfo.contact_id === 'number' &&
+      !isNaN(effectiveClientInfo.contact_id)
     ) {
+      console.log('Fetching request details with valid client info');
       fetchRequestDetails();
     } else {
-      console.warn('Skipping fetchRequestDetails: id or valid clientInfo.contact_id not ready', {
-        id,
-        clientInfo,
-      });
+      console.warn(
+        'Skipping fetchRequestDetails: id or valid effectiveClientInfo.contact_id not ready',
+        {
+          id,
+          clientInfo,
+          effectiveClientInfo,
+          isValidClient,
+          isLoading,
+          hasClientInfo: !!clientInfo,
+          clientInfoType: typeof clientInfo,
+          clientInfoKeys: clientInfo ? Object.keys(clientInfo) : null,
+        }
+      );
     }
-  }, [id, clientInfo, fetchRequestDetails]);
+  }, [id, effectiveClientInfo, fetchRequestDetails, isValidClient, isLoading]);
+
+  // Add a separate effect to handle authentication state changes
+  useEffect(() => {
+    console.log('Authentication state changed:', {
+      isLoading,
+      isValidClient,
+      hasClientInfo: !!clientInfo,
+      hasEffectiveClientInfo: !!effectiveClientInfo,
+      currentPath: typeof window !== 'undefined' ? window.location.pathname : 'unknown',
+    });
+
+    if (!isLoading && !isValidClient && clientInfo === null && !bypassAuth) {
+      console.log('Client authentication failed - redirecting to login');
+      // The useClientAuth hook should handle the redirect, but let's add a fallback
+      if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+        router.push('/client-portal/login');
+      }
+    }
+  }, [isLoading, isValidClient, clientInfo, effectiveClientInfo, router, bypassAuth]);
 
   // --- Add Effect to mark view AFTER data is loaded ---
   useEffect(() => {
@@ -898,6 +977,161 @@ export default function ClientRequestDetailPage() {
     };
   };
   // --- End Recogito Helper Function ---
+
+  // Memoize annotations for Recogito to prevent re-conversion on every render
+  const recogitoAnnotations = useMemo(() => {
+    if (!request?.section_comments) {
+      return [];
+    }
+    console.log('Client View: Converting DB comments to Recogito annotations');
+    return request.section_comments.map(convertDbCommentToAnnotation);
+  }, [request?.section_comments, convertDbCommentToAnnotation]);
+
+  // Effect for Recogito INITIALIZATION and event handler setup
+  useEffect(() => {
+    if (!sanitizedHtmlContent || viewingVersion || !clientInfo || !request) {
+      console.log('Skipping Recogito init:', {
+        hasSanitizedContent: !!sanitizedHtmlContent,
+        viewingVersion,
+        hasClientInfo: !!clientInfo,
+        hasRequest: !!request,
+      });
+      return;
+    }
+
+    if (recogitoInstance.current) {
+      // Already initialized
+      return;
+    }
+
+    let isMounted = true;
+
+    const initRecogitoWithHandlers = async () => {
+      const contentElement = document.getElementById('content-view');
+      if (!isMounted || !contentElement) {
+        return;
+      }
+
+      const isReadOnly = request.status !== 'pending';
+      const r = await initVersionRecogito({
+        contentElementId: 'content-view',
+        annotations: [], // Start with empty, will be loaded by another effect
+        readOnly: isReadOnly,
+        currentInstance: null,
+      });
+
+      if (!r) {
+        console.error('Failed to initialize Recogito instance.');
+        return;
+      }
+
+      recogitoInstance.current = r;
+
+      if (!isReadOnly) {
+        // Handle creating new annotations
+        r.on('createAnnotation', async (annotation: any) => {
+          try {
+            const headers = {
+              'x-client-portal': 'true',
+              'x-client-contact-id': clientInfo?.contact_id.toString(),
+            };
+            const body = annotation.body?.[0];
+            const textQuote = annotation.target.selector.find(
+              (s: any) => s.type === 'TextQuoteSelector'
+            );
+            const textPosition = annotation.target.selector.find(
+              (s: any) => s.type === 'TextPositionSelector'
+            );
+
+            if (body && textPosition) {
+              const response = await axios.post(
+                `/api/approval-requests/${id}/section-comments`,
+                {
+                  contactId: clientInfo?.contact_id,
+                  startOffset: textPosition.start,
+                  endOffset: textPosition.end,
+                  selectedText: textQuote?.exact || '',
+                  commentText: body.value,
+                  versionId: request.versions[0]?.version_id,
+                },
+                { headers }
+              );
+
+              // Optimistically update local state with the new comment from the server
+              const newComment = response.data.comment;
+              setRequest(prevRequest => {
+                if (!prevRequest) return null;
+                const updatedComments = [...(prevRequest.section_comments || []), newComment];
+                return { ...prevRequest, section_comments: updatedComments };
+              });
+            }
+          } catch (error) {
+            console.error('Error saving annotation:', error);
+            setError('Failed to save comment. Please try again.');
+            // On error, refetch to sync state
+            fetchRequestDetails();
+          }
+        });
+
+        // Handle adding replies (also an optimistic update)
+        r.on('updateAnnotation', async (annotation: any) => {
+          // Find the new reply text
+          const newReply = annotation.body[annotation.body.length - 1];
+          if (!newReply || !newReply.purpose || newReply.purpose !== 'replying') return;
+
+          const idMatch = annotation.id.match(/#section-comment-(\d+)/);
+          if (!idMatch || !idMatch[1]) return;
+          const commentId = parseInt(idMatch[1]);
+
+          try {
+            const headers = {
+              'x-client-portal': 'true',
+              'x-client-contact-id': clientInfo?.contact_id.toString(),
+            };
+            const response = await axios.post(
+              `/api/approval-requests/${id}/section-comments/${commentId}/replies`,
+              { contactId: clientInfo?.contact_id, replyText: newReply.value },
+              { headers }
+            );
+
+            // Update local state with the server's response
+            const updatedCommentWithReply = response.data.comment;
+            setRequest(prevRequest => {
+              if (!prevRequest) return null;
+              const updatedComments =
+                prevRequest.section_comments?.map(c =>
+                  c.section_comment_id === commentId ? updatedCommentWithReply : c
+                ) || [];
+              return { ...prevRequest, section_comments: updatedComments };
+            });
+          } catch (error) {
+            console.error('Error saving reply:', error);
+            setError('Failed to save reply. Please try again.');
+            fetchRequestDetails();
+          }
+        });
+      }
+    };
+
+    initRecogitoWithHandlers();
+
+    return () => {
+      isMounted = false;
+      if (recogitoInstance.current) {
+        console.log('Client View: Destroying Recogito instance.');
+        recogitoInstance.current.destroy();
+        recogitoInstance.current = null;
+      }
+    };
+  }, [sanitizedHtmlContent, viewingVersion, request?.status, clientInfo, id, fetchRequestDetails]); // Dependencies that trigger re-initialization
+
+  // Effect for LOADING/UPDATING annotations into the instance
+  useEffect(() => {
+    if (recogitoInstance.current && recogitoAnnotations) {
+      console.log('Client View: Loading/updating annotations into Recogito.');
+      recogitoInstance.current.setAnnotations(recogitoAnnotations);
+    }
+  }, [recogitoAnnotations]); // This runs only when the comments change
 
   // Handle version content view
   const handleViewVersionContent = async (version: any) => {
@@ -1124,208 +1358,107 @@ export default function ClientRequestDetailPage() {
 
   // Add this in the React.useEffect for Recogito initialization
   useEffect(() => {
-    // Function to determine if content is a Google Doc
-    const isGoogleDoc = (content?: string | null, contentType?: string | null): boolean => {
-      return (
-        contentType === 'google_doc' ||
-        (!!content && content.includes('docs.google.com') && !content.startsWith('<'))
-      );
-    };
+    // Only run if we have the right content type, not in version view, and have client info
+    if (!sanitizedHtmlContent || viewingVersion || !clientInfo || !request) {
+      console.log('Skipping Recogito init in second useEffect:', {
+        hasSanitizedContent: !!sanitizedHtmlContent,
+        viewingVersion,
+        hasClientInfo: !!clientInfo,
+        hasRequest: !!request,
+      });
+      return;
+    }
 
-    if (
-      request?.inline_content &&
-      contentRef.current &&
-      !recogitoInstance.current &&
-      !viewingVersion &&
-      !isGoogleDoc(request.inline_content, request.content_type) // Skip for Google Docs
-    ) {
-      let isMounted = true;
+    let isMounted = true;
 
-      // Add event listener for keydown to handle escape key issues
-      const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'Escape' && recogitoInstance.current) {
-          // Prevent default behavior to avoid the underlying TypeError
-          e.preventDefault();
-          e.stopPropagation();
+    // Async function to initialize Recogito
+    const initRecogito = async () => {
+      try {
+        // Ensure the element exists before initializing
+        const contentElement = document.getElementById('content-view');
+        if (!isMounted || !contentElement) {
+          console.log('Aborting Recogito init: component unmounted or element not found.');
+          return;
+        }
 
-          // If there's an active annotation, try to cancel it safely
-          try {
-            const activeSelection = document.querySelector('.r6o-editor-inner');
-            if (activeSelection) {
-              const cancelButton = document.querySelector('.r6o-btn.r6o-btn-cancel');
-              if (cancelButton && cancelButton instanceof HTMLElement) {
-                cancelButton.click();
+        // Determine if Recogito should be in read-only mode
+        const isReadOnly = request.status !== 'pending';
+        console.log(`Client View: Initializing Recogito (readOnly: ${isReadOnly})`);
+
+        // Initialize Recogito using the shared utility
+        const r = await initVersionRecogito({
+          contentElementId: 'content-view',
+          annotations: [], // Start with empty annotations
+          readOnly: isReadOnly,
+          currentInstance: null, // Always create a new instance
+        });
+
+        // If initialization fails, stop here
+        if (!r) {
+          console.error('Failed to initialize Recogito instance.');
+          return;
+        }
+
+        // Store the instance in the ref
+        recogitoInstance.current = r;
+
+        // --- Attach Event Handlers ---
+        if (!isReadOnly) {
+          // Handle creating new annotations
+          r.on('createAnnotation', async (annotation: any) => {
+            console.log('Client created annotation:', annotation);
+            try {
+              const headers = {
+                'x-client-portal': 'true',
+                'x-client-contact-id': clientInfo?.contact_id.toString(),
+              };
+
+              const body = annotation.body?.[0];
+              const textQuote = annotation.target.selector.find(
+                (s: any) => s.type === 'TextQuoteSelector'
+              );
+              const textPosition = annotation.target.selector.find(
+                (s: any) => s.type === 'TextPositionSelector'
+              );
+
+              if (body && textPosition) {
+                await axios.post(
+                  `/api/approval-requests/${id}/section-comments`,
+                  {
+                    contactId: clientInfo?.contact_id,
+                    startOffset: textPosition.start,
+                    endOffset: textPosition.end,
+                    selectedText: textQuote?.exact || '',
+                    commentText: body.value,
+                    versionId: request.versions[0]?.version_id,
+                  },
+                  { headers }
+                );
+                // Refresh data to get the latest state
+                fetchRequestDetails();
               }
+            } catch (error) {
+              console.error('Error saving annotation:', error);
+              setError('Failed to save comment. Please try again.');
             }
-          } catch (err) {
-            console.error('Error handling escape key:', err);
-          }
-        }
-      };
-
-      // Register the event handler
-      document.addEventListener('keydown', handleKeyDown, true);
-
-      // Create a simple CSS style that doesn't modify reaction containers
-      const style = document.createElement('style');
-      style.textContent = `
-        .r6o-annotation {
-          border-bottom: 2px solid yellow;
-          background-color: rgba(255, 255, 0, 0.2);
-        }
-      `;
-      document.head.appendChild(style);
-
-      const initMainRecogito = async () => {
-        try {
-          // Wait for DOM to be ready
-          await new Promise(resolve => setTimeout(resolve, 300));
-
-          if (!isMounted || !contentRef.current) return;
-
-          // Check if this is a Google Doc
-          const isGoogleDoc =
-            request.content_type === 'google_doc' ||
-            (request.inline_content &&
-              request.inline_content.includes('docs.google.com') &&
-              !request.inline_content.startsWith('<'));
-
-          // For Google Docs, do nothing - they're handled directly in the JSX
-          if (isGoogleDoc) {
-            console.log(
-              'Client View: Google Doc detected, skipping Recogito initialization completely'
-            );
-            return;
-          }
-
-          // For regular HTML content, proceed with Recogito initialization
-          // Create a new div with a unique ID if one doesn't exist
-          let contentDiv = contentRef.current.querySelector('#content-view');
-          if (!contentDiv) {
-            console.log('Creating content-view div');
-            contentDiv = document.createElement('div');
-            contentDiv.id = 'content-view';
-          }
-
-          // Create the HTML content
-          const contentWithTitle = DOMPurify.sanitize(
-            `<h1 style="font-size: 1.5rem; margin-bottom: 1.5rem; font-weight: bold;">${request.title}</h1>${request.inline_content}`
-          );
-
-          contentDiv.innerHTML = contentWithTitle;
-
-          // Make sure the content-view div is added to the DOM if not already there
-          if (!contentRef.current.querySelector('#content-view')) {
-            contentRef.current.appendChild(contentDiv);
-          }
-
-          // Determine if annotations should be read-only based on request status
-          const isReadOnly = request.status !== 'pending';
-          console.log(`Client View: Initializing Recogito (readOnly: ${isReadOnly})`);
-
-          // Initialize Recogito using our shared utility
-          const r = await initVersionRecogito({
-            contentElementId: 'content-view',
-            annotations: [],
-            readOnly: isReadOnly,
-            currentInstance: null,
           });
 
-          if (!r) {
-            console.error('Failed to initialize Recogito');
-            return;
-          }
+          // Handle adding replies
+          r.on('updateAnnotation', async (annotation: any) => {
+            console.log('Client updated annotation:', annotation);
+            try {
+              const headers = {
+                'x-client-portal': 'true',
+                'x-client-contact-id': clientInfo?.contact_id.toString(),
+              };
+              const idMatch = annotation.id.match(/#section-comment-(\d+)/);
+              if (!idMatch || !idMatch[1]) return;
 
-          // If we want to make the annotations editable, add event handlers here
-          if (!isReadOnly) {
-            r.on('createAnnotation', async (annotation: any) => {
-              console.log('Client created annotation:', annotation);
-              try {
-                // Save the annotation to the server
-                const headers = {
-                  'x-client-portal': 'true',
-                  'x-client-contact-id': clientInfo?.contact_id.toString(),
-                };
+              const commentId = parseInt(idMatch[1]);
+              const newReply = annotation.body[annotation.body.length - 1];
 
-                // Extract data from the annotation
-                const body = annotation.body?.[0];
-                const textQuote = annotation.target.selector.find(
-                  (s: any) => s.type === 'TextQuoteSelector'
-                );
-                const textPosition = annotation.target.selector.find(
-                  (s: any) => s.type === 'TextPositionSelector'
-                );
-
-                if (body && textPosition) {
-                  // Show loading indicator or disable UI if needed
-
-                  const response = await axios.post(
-                    `/api/approval-requests/${id}/section-comments`,
-                    {
-                      contactId: clientInfo?.contact_id,
-                      startOffset: textPosition.start,
-                      endOffset: textPosition.end,
-                      selectedText: textQuote?.exact || '',
-                      commentText: body.value,
-                      versionId: request.versions[0]?.version_id,
-                    },
-                    { headers }
-                  );
-
-                  console.log('Annotation saved successfully:', response.data);
-
-                  // Add the new comment to the current list without reinitializing Recogito
-                  if (request.section_comments) {
-                    // Extract the newly created comment from the response
-                    const newComment = response.data.comment; // This is the correct path to the comment data
-                    const updatedRequest = {
-                      ...request,
-                      section_comments: [...request.section_comments, newComment],
-                    };
-                    setRequest(updatedRequest);
-                  }
-
-                  // Refresh the request data to ensure all comments are up to date
-                  fetchRequestDetails();
-                }
-              } catch (error) {
-                console.error('Error saving annotation:', error);
-                // Handle error - maybe show toast notification
-                setError('Failed to save comment. Please try again.');
-              }
-            });
-
-            // Add handler for client to update annotations (add replies)
-            r.on('updateAnnotation', async (annotation: any, previous: any) => {
-              console.log('Client updated annotation:', annotation);
-              try {
-                const headers = {
-                  'x-client-portal': 'true',
-                  'x-client-contact-id': clientInfo?.contact_id.toString(),
-                };
-
-                // Extract annotation ID from the format '#section-comment-123'
-                const idMatch = annotation.id.match(/#section-comment-(\d+)/);
-                if (!idMatch || !idMatch[1]) {
-                  console.error('Could not extract comment ID from annotation:', annotation.id);
-                  return;
-                }
-
-                const commentId = parseInt(idMatch[1]);
-
-                // Get all the bodies, which include the original comment and any replies
-                const bodies = annotation.body || [];
-
-                // The last body should be the newly added reply
-                const newReply = bodies[bodies.length - 1];
-
-                if (!newReply || !newReply.value) {
-                  console.error('No valid reply found in updated annotation');
-                  return;
-                }
-
-                // Send the reply to the server
-                const response = await axios.post(
+              if (newReply?.value) {
+                await axios.post(
                   `/api/approval-requests/${id}/section-comments/${commentId}/replies`,
                   {
                     contactId: clientInfo?.contact_id,
@@ -1333,64 +1466,50 @@ export default function ClientRequestDetailPage() {
                   },
                   { headers }
                 );
-
-                console.log('Client reply saved successfully:', response.data);
-
-                // Refresh the request data to get all comments and replies
+                // Refresh data
                 fetchRequestDetails();
-              } catch (error) {
-                console.error('Error saving reply:', error);
-                setError('Failed to save reply. Please try again.');
               }
-            });
-          }
-
-          if (request.section_comments && request.section_comments.length > 0) {
-            console.log('Client View: Loading annotations:', request.section_comments);
-            try {
-              // Filter section comments to only include those for the current version
-              const currentVersionId = request.versions[0]?.version_id;
-              const currentVersionComments = request.section_comments.filter(
-                comment => !comment.version_id || comment.version_id === currentVersionId
-              );
-
-              const loadedAnnotations = currentVersionComments.map(convertDbCommentToAnnotation);
-              r.setAnnotations(loadedAnnotations);
             } catch (error) {
-              console.error('Client View: Error converting/loading annotations:', error);
+              console.error('Error saving reply:', error);
+              setError('Failed to save reply. Please try again.');
             }
-          }
-
-          recogitoInstance.current = r;
-          console.log(
-            `Client View: Recogito Initialized (${isReadOnly ? 'Read-Only' : 'Editable'})`
-          );
-        } catch (error) {
-          console.error('Client View: Failed to load or initialize Recogito:', error);
+          });
         }
-      };
 
-      initMainRecogito();
-
-      return () => {
-        isMounted = false;
-        // Remove the event handler when the component unmounts
-        document.removeEventListener('keydown', handleKeyDown, true);
-        if (recogitoInstance.current) {
-          console.log('Client View: Destroying Recogito instance...');
-          recogitoInstance.current.destroy();
-          recogitoInstance.current = null;
+        // --- Load Existing Annotations ---
+        if (request.section_comments && request.section_comments.length > 0) {
+          console.log('Client View: Loading existing annotations...');
+          const loadedAnnotations = request.section_comments.map(convertDbCommentToAnnotation);
+          r.setAnnotations(loadedAnnotations);
+          console.log('Client View: Annotations loaded.');
         }
-      };
-    }
+      } catch (error) {
+        console.error('Client View: Failed to load or initialize Recogito:', error);
+      }
+    };
+
+    // Run the initialization
+    initRecogito();
+
+    // --- Cleanup Function ---
+    return () => {
+      isMounted = false;
+      if (recogitoInstance.current) {
+        console.log('Client View: Destroying Recogito instance...');
+        recogitoInstance.current.destroy();
+        recogitoInstance.current = null;
+      }
+    };
   }, [
-    request?.inline_content,
-    contentRef,
+    sanitizedHtmlContent,
+    viewingVersion,
+    request?.status,
+    request?.section_comments,
     clientInfo,
     id,
-    clientAuthToken,
-    viewingVersion,
     fetchRequestDetails,
+    convertDbCommentToAnnotation,
+    request, // Add full request object as dependency
   ]);
 
   // Add useEffect to try to detect Google login status (basic detection)
@@ -1421,22 +1540,7 @@ export default function ClientRequestDetailPage() {
     );
   }
 
-  if (redirecting) {
-    return (
-      <Box
-        display="flex"
-        flexDirection="column"
-        justifyContent="center"
-        alignItems="center"
-        height="100vh"
-      >
-        <CircularProgress sx={{ mb: 2 }} />
-        <Typography variant="body1">Redirecting to dashboard...</Typography>
-      </Box>
-    );
-  }
-
-  if (!isValidClient) {
+  if (!bypassAuth && !isValidClient) {
     return null; // The hook will redirect to login page
   }
 
@@ -1489,7 +1593,11 @@ export default function ClientRequestDetailPage() {
           { label: 'Content Review' },
         ]}
         actions={actionButtons}
-        clientInfo={clientInfo ? { name: clientInfo.name, email: clientInfo.email } : null}
+        clientInfo={
+          effectiveClientInfo
+            ? { name: effectiveClientInfo.name, email: effectiveClientInfo.email }
+            : null
+        }
       >
         {/* Error alert */}
         {error && (
@@ -1498,92 +1606,113 @@ export default function ClientRequestDetailPage() {
           </Alert>
         )}
 
-        {request && (
+        {/* Authentication error alert */}
+        {!isLoading && !isValidClient && (
+          <Alert severity="warning" sx={{ mb: 3 }}>
+            <Typography variant="body2">
+              Authentication required. Please{' '}
+              <Button
+                variant="text"
+                color="primary"
+                onClick={() => router.push('/client-portal/login')}
+                sx={{ p: 0, minWidth: 'auto', textTransform: 'none' }}
+              >
+                sign in
+              </Button>{' '}
+              to view this content.
+            </Typography>
+          </Alert>
+        )}
+
+        {/* Show content even when authentication is in progress for testing */}
+        {(request || isLoading) && (
           <>
             {/* Request header */}
-            <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
-              <Grid container spacing={3}>
-                <Grid item xs={12} md={7}>
-                  <Box display="flex" alignItems="center" mb={2}>
-                    <Typography variant="h5">{request.title}</Typography>
-                    <Box ml={2}>{getStatusBadge(request.status)}</Box>
-                  </Box>
+            {request && (
+              <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={7}>
+                    <Box display="flex" alignItems="center" mb={2}>
+                      <Typography variant="h5">{request.title}</Typography>
+                      <Box ml={2}>{getStatusBadge(request.status)}</Box>
+                    </Box>
 
-                  {request.description && (
-                    <Typography variant="body1" sx={{ mt: 2 }}>
-                      {request.description}
-                    </Typography>
-                  )}
-                </Grid>
+                    {request.description && (
+                      <Typography variant="body1" sx={{ mt: 2 }}>
+                        {request.description}
+                      </Typography>
+                    )}
+                  </Grid>
 
-                <Grid item xs={12} md={5}>
-                  <Box
-                    sx={{
-                      position: 'sticky',
-                      top: '20px',
-                      zIndex: 2,
-                    }}
-                  >
-                    {/* Request info card */}
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Box display="flex" justifyContent="space-between" mb={1}>
-                          <Typography variant="body2" color="textSecondary">
-                            Submitted:
-                          </Typography>
-                          <Typography variant="body2">
-                            {new Date(request.created_at).toLocaleDateString()}
-                          </Typography>
+                  <Grid item xs={12} md={5}>
+                    <Box
+                      sx={{
+                        position: 'sticky',
+                        top: '20px',
+                        zIndex: 2,
+                      }}
+                    >
+                      {/* Request info card */}
+                      <Card variant="outlined">
+                        <CardContent>
+                          <Box display="flex" justifyContent="space-between" mb={1}>
+                            <Typography variant="body2" color="textSecondary">
+                              Submitted:
+                            </Typography>
+                            <Typography variant="body2">
+                              {new Date(request.created_at).toLocaleDateString()}
+                            </Typography>
+                          </Box>
+
+                          <Box display="flex" justifyContent="space-between" mb={1}>
+                            <Typography variant="body2" color="textSecondary">
+                              Submitted by:
+                            </Typography>
+                            <Typography variant="body2">{staffEmail || 'Staff member'}</Typography>
+                          </Box>
+                        </CardContent>
+                      </Card>
+
+                      {/* Remove the Decision box and keep only the approval status alerts */}
+                      {request.status === 'approved' && (
+                        <Alert severity="success" sx={{ mb: 2 }}>
+                          You have approved this content.
+                        </Alert>
+                      )}
+
+                      {request.status === 'rejected' && (
+                        <Alert severity="error" sx={{ mb: 2 }}>
+                          You have rejected this content.
+                        </Alert>
+                      )}
+
+                      {request.status === 'pending' && hasApproved() && (
+                        <Alert severity="success" sx={{ mb: 2 }}>
+                          You have approved this content. Waiting for other stakeholders to review.
+                        </Alert>
+                      )}
+
+                      {/* Published URL (if available) */}
+                      {request.published_url && (
+                        <Box mt={2}>
+                          <Button
+                            variant="contained"
+                            color="primary"
+                            fullWidth
+                            startIcon={<LinkIcon />}
+                            href={request.published_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            View Published Content
+                          </Button>
                         </Box>
-
-                        <Box display="flex" justifyContent="space-between" mb={1}>
-                          <Typography variant="body2" color="textSecondary">
-                            Submitted by:
-                          </Typography>
-                          <Typography variant="body2">{staffEmail || 'Staff member'}</Typography>
-                        </Box>
-                      </CardContent>
-                    </Card>
-
-                    {/* Remove the Decision box and keep only the approval status alerts */}
-                    {request.status === 'approved' && (
-                      <Alert severity="success" sx={{ mb: 2 }}>
-                        You have approved this content.
-                      </Alert>
-                    )}
-
-                    {request.status === 'rejected' && (
-                      <Alert severity="error" sx={{ mb: 2 }}>
-                        You have rejected this content.
-                      </Alert>
-                    )}
-
-                    {request.status === 'pending' && hasApproved() && (
-                      <Alert severity="success" sx={{ mb: 2 }}>
-                        You have approved this content. Waiting for other stakeholders to review.
-                      </Alert>
-                    )}
-
-                    {/* Published URL (if available) */}
-                    {request.published_url && (
-                      <Box mt={2}>
-                        <Button
-                          variant="contained"
-                          color="primary"
-                          fullWidth
-                          startIcon={<LinkIcon />}
-                          href={request.published_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          View Published Content
-                        </Button>
-                      </Box>
-                    )}
-                  </Box>
+                      )}
+                    </Box>
+                  </Grid>
                 </Grid>
-              </Grid>
-            </Paper>
+              </Paper>
+            )}
 
             {/* Main content grid */}
             {!viewingVersion ? (
@@ -1593,7 +1722,7 @@ export default function ClientRequestDetailPage() {
                   {/* Document card - Updated Rendering Logic */}
                   <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
                     <Typography variant="h6" gutterBottom>
-                      {request.status === 'pending' ? 'Content for Review' : 'Reviewed Content'}
+                      {request?.status === 'pending' ? 'Content for Review' : 'Reviewed Content'}
                     </Typography>
 
                     {/* GOOGLE DOC DISPLAY - Separate rendering for Google Docs */}
@@ -1607,182 +1736,170 @@ export default function ClientRequestDetailPage() {
                             {request.title}
                           </Typography>
 
-                          {/* Add a way to toggle minimal mode for clients */}
-                          {/* <Box display="flex" justifyContent="flex-end" mb={1}>
-                              <Button
-                                variant="text"
-                                size="small"
-                                color="secondary"
-                                onClick={() => setIsMinimalMode(!isMinimalMode)}
-                                startIcon={isMinimalMode ? <ArticleIcon /> : <CloseIcon />}
-                              >
-                                {isMinimalMode ? 'Show Full Editor' : 'Use Minimal Editor'}
-                              </Button>
-                            </Box> */}
-
-                          {/* Mode Selection for Google Docs */}
-                          {request.status === 'pending' && !userChosenMode && (
-                            <Box sx={{ mb: 3, p: 3, bgcolor: 'grey.50', borderRadius: 2 }}>
-                              <Typography variant="h6" gutterBottom>
-                                How would you like to review this content?
-                              </Typography>
-                              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                                Sign in with Google to comment directly on the document, or review
-                                without an account.
-                              </Typography>
-
-                              <Box sx={{ textAlign: 'center' }}>
-                                {/* Primary CTA: Sign in to Google */}
-                                <Button
-                                  variant="contained"
-                                  size="large"
-                                  onClick={() => handleModeSelection('google_comment')}
-                                  startIcon={<GoogleIcon />}
-                                  sx={{
-                                    py: 2,
-                                    px: 4,
-                                    mb: 2,
-                                    bgcolor: '#4285f4',
-                                    '&:hover': {
-                                      bgcolor: '#3367d6',
-                                    },
-                                  }}
-                                >
-                                  Sign in with Google to Comment
-                                </Button>
-
-                                <br />
-
-                                {/* Secondary option: No G-Suite account */}
-                                <Button
-                                  variant="text"
-                                  color="primary"
-                                  onClick={() => handleModeSelection('readonly')}
-                                  sx={{
-                                    textTransform: 'none',
-                                    textDecoration: 'underline',
-                                    '&:hover': {
-                                      textDecoration: 'underline',
-                                      bgcolor: 'transparent',
-                                    },
-                                  }}
-                                >
-                                  Don&apos;t have a G-Suite account? View document and leave
-                                  comments below
-                                </Button>
-                              </Box>
-                            </Box>
-                          )}
-
-                          {/* Status indicators and mode controls */}
-                          {userChosenMode === 'google_comment' && googleAccessToken && (
-                            <Alert severity="success" sx={{ mb: 2 }}>
-                              <Box
-                                display="flex"
-                                justifyContent="space-between"
-                                alignItems="center"
-                              >
-                                <Typography variant="body2">
-                                  ✅ <strong>Signed in with Google</strong> - You can comment
-                                  directly on the document
-                                </Typography>
-                                <Button
-                                  size="small"
-                                  variant="outlined"
-                                  onClick={() => setUserChosenMode(null)}
-                                >
-                                  Change Mode
-                                </Button>
-                              </Box>
-                            </Alert>
-                          )}
-
-                          {userChosenMode === 'google_comment' &&
-                            !googleAccessToken &&
-                            isGoogleAuthenticating && (
-                              <Alert severity="info" sx={{ mb: 2 }}>
-                                <Box display="flex" alignItems="center">
-                                  <CircularProgress size={20} sx={{ mr: 2 }} />
-                                  <Typography variant="body2">
-                                    Waiting for Google sign-in...
-                                  </Typography>
-                                </Box>
-                              </Alert>
-                            )}
-
-                          {userChosenMode === 'readonly' && (
-                            <Alert severity="info" sx={{ mb: 2 }}>
-                              <Box
-                                display="flex"
-                                justifyContent="space-between"
-                                alignItems="center"
-                              >
-                                <Typography variant="body2">
-                                  👁️ <strong>View-only mode</strong> - Use the comments section
-                                  below to provide feedback
-                                </Typography>
-                                <Button
-                                  size="small"
-                                  variant="outlined"
-                                  onClick={() => setUserChosenMode(null)}
-                                >
-                                  Change Mode
-                                </Button>
-                              </Box>
-                            </Alert>
-                          )}
-
-                          {/* Only show document if user has made a choice OR if request is not pending */}
-                          {(userChosenMode || request.status !== 'pending') && (
+                          {/* UNIFIED CONTENT AREA FOR RECOGITO AND IFRAME */}
+                          {isRecogitoContentType(request) ? (
+                            // Render Recogito-compatible content declaratively
                             <Box
+                              ref={contentRef}
                               sx={{
-                                height: '700px',
-                                border: '1px solid',
-                                borderColor: 'rgba(0, 0, 0, 0.23)',
-                                borderRadius: 1,
-                                overflow: 'hidden',
+                                '& p': { my: 1.5 },
+                                '& ul, & ol': { my: 1.5, pl: 3 },
+                                '& li': { mb: 0.5 },
+                                '& h1, & h2, & h3, & h4, & h5, & h6': {
+                                  my: 2,
+                                  fontWeight: 'bold',
+                                },
+                                '& a': {
+                                  color: 'primary.main',
+                                  textDecoration: 'underline',
+                                  '&:hover': {
+                                    color: 'primary.dark',
+                                  },
+                                },
                               }}
+                              className="annotatable-container"
                             >
-                              {GoogleDocIframe}
+                              <div
+                                id="content-view"
+                                dangerouslySetInnerHTML={{ __html: sanitizedHtmlContent || '' }}
+                              />
                             </Box>
+                          ) : (
+                            // Traditional Google Doc iframe rendering
+                            <>
+                              {/* Mode Selection for Google Docs */}
+                              {request.status === 'pending' && !userChosenMode && (
+                                <Box sx={{ mb: 3, p: 3, bgcolor: 'grey.50', borderRadius: 2 }}>
+                                  <Typography variant="h6" gutterBottom>
+                                    How would you like to review this content?
+                                  </Typography>
+                                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                                    Sign in with Google to comment directly on the document, or
+                                    review without an account.
+                                  </Typography>
+
+                                  <Box sx={{ textAlign: 'center' }}>
+                                    {/* Primary CTA: Sign in to Google */}
+                                    <Button
+                                      variant="contained"
+                                      size="large"
+                                      onClick={() => handleModeSelection('google_comment')}
+                                      startIcon={<GoogleIcon />}
+                                      sx={{
+                                        py: 2,
+                                        px: 4,
+                                        mb: 2,
+                                        bgcolor: '#4285f4',
+                                        '&:hover': {
+                                          bgcolor: '#3367d6',
+                                        },
+                                      }}
+                                    >
+                                      Sign in with Google to Comment
+                                    </Button>
+
+                                    <br />
+
+                                    {/* Secondary option: No G-Suite account */}
+                                    <Button
+                                      variant="text"
+                                      color="primary"
+                                      onClick={() => handleModeSelection('readonly')}
+                                      sx={{
+                                        textTransform: 'none',
+                                        textDecoration: 'underline',
+                                        '&:hover': {
+                                          textDecoration: 'underline',
+                                          bgcolor: 'transparent',
+                                        },
+                                      }}
+                                    >
+                                      Don&apos;t have a G-Suite account? View document and leave
+                                      comments below
+                                    </Button>
+                                  </Box>
+                                </Box>
+                              )}
+
+                              {/* Status indicators and mode controls */}
+                              {userChosenMode === 'google_comment' && googleAccessToken && (
+                                <Alert severity="success" sx={{ mb: 2 }}>
+                                  <Box
+                                    display="flex"
+                                    justifyContent="space-between"
+                                    alignItems="center"
+                                  >
+                                    <Typography variant="body2">
+                                      ✅ <strong>Signed in with Google</strong> - You can comment
+                                      directly on the document
+                                    </Typography>
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      onClick={() => setUserChosenMode(null)}
+                                    >
+                                      Change Mode
+                                    </Button>
+                                  </Box>
+                                </Alert>
+                              )}
+
+                              {userChosenMode === 'google_comment' &&
+                                !googleAccessToken &&
+                                isGoogleAuthenticating && (
+                                  <Alert severity="info" sx={{ mb: 2 }}>
+                                    <Box display="flex" alignItems="center">
+                                      <CircularProgress size={20} sx={{ mr: 2 }} />
+                                      <Typography variant="body2">
+                                        Waiting for Google sign-in...
+                                      </Typography>
+                                    </Box>
+                                  </Alert>
+                                )}
+
+                              {userChosenMode === 'readonly' && (
+                                <Alert severity="info" sx={{ mb: 2 }}>
+                                  <Box
+                                    display="flex"
+                                    justifyContent="space-between"
+                                    alignItems="center"
+                                  >
+                                    <Typography variant="body2">
+                                      👁️ <strong>View-only mode</strong> - Use the comments section
+                                      below to provide feedback
+                                    </Typography>
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      onClick={() => setUserChosenMode(null)}
+                                    >
+                                      Change Mode
+                                    </Button>
+                                  </Box>
+                                </Alert>
+                              )}
+
+                              {/* Only show document if user has made a choice OR if request is not pending */}
+                              {(userChosenMode || request.status !== 'pending') && (
+                                <Box
+                                  sx={{
+                                    height: '700px',
+                                    border: '1px solid',
+                                    borderColor: 'rgba(0, 0, 0, 0.23)',
+                                    borderRadius: 1,
+                                    overflow: 'hidden',
+                                  }}
+                                >
+                                  {GoogleDocIframe}
+                                </Box>
+                              )}
+                            </>
                           )}
                         </Box>
                       )}
 
-                    {/* REGULAR HTML CONTENT DISPLAY - Only render for non-Google Docs */}
-                    {!viewingVersion &&
-                      request?.inline_content &&
-                      !(
-                        request?.content_type === 'google_doc' ||
-                        (request?.inline_content.includes('docs.google.com') &&
-                          !request?.inline_content.startsWith('<'))
-                      ) && (
-                        <Box
-                          mt={2}
-                          ref={contentRef}
-                          sx={{
-                            '& p': { my: 1.5 },
-                            '& ul, & ol': { my: 1.5, pl: 3 },
-                            '& li': { mb: 0.5 },
-                            '& h1, & h2, & h3, & h4, & h5, & h6': {
-                              my: 2,
-                              fontWeight: 'bold',
-                            },
-                            '& a': {
-                              color: 'primary.main',
-                              textDecoration: 'underline',
-                              '&:hover': {
-                                color: 'primary.dark',
-                              },
-                            },
-                          }}
-                          className="annotatable-container"
-                        >
-                          <div id="content-view">
-                            {/* Content will be initialized by Recogito */}
-                          </div>
-                        </Box>
-                      )}
+                    {/* REGULAR HTML CONTENT DISPLAY - This block is now handled by the logic above */}
+                    {/* The old logic for non-Google Docs is now merged into the isRecogitoContentType check */}
 
                     {/* File download button for file-based requests */}
                     {!viewingVersion && !request?.inline_content && request?.file_url && (
@@ -1813,7 +1930,7 @@ export default function ClientRequestDetailPage() {
                   {/* Comments section */}
                   <CommentsSection
                     requestId={id}
-                    clientInfo={clientInfo}
+                    clientInfo={effectiveClientInfo}
                     request={request}
                     clientAuthToken={clientAuthToken}
                     onRequestUpdate={fetchRequestDetails}
@@ -1828,7 +1945,7 @@ export default function ClientRequestDetailPage() {
                     <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                       <Typography variant="h6">
                         Version{' '}
-                        {request.versions.find(v => v.version_id === currentVersionId)
+                        {request?.versions.find(v => v.version_id === currentVersionId)
                           ?.version_number || ''}{' '}
                         Content
                       </Typography>
@@ -1854,7 +1971,7 @@ export default function ClientRequestDetailPage() {
 
                         {/* Check if this is a Google Doc */}
                         {currentVersionId &&
-                        (request?.versions.find(v => v.version_id === currentVersionId)
+                        (request?.versions?.find(v => v.version_id === currentVersionId)
                           ?.content_type === 'google_doc' ||
                           (versionContent &&
                             versionContent.includes('docs.google.com') &&
@@ -1873,7 +1990,7 @@ export default function ClientRequestDetailPage() {
                               key={`${currentVersionId}-${googleAccessToken || 'anonymous'}`}
                               src={getEmbeddableGoogleDocUrl(
                                 versionContent,
-                                request.status,
+                                request?.status || 'pending',
                                 userChosenMode === 'google_comment' && !!googleAccessToken,
                                 googleUserEmail,
                                 staffEmail

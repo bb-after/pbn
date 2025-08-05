@@ -97,6 +97,9 @@ export default function ClientApprovalRequestForm({
   // Add state for the new slack channel field
   const [slackChannel, setSlackChannel] = useState('');
 
+  // Add workflow type selection
+  const [workflowType, setWorkflowType] = useState<'google_doc' | 'recogito_html'>('google_doc');
+
   // Contact form state
   const [contactFormOpen, setContactFormOpen] = useState(false);
 
@@ -291,21 +294,34 @@ export default function ClientApprovalRequestForm({
     setError(null);
 
     try {
-      // Instead of getting HTML content, just use the Google Doc URL
-      const googleDocUrl = `https://docs.google.com/document/d/${googleDocId}/edit?usp=sharing&embedded=true&rm=minimal`;
+      // Determine content type and URL based on workflow
+      let inlineContent: string;
+      let contentType: string;
+
+      if (workflowType === 'recogito_html') {
+        // For Recogito flow, we'll need to convert the Google Doc to HTML
+        // For now, we'll store the Google Doc ID and convert it later
+        inlineContent = `https://docs.google.com/document/d/${googleDocId}/edit?usp=sharing&embedded=true&rm=minimal`;
+        contentType = 'google_doc_recogito'; // New content type for Recogito workflow
+      } else {
+        // Traditional Google Doc flow
+        inlineContent = `https://docs.google.com/document/d/${googleDocId}/edit?usp=sharing&embedded=true&rm=minimal`;
+        contentType = 'google_doc';
+      }
 
       // Create the approval request with Google Doc URL
       const approvalRequestData = {
         clientId: selectedClient.client_id,
         title,
         description,
-        inlineContent: googleDocUrl, // Store the Google Doc URL instead of HTML content
+        inlineContent,
         contactIds: selectedContacts.map(c => c.contact_id),
-        googleDocId: googleDocId, // Also store the raw doc ID for reference
-        contentType: 'google_doc', // Flag to indicate this is a Google Doc URL
+        googleDocId: googleDocId,
+        contentType,
+        workflowType, // Add workflow type to the request
         googleAccessToken,
         requiredApprovals: requiredApprovals || selectedContacts.length,
-        slackChannel: slackChannel, // Add this line
+        slackChannel: slackChannel,
       };
 
       // Get auth token from localStorage
@@ -529,6 +545,37 @@ export default function ClientApprovalRequestForm({
                   fullWidth
                   placeholder="Enter any notes or instructions for the client..."
                 />
+              </Grid>
+
+              {/* Workflow Type Selection */}
+              <Grid item xs={12}>
+                <FormControl component="fieldset" fullWidth>
+                  <FormLabel component="legend">Review Workflow Type</FormLabel>
+                  <FormGroup>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={workflowType === 'google_doc'}
+                          onChange={() => setWorkflowType('google_doc')}
+                        />
+                      }
+                      label="Traditional Google Doc Flow - Clients use native Google Docs commenting"
+                    />
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={workflowType === 'recogito_html'}
+                          onChange={() => setWorkflowType('recogito_html')}
+                        />
+                      }
+                      label="Recogito HTML Flow - Clients use our custom commenting interface (no Google auth required)"
+                    />
+                  </FormGroup>
+                  <FormHelperText>
+                    Choose how clients will review and comment on the content. The Recogito flow
+                    provides a more controlled experience.
+                  </FormHelperText>
+                </FormControl>
               </Grid>
 
               {/* Google Doc iframe */}

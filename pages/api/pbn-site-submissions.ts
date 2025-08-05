@@ -41,11 +41,36 @@ const pbnSiteSubmissionsHandler = async (req: NextApiRequest, res: NextApiRespon
       return res.status(200).json({ clients: clientRows });
     }
 
+    // Check if we're requesting unique PBN sites with counts
+    if (req.query.getPbnSiteCounts === 'true') {
+      const pbnSiteQuery = `
+        SELECT 
+          ps.id as site_name, 
+          ps.domain as site_domain,
+          COUNT(pss.id) as post_count 
+        FROM pbn_sites ps
+        LEFT JOIN pbn_site_submissions pss ON ps.id = pss.pbn_site_id AND pss.deleted_at IS NULL
+        GROUP BY ps.id, ps.domain
+        ORDER BY ps.domain ASC
+      `;
+      const [pbnSiteRows] = (await connection.query(pbnSiteQuery)) as [
+        RowDataPacket[],
+        FieldPacket[],
+      ];
+
+      // Close the MySQL connection
+      await connection.end();
+
+      // Return the PBN site names with counts
+      return res.status(200).json({ pbnSites: pbnSiteRows });
+    }
+
     // Check for the search query parameter and userToken parameter
     const searchQuery = req.query.search;
     const userToken = req.query.userToken;
     const clientName = req.query.clientName;
     const clientId = req.query.clientId;
+    const pbnSite = req.query.pbnSite;
 
     let query;
     let queryConfig;
@@ -71,9 +96,13 @@ const pbnSiteSubmissionsHandler = async (req: NextApiRequest, res: NextApiRespon
       whereClauses.push('pbn_site_submissions.client_id = ?');
       queryConfig = queryConfig ? [...queryConfig, clientId] : [clientId];
     }
+    if (pbnSite) {
+      whereClauses.push('pbn_site_submissions.pbn_site_id = ?');
+      queryConfig = queryConfig ? [...queryConfig, pbnSite] : [pbnSite];
+    }
     const whereStatement = whereClauses.join(' AND ');
 
-    query = `SELECT pbn_site_submissions.*, users.name FROM pbn_site_submissions JOIN users ON users.user_token = pbn_site_submissions.user_token WHERE ${whereStatement} ORDER BY pbn_site_submissions.id DESC LIMIT ? OFFSET ?`;
+    query = `SELECT pbn_site_submissions.*, users.name, ps.domain as site_domain FROM pbn_site_submissions JOIN users ON users.user_token = pbn_site_submissions.user_token LEFT JOIN pbn_sites ps ON ps.id = pbn_site_submissions.pbn_site_id WHERE ${whereStatement} ORDER BY pbn_site_submissions.id DESC LIMIT ? OFFSET ?`;
     queryConfig = queryConfig ? [...queryConfig, rowsPerPage, offset] : [rowsPerPage, offset];
 
     const [rows] = await connection.query(query, queryConfig);
