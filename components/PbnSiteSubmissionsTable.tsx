@@ -51,6 +51,7 @@ const PbnSiteSubmissionsTable = () => {
   const [selectedUser, setSelectedUser] = useState('');
   const [selectedClient, setSelectedClient] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
+  const [selectedPbnSite, setSelectedPbnSite] = useState('');
   interface User {
     name: string;
     user_token: string; // Adjust this type based on the actual data, e.g., string, number, etc.
@@ -64,6 +65,12 @@ const PbnSiteSubmissionsTable = () => {
     is_active: number;
   }
   const [clients, setClients] = useState<Client[]>([]);
+  interface PbnSite {
+    site_name: string;
+    site_domain: string;
+    post_count: number;
+  }
+  const [pbnSites, setPbnSites] = useState<PbnSite[]>([]);
 
   const [page, setPage] = useState(0); //current page
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -81,7 +88,7 @@ const PbnSiteSubmissionsTable = () => {
   const fetchData = useCallback(async () => {
     try {
       const response = await fetch(
-        `/api/pbn-site-submissions?page=${page}&rowsPerPage=${rowsPerPage}&search=${search}&userToken=${selectedUser}&clientName=${selectedClient}&clientId=${selectedClientId}`
+        `/api/pbn-site-submissions?page=${page}&rowsPerPage=${rowsPerPage}&search=${search}&userToken=${selectedUser}&clientName=${selectedClient}&clientId=${selectedClientId}&pbnSite=${selectedPbnSite}`
       );
       const data = await response.json();
       setSubmissions(data.rows);
@@ -89,61 +96,67 @@ const PbnSiteSubmissionsTable = () => {
     } catch (error) {
       console.error('Error fetching submissions:', error);
     }
-  }, [search, selectedUser, selectedClient, selectedClientId, page, rowsPerPage]);
+  }, [search, selectedUser, selectedClient, selectedClientId, selectedPbnSite, page, rowsPerPage]);
 
   // Check for URL parameters on initial load
   useEffect(() => {
     if (router.isReady) {
-      const { clientId } = router.query;
+      const { clientId, siteId } = router.query;
 
       if (clientId) {
         setSelectedClientId(clientId as string);
+      }
 
-        // We don't need to make an additional API call here
-        // Instead, when clients are loaded, we'll find the matching client and set it
+      if (siteId) {
+        setSelectedPbnSite(siteId as string);
       }
     }
   }, [router.isReady, router.query]);
 
+  // Fetch data after URL parameters are processed
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (router.isReady) {
+      fetchData();
+    }
+  }, [fetchData, router.isReady]);
 
   useEffect(() => {
     const fetchUsers = async () => {
       try {
         const response = await fetch('/api/getUsers');
         const data = await response.json();
-        setUsers(data.rows);
+        setUsers(data.rows || []);
       } catch (error) {
         console.error('Error fetching users:', error);
+        setUsers([]);
       }
     };
-    fetchUsers();
-  }, []);
-
-  useEffect(() => {
     const fetchClients = async () => {
       try {
-        const response = await fetch('/api/clients?active=true&includeStats=true');
+        const response = await fetch('/api/pbn-site-submissions?getClientCounts=true');
         const data = await response.json();
-        setClients(data || []);
-
-        // If we have a selected clientId, find the matching client and set its name
-        if (selectedClientId && data && data.length > 0) {
-          const selectedClient = data.find(
-            (client: Client) => client.client_id.toString() === selectedClientId
-          );
-          if (selectedClient) {
-            setSelectedClient(selectedClient.client_name);
-          }
-        }
+        setClients(data.clients || []);
       } catch (error) {
         console.error('Error fetching clients:', error);
+        setClients([]);
       }
     };
+
+    const fetchPbnSites = async () => {
+      try {
+        const response = await fetch('/api/pbn-site-submissions?getPbnSiteCounts=true');
+        const data = await response.json();
+        setPbnSites(data.pbnSites || []);
+      } catch (error) {
+        console.error('Error fetching PBN sites:', error);
+        setPbnSites([]);
+      }
+    };
+
+    fetchUsers();
     fetchClients();
-  }, [selectedClientId]);
+    fetchPbnSites();
+  }, []);
 
   // Search handler
   const handleSearch = () => {
@@ -156,11 +169,12 @@ const PbnSiteSubmissionsTable = () => {
     setSelectedUser('');
     setSelectedClient('');
     setSelectedClientId('');
+    setSelectedPbnSite(''); // Add this line to reset PBN site filter
     setPage(0);
 
-    // Remove clientId from URL if it exists
-    if (router.query.clientId) {
-      const { clientId, ...restQuery } = router.query;
+    // Remove clientId and siteId from URL if they exist
+    const { clientId, siteId, ...restQuery } = router.query;
+    if (clientId || siteId) {
       router.replace(
         {
           pathname: router.pathname,
@@ -202,7 +216,7 @@ const PbnSiteSubmissionsTable = () => {
 
       <div>
         <Typography variant="h5" gutterBottom>
-          <Link href="https://sales.statuscrawl.io">Portal</Link> &raquo; PBN Site Submissions
+          PBN Site Submissions
         </Typography>
 
         <Box mr={1}></Box>
@@ -225,7 +239,7 @@ const PbnSiteSubmissionsTable = () => {
               <MenuItem value="">
                 <em>All Users</em>
               </MenuItem>
-              {users.map((user, index) => (
+              {(users || []).map((user, index) => (
                 <MenuItem key={index} value={user.user_token}>
                   {user.name} ({user.pbn_count})
                 </MenuItem>
@@ -256,9 +270,27 @@ const PbnSiteSubmissionsTable = () => {
               <MenuItem value="">
                 <em>All Clients</em>
               </MenuItem>
-              {clients.map(client => (
+              {(clients || []).map(client => (
                 <MenuItem key={client.client_id} value={client.client_name}>
                   {client.client_name} ({client.pbn_posts || 0})
+                </MenuItem>
+              ))}
+            </Select>
+          </Box>
+          <Box mr={1}>
+            <Select
+              value={selectedPbnSite}
+              onChange={e => setSelectedPbnSite(e.target.value)}
+              displayEmpty
+              inputProps={{ 'aria-label': 'Without label' }}
+              style={{ minWidth: '120px' }}
+            >
+              <MenuItem value="">
+                <em>All PBN Sites</em>
+              </MenuItem>
+              {(pbnSites || []).map(site => (
+                <MenuItem key={site.site_name} value={site.site_name}>
+                  {site.site_domain} ({site.post_count})
                 </MenuItem>
               ))}
             </Select>
@@ -298,6 +330,7 @@ const PbnSiteSubmissionsTable = () => {
                 <TableCell>Content</TableCell>
                 <TableCell>User</TableCell>
                 <TableCell>Client</TableCell>
+                <TableCell>PBN Site</TableCell>
                 <TableCell>Submission Response</TableCell>
                 <TableCell>Created</TableCell>
                 <TableCell>Actions</TableCell>
@@ -341,6 +374,7 @@ const PbnSiteSubmissionsTable = () => {
                   </TableCell>
                   <TableCell>{submission.name}</TableCell>
                   <TableCell>{submission.client_name || '-'}</TableCell>
+                  <TableCell>{submission.site_domain || '-'}</TableCell>
                   <TableCell>
                     <Link href={submission.submission_response} target="_blank">
                       {submission.submission_response}

@@ -42,8 +42,15 @@ export const initVersionRecogito = async (options: {
   annotations: any[];
   readOnly?: boolean;
   currentInstance?: any;
+  formatter?: (annotation: any) => string; // Add formatter to the options type
 }): Promise<any> => {
-  const { contentElementId, annotations, readOnly = true, currentInstance } = options;
+  const {
+    contentElementId,
+    annotations,
+    readOnly = true,
+    currentInstance,
+    formatter, // Destructure the formatter
+  } = options;
 
   // Clean up existing instance if provided
   if (currentInstance) {
@@ -81,10 +88,14 @@ export const initVersionRecogito = async (options: {
       locale: 'auto',
       allowEmpty: true,
       widgets: readOnly ? [] : [{ widget: 'COMMENT' }],
+      formatter: formatter, // Pass the formatter to Recogito
     });
+
+    console.log('Recogito instance created with formatter:', !!formatter);
 
     // Apply annotations if provided
     if (annotations && annotations.length > 0) {
+      console.log('Setting annotations:', annotations);
       console.log(`Setting ${annotations.length} annotations`);
       instance.setAnnotations(annotations);
     }

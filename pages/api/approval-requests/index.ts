@@ -3,6 +3,60 @@ import { query, transaction, getPool } from 'lib/db';
 import { ResultSetHeader } from 'mysql2';
 import { validateUserToken } from '../validate-user-token';
 import { postToSlack } from '../../../utils/postToSlack';
+import { google } from 'googleapis';
+
+// Function to convert Google Doc content to HTML
+function convertGoogleDocToHtml(document: any): string {
+  if (!document.body || !document.body.content) {
+    return '<p>Document content not available</p>';
+  }
+
+  let html = '';
+
+  for (const element of document.body.content) {
+    if (element.paragraph) {
+      const paragraph = element.paragraph;
+      let paragraphText = '';
+
+      if (paragraph.elements) {
+        for (const textElement of paragraph.elements) {
+          if (textElement.textRun) {
+            const textRun = textElement.textRun;
+            let text = textRun.content || '';
+
+            // Apply formatting
+            if (textRun.textStyle) {
+              const style = textRun.textStyle;
+              if (style.bold) text = `<strong>${text}</strong>`;
+              if (style.italic) text = `<em>${text}</em>`;
+              if (style.underline) text = `<u>${text}</u>`;
+            }
+
+            paragraphText += text;
+          }
+        }
+      }
+
+      // Check paragraph style
+      if (paragraph.paragraphStyle) {
+        const style = paragraph.paragraphStyle;
+        if (style.namedStyleType === 'HEADING_1') {
+          html += `<h1>${paragraphText}</h1>`;
+        } else if (style.namedStyleType === 'HEADING_2') {
+          html += `<h2>${paragraphText}</h2>`;
+        } else if (style.namedStyleType === 'HEADING_3') {
+          html += `<h3>${paragraphText}</h3>`;
+        } else {
+          html += `<p>${paragraphText}</p>`;
+        }
+      } else {
+        html += `<p>${paragraphText}</p>`;
+      }
+    }
+  }
+
+  return html;
+}
 
 // Use centralized connection pool
 const pool = getPool();
@@ -351,8 +405,9 @@ async function createApprovalRequest(req: NextApiRequest, res: NextApiResponse, 
     contactIds,
     googleDocId,
     contentType,
+    workflowType, // Add workflow type
     requiredApprovals,
-    slackChannel, // Add this
+    slackChannel,
   } = req.body;
 
   // Validate required fields
@@ -464,6 +519,89 @@ async function createApprovalRequest(req: NextApiRequest, res: NextApiResponse, 
 
       // Commit transaction
       await connection.commit();
+
+      // If this is a Recogito workflow and we have a Google Doc, convert it to HTML
+      if (workflowType === 'recogito_html' && googleDocId) {
+        console.log(`Converting Google Doc ${googleDocId} to HTML for Recogito workflow...`);
+        try {
+          const auth = new google.auth.GoogleAuth({
+            credentials: {
+              client_email: process.env.GOOGLE_CLIENT_EMAIL_CONTENT_APPROVAL,
+              private_key: process.env.GOOGLE_PRIVATE_KEY_CONTENT_APPROVAL?.replace(/\\n/g, '\n'),
+            },
+            scopes: ['https://www.googleapis.com/auth/documents'],
+          });
+          const docs = google.docs({ version: 'v1', auth });
+
+          // Get the document content
+          const document = await docs.documents.get({ documentId: googleDocId });
+
+          // Convert Google Doc to HTML
+          const htmlContent = convertGoogleDocToHtml(document.data);
+
+          // Update the approval request with the HTML content
+          const updateQuery = `
+            UPDATE client_approval_requests 
+            SET inline_content = ?, content_type = 'html'
+            WHERE request_id = ?
+          `;
+          await pool.query(updateQuery, [htmlContent, requestId]);
+
+          console.log(
+            `Successfully converted Google Doc ${googleDocId} to HTML for request ${requestId}`
+          );
+        } catch (conversionError) {
+          console.error(`Failed to convert Google Doc ${googleDocId} to HTML:`, conversionError);
+          // Don't fail the request, just log the error
+        }
+      }
+
+      // If this is a Google Doc, share it with the service account and Brett
+      if (googleDocId) {
+        console.log(`Sharing Google Doc ${googleDocId} with service account and Brett...`);
+        try {
+          const auth = new google.auth.GoogleAuth({
+            credentials: {
+              client_email: process.env.GOOGLE_CLIENT_EMAIL_CONTENT_APPROVAL,
+              private_key: process.env.GOOGLE_PRIVATE_KEY_CONTENT_APPROVAL?.replace(/\\n/g, '\n'),
+            },
+            scopes: ['https://www.googleapis.com/auth/drive'],
+          });
+          const drive = google.drive({ version: 'v3', auth });
+
+          // Add service account as editor
+          if (process.env.GOOGLE_CLIENT_EMAIL_CONTENT_APPROVAL) {
+            await drive.permissions.create({
+              fileId: googleDocId,
+              requestBody: {
+                role: 'writer', // 'writer' is equivalent to 'editor'
+                type: 'user',
+                emailAddress: process.env.GOOGLE_CLIENT_EMAIL_CONTENT_APPROVAL,
+              },
+              sendNotificationEmail: false,
+            });
+            console.log(`Doc ${googleDocId} shared with service account.`);
+          }
+
+          // Also ensure Brett always has editor access
+          const brettsEmail = 'brett@statuslabs.com';
+          if (userInfo.email.toLowerCase() !== brettsEmail.toLowerCase()) {
+            await drive.permissions.create({
+              fileId: googleDocId,
+              requestBody: {
+                role: 'writer',
+                type: 'user',
+                emailAddress: brettsEmail,
+              },
+              sendNotificationEmail: false,
+            });
+            console.log(`Doc ${googleDocId} shared with ${brettsEmail}.`);
+          }
+        } catch (sharingError) {
+          console.error(`Failed to share Google Doc ${googleDocId}:`, sharingError);
+          // Do not fail the request, just log the error
+        }
+      }
 
       // Send email notifications AFTER commit
       if (contactsToSend.length > 0) {

@@ -49,6 +49,7 @@ import {
   Link as LinkIcon,
   TravelExplore as TravelExploreIcon,
   Wallpaper as WallpaperIcon,
+  Business as BusinessIcon,
 } from '@mui/icons-material';
 import { tokens } from '../../theme/intercom-theme';
 
@@ -105,6 +106,12 @@ const navigationItems: NavigationItem[] = [
     label: 'PBNJ',
     icon: <ArticleIcon />,
     children: [
+      {
+        id: 'pbn-submissions',
+        label: 'PBN Sites',
+        icon: <BusinessIcon />,
+        href: '/pbn-sites',
+      },
       {
         id: 'pbn-submissions',
         label: 'PBN Submissions',
