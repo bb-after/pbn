@@ -1,7 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import mysql from 'mysql2/promise';
-import { verify } from 'jsonwebtoken';
-import { JwtPayload } from 'jsonwebtoken';
 
 // Database connection pool (reuse configuration)
 const pool = mysql.createPool({
@@ -29,13 +27,25 @@ async function checkContactAccess(requestId: number, contactId: number): Promise
   }
 }
 
-// Function to validate staff token
+// Function to validate staff token using database lookup (consistent with other APIs)
 async function validateToken(token: string): Promise<any> {
   try {
-    const decoded = verify(token, process.env.JWT_SECRET || 'default-secret-change-in-production');
-    return decoded;
+    // Query the database for the user token
+    const query = `
+      SELECT id, name, email, role
+      FROM users 
+      WHERE user_token = ?
+    `;
+
+    const [rows] = await pool.query(query, [token]);
+
+    if ((rows as any[]).length === 0) {
+      return null;
+    }
+
+    return (rows as any[])[0];
   } catch (error) {
-    console.error('Error validating token:', error);
+    console.error('Error validating token against database:', error);
     return null;
   }
 }

@@ -81,23 +81,52 @@ export const initVersionRecogito = async (options: {
     console.log(`Initializing Recogito on element #${contentElementId}`);
 
     // Create the instance
-    const instance = new Recogito({
+    const config: any = {
       content: contentElement,
       readOnly,
-      mode: 'pre',
       locale: 'auto',
       allowEmpty: true,
-      widgets: readOnly ? [] : [{ widget: 'COMMENT' }],
-      formatter: formatter, // Pass the formatter to Recogito
-    });
+      widgets: readOnly ? [] : ['COMMENT'], // Use string format for widgets
+      disableEditor: false, // Ensure editing is enabled
+      mode: readOnly ? 'READ_ONLY' : 'ANNOTATION', // Set appropriate mode
+    };
+
+    // Add formatter if provided
+    if (formatter) {
+      config.formatter = formatter;
+      console.log('Adding formatter to Recogito config:', formatter);
+    }
+
+    console.log('Recogito config:', config);
+
+    const instance = new Recogito(config);
 
     console.log('Recogito instance created with formatter:', !!formatter);
+
+    // Verify the formatter is actually set
+    if (formatter && instance.setFormatter) {
+      console.log('Setting formatter via setFormatter method');
+      instance.setFormatter(formatter);
+    }
 
     // Apply annotations if provided
     if (annotations && annotations.length > 0) {
       console.log('Setting annotations:', annotations);
       console.log(`Setting ${annotations.length} annotations`);
-      instance.setAnnotations(annotations);
+
+      // Add a small delay to ensure Recogito is fully ready
+      setTimeout(() => {
+        try {
+          instance.setAnnotations(annotations);
+          console.log('Annotations set successfully');
+
+          // Verify annotations were applied
+          const currentAnnotations = instance.getAnnotations();
+          console.log(`Verification: ${currentAnnotations.length} annotations now in Recogito`);
+        } catch (error) {
+          console.error('Error setting annotations:', error);
+        }
+      }, 100);
     }
 
     console.log('Recogito instance initialized successfully');
