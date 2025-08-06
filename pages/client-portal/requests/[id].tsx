@@ -808,7 +808,7 @@ export default function ClientRequestDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [id, clientInfo]);
+  }, [id, clientInfo?.contact_id]); // Only depend on id and contact_id, not the entire clientInfo object
 
   // Fetch staff member email
   const fetchStaffEmail = async (userId: string) => {
@@ -868,7 +868,8 @@ export default function ClientRequestDetailPage() {
       id &&
       effectiveClientInfo &&
       typeof effectiveClientInfo.contact_id === 'number' &&
-      !isNaN(effectiveClientInfo.contact_id)
+      !isNaN(effectiveClientInfo.contact_id) &&
+      !loading // Prevent multiple simultaneous requests
     ) {
       console.log('Fetching request details with valid client info');
       fetchRequestDetails();
@@ -887,7 +888,7 @@ export default function ClientRequestDetailPage() {
         }
       );
     }
-  }, [id, effectiveClientInfo, fetchRequestDetails, isValidClient, isLoading]);
+  }, [id, effectiveClientInfo?.contact_id, fetchRequestDetails, loading]); // Simplified dependencies
 
   // Add a separate effect to handle authentication state changes
   useEffect(() => {
@@ -930,37 +931,23 @@ export default function ClientRequestDetailPage() {
   }, [request, clientInfo, markRequestAsViewed]);
 
   // --- Recogito Helper Function ---
-  const convertDbCommentToAnnotation = (dbComment: SectionComment) => {
-    return {
+  const convertDbCommentToAnnotation = useCallback((dbComment: SectionComment) => {
+    // Create a simpler structure that Recogito can handle better
+    const annotation = {
       '@context': 'http://www.w3.org/ns/anno.jsonld',
       type: 'Annotation',
       id: `#section-comment-${dbComment.section_comment_id}`,
-      body: [
-        {
-          type: 'TextualBody',
-          value: dbComment.comment_text,
-          purpose: 'commenting',
-          creator: {
-            id: dbComment.user_id
-              ? `staff:${dbComment.user_id}`
-              : `mailto:${dbComment.contact_name}`,
-            name: dbComment.user_name || dbComment.contact_name || 'Unknown',
-          },
-          created: dbComment.created_at_iso || dbComment.created_at,
+      // Use a single body object instead of an array for better Recogito compatibility
+      body: {
+        type: 'TextualBody',
+        value: dbComment.comment_text,
+        purpose: 'commenting',
+        creator: {
+          id: dbComment.user_id ? `staff:${dbComment.user_id}` : `contact:${dbComment.contact_id}`,
+          name: dbComment.user_name || dbComment.contact_name || 'Unknown',
         },
-        ...(dbComment.replies && dbComment.replies.length > 0
-          ? dbComment.replies.map((reply: any) => ({
-              type: 'TextualBody',
-              purpose: 'replying',
-              value: reply.reply_text,
-              creator: {
-                id: reply.user_id ? `staff:${reply.user_id}` : `contact:${reply.client_contact_id}`,
-                name: reply.author_name || reply.user_name || reply.client_name || 'Unknown',
-              },
-              created: reply.created_at_iso || reply.created_at,
-            }))
-          : []),
-      ],
+        created: dbComment.created_at_iso || dbComment.created_at,
+      },
       target: {
         selector: [
           {
@@ -974,9 +961,97 @@ export default function ClientRequestDetailPage() {
           },
         ],
       },
+      // Store replies separately for the formatter to access
+      replies: dbComment.replies || [],
+      // Store metadata for the formatter
+      metadata: {
+        comment_text: dbComment.comment_text,
+        author_name: dbComment.user_name || dbComment.contact_name || 'Unknown',
+        created_at: dbComment.created_at_iso || dbComment.created_at,
+        replies: dbComment.replies || [],
+      },
     };
-  };
+
+    console.log('Client View: Created annotation:', annotation);
+    return annotation;
+  }, []); // Empty dependency array since this function doesn't depend on any props or state
   // --- End Recogito Helper Function ---
+
+  // Formatter function to display comment text in popups
+  const formatter = useCallback((annotation: any) => {
+    console.log('Client View: Formatting annotation:', annotation);
+    console.log('Client View: Annotation body:', annotation.body);
+    console.log('Client View: Annotation metadata:', annotation.metadata);
+
+    // Try different ways to get the comment data
+    let commentText = '';
+    let creatorName = 'Unknown';
+    let createdDate = '';
+    let replies = [];
+
+    // First try the metadata approach
+    if (annotation.metadata) {
+      commentText = annotation.metadata.comment_text || '';
+      creatorName = annotation.metadata.author_name || 'Unknown';
+      createdDate = annotation.metadata.created_at || '';
+      replies = annotation.metadata.replies || [];
+    }
+    // Fallback to body structure
+    else if (annotation.body) {
+      // Handle single body object
+      if (annotation.body.value) {
+        commentText = annotation.body.value;
+        creatorName = annotation.body.creator?.name || 'Unknown';
+        createdDate = annotation.body.created || '';
+      }
+      // Handle array of bodies
+      else if (Array.isArray(annotation.body)) {
+        const mainComment = annotation.body.find((body: any) => body.purpose === 'commenting');
+        if (mainComment) {
+          commentText = mainComment.value;
+          creatorName = mainComment.creator?.name || 'Unknown';
+          createdDate = mainComment.created || '';
+        }
+      }
+      replies = annotation.replies || [];
+    }
+
+    if (!commentText) {
+      console.log('Client View: No comment text found, returning fallback');
+      return '<div style="padding: 8px;">No comment text available</div>';
+    }
+
+    const formattedDate = createdDate ? new Date(createdDate).toLocaleString() : '';
+
+    let html = `
+      <div style="padding: 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-width: 250px; max-width: 400px;">
+        <div style="font-weight: 600; margin-bottom: 8px; color: #1976d2;">${creatorName}</div>
+        <div style="margin-bottom: 8px; line-height: 1.4; color: #333;">${commentText}</div>
+        ${formattedDate ? `<div style="font-size: 0.85em; color: #666; border-top: 1px solid #eee; padding-top: 6px; margin-top: 6px;">${formattedDate}</div>` : ''}
+    `;
+
+    // Add replies if they exist
+    if (replies && replies.length > 0) {
+      html += `<div style="margin-top: 12px; border-top: 1px solid #eee; padding-top: 8px;">`;
+      replies.forEach((reply: any) => {
+        const replyDate = reply.created_at_iso || reply.created_at;
+        const replyFormattedDate = replyDate ? new Date(replyDate).toLocaleString() : '';
+        html += `
+          <div style="margin-bottom: 8px; padding: 6px; background: #f5f5f5; border-radius: 4px;">
+            <div style="font-weight: 500; font-size: 0.9em; color: #1976d2;">${reply.author_name || reply.user_name || reply.client_name || 'Unknown'}</div>
+            <div style="font-size: 0.9em; color: #333; margin: 4px 0;">${reply.reply_text}</div>
+            ${replyFormattedDate ? `<div style="font-size: 0.8em; color: #666;">${replyFormattedDate}</div>` : ''}
+          </div>
+        `;
+      });
+      html += `</div>`;
+    }
+
+    html += `</div>`;
+
+    console.log('Client View: Generated HTML:', html);
+    return html;
+  }, []);
 
   // Memoize annotations for Recogito to prevent re-conversion on every render
   const recogitoAnnotations = useMemo(() => {
@@ -1018,6 +1093,7 @@ export default function ClientRequestDetailPage() {
         annotations: [], // Start with empty, will be loaded by another effect
         readOnly: isReadOnly,
         currentInstance: null,
+        formatter: formatter, // Add formatter for hover popups
       });
 
       if (!r) {
@@ -1198,6 +1274,7 @@ export default function ClientRequestDetailPage() {
           annotations: annotations,
           readOnly: true,
           currentInstance: versionRecogitoInstance.current,
+          formatter: formatter, // Add formatter for hover popups
         });
       }, 500);
     } catch (error) {
@@ -1391,6 +1468,7 @@ export default function ClientRequestDetailPage() {
           annotations: [], // Start with empty annotations
           readOnly: isReadOnly,
           currentInstance: null, // Always create a new instance
+          formatter: formatter, // Add formatter for hover popups
         });
 
         // If initialization fails, stop here
@@ -1477,12 +1555,7 @@ export default function ClientRequestDetailPage() {
         }
 
         // --- Load Existing Annotations ---
-        if (request.section_comments && request.section_comments.length > 0) {
-          console.log('Client View: Loading existing annotations...');
-          const loadedAnnotations = request.section_comments.map(convertDbCommentToAnnotation);
-          r.setAnnotations(loadedAnnotations);
-          console.log('Client View: Annotations loaded.');
-        }
+        // Removed: This is now handled by a separate useEffect
       } catch (error) {
         console.error('Client View: Failed to load or initialize Recogito:', error);
       }
@@ -1504,13 +1577,22 @@ export default function ClientRequestDetailPage() {
     sanitizedHtmlContent,
     viewingVersion,
     request?.status,
-    request?.section_comments,
-    clientInfo,
+    request?.section_comments?.length, // Only depend on length, not the full array
+    clientInfo?.contact_id, // Only depend on contact_id, not the full object
     id,
-    fetchRequestDetails,
-    convertDbCommentToAnnotation,
-    request, // Add full request object as dependency
+    // Remove fetchRequestDetails and convertDbCommentToAnnotation from dependencies
+    // as they cause infinite loops
   ]);
+
+  // Separate effect to load annotations after Recogito is initialized
+  useEffect(() => {
+    if (recogitoInstance.current && request?.section_comments) {
+      console.log('Client View: Loading existing annotations...');
+      const loadedAnnotations = request.section_comments.map(convertDbCommentToAnnotation);
+      recogitoInstance.current.setAnnotations(loadedAnnotations);
+      console.log('Client View: Annotations loaded.');
+    }
+  }, [recogitoInstance.current, request?.section_comments, convertDbCommentToAnnotation]);
 
   // Add useEffect to try to detect Google login status (basic detection)
   useEffect(() => {
@@ -2031,6 +2113,101 @@ export default function ClientRequestDetailPage() {
       <Head>
         <title>Content Review - {request?.title || 'Request'}</title>
         <link rel="stylesheet" href="/vendor/recogito.min.css" />
+        <style jsx global>{`
+          /* Ensure Recogito popups are visible and properly styled */
+          .r6o-popup {
+            z-index: 10000 !important;
+            background: white !important;
+            border: 1px solid #ddd !important;
+            border-radius: 8px !important;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2) !important;
+            padding: 0 !important;
+            max-width: 450px !important;
+            min-width: 250px !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+            font-size: 14px !important;
+            line-height: 1.4 !important;
+          }
+
+          .r6o-popup-content {
+            background: white !important;
+            color: #333 !important;
+            padding: 0 !important;
+            border-radius: 8px !important;
+          }
+
+          /* Style for the popup arrow */
+          .r6o-popup:after {
+            border-color: white transparent transparent transparent !important;
+          }
+
+          /* Ensure annotations are highlighted */
+          .r6o-annotation {
+            background-color: rgba(255, 215, 0, 0.3) !important;
+            border-bottom: 2px solid #ffd700 !important;
+            cursor: pointer !important;
+            transition: all 0.2s ease !important;
+          }
+
+          .r6o-annotation:hover {
+            background-color: rgba(255, 215, 0, 0.5) !important;
+            border-bottom-width: 3px !important;
+          }
+
+          /* Fix text input colors for light mode - more aggressive */
+          .r6o-editor textarea,
+          .r6o-editor input[type='text'],
+          .r6o-widget textarea,
+          .r6o-widget input[type='text'],
+          .r6o-editor-inner textarea,
+          .r6o-editor-inner input[type='text'],
+          textarea.r6o-editable,
+          input.r6o-editable,
+          .r6o-editable-text,
+          .r6o-comment-input {
+            background: white !important;
+            color: #000 !important;
+            border: 1px solid #ccc !important;
+            padding: 8px !important;
+            border-radius: 4px !important;
+            font-family: inherit !important;
+            font-size: 14px !important;
+          }
+
+          .r6o-editor textarea:focus,
+          .r6o-editor input[type='text']:focus,
+          .r6o-widget textarea:focus,
+          .r6o-widget input[type='text']:focus,
+          textarea.r6o-editable:focus,
+          input.r6o-editable:focus {
+            border-color: #1976d2 !important;
+            outline: none !important;
+            box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2) !important;
+            color: #000 !important;
+          }
+
+          /* Force all text in Recogito widgets to be black */
+          .r6o-widget,
+          .r6o-widget *,
+          .r6o-editor,
+          .r6o-editor *,
+          .r6o-editor-inner,
+          .r6o-editor-inner * {
+            color: #000 !important;
+          }
+
+          /* Ensure popup content is visible */
+          .r6o-popup .r6o-widget {
+            background: transparent !important;
+            padding: 0 !important;
+            border: none !important;
+          }
+
+          /* Override any conflicting styles */
+          .r6o-popup * {
+            box-sizing: border-box !important;
+          }
+        `}</style>
       </Head>
       <GoogleOAuthProvider clientId={googleClientId || ''}>
         <ThemeProvider>
