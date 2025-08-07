@@ -42,36 +42,10 @@ import DOMPurify from 'dompurify';
 import ReactionPicker from 'components/ReactionPicker';
 import ViewLogModal from 'components/ViewLogModal';
 import AddReviewersModal from 'components/AddReviewersModal';
-import { initVersionRecogito } from '../../../utils/recogito';
+import { RecogitoManager, type RecogitoAnnotation } from '../../../utils/recogitoManager';
 
 // Interfaces
-interface SectionComment {
-  section_comment_id: number;
-  request_id: number;
-  contact_id: number | null;
-  user_id?: string | null;
-  user_name?: string | null;
-  start_offset: number;
-  end_offset: number;
-  selected_text: string | null;
-  comment_text: string;
-  created_at: string;
-  created_at_iso?: string;
-  contact_name: string | null;
-  version_id?: number | null;
-  replies?: Array<{
-    reply_id: number;
-    reply_text: string;
-    user_id?: string | null;
-    user_name?: string | null;
-    client_contact_id?: number | null;
-    client_name?: string | null;
-    author_name?: string | null;
-    contact_name?: string | null;
-    created_at: string;
-    created_at_iso?: string;
-  }>;
-}
+type SectionComment = RecogitoAnnotation; // Use shared interface
 
 interface ApprovalRequest {
   request_id: number;
@@ -159,8 +133,10 @@ function ApprovalRequestDetailContent() {
   const [request, setRequest] = useState<ApprovalRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedContact, setSelectedContact] = useState<ContactWithViews | null>(null);
+  const [resendingContactId, setResendingContactId] = useState<number | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const recogitoInstance = useRef<any>(null);
+  const recogitoManagerRef = useRef<RecogitoManager | null>(null);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -176,6 +152,32 @@ function ApprovalRequestDetailContent() {
 
   const handleOpenAddReviewersModal = () => {
     setOpenAddReviewersModal(true);
+  };
+
+  const handleContactClick = (contact: ContactWithViews) => {
+    setSelectedContact(contact);
+    setOpenViewLogModal(true);
+  };
+
+  const handleResendNotification = async (contactId: number) => {
+    setResendingContactId(contactId);
+    try {
+      const response = await axios.post(
+        `/api/approval-requests/${id}/resend-notification`,
+        { contactId },
+        {
+          headers: {
+            'x-auth-token': token,
+          },
+        }
+      );
+      showSuccess('Notification sent successfully');
+    } catch (error) {
+      console.error('Error resending notification:', error);
+      showError('Failed to send notification');
+    } finally {
+      setResendingContactId(null);
+    }
   };
 
   const isRecogitoContentType = (request: ApprovalRequest | null): boolean => {
@@ -198,147 +200,7 @@ function ApprovalRequestDetailContent() {
     return DOMPurify.sanitize(contentToDisplay);
   }, [request]);
 
-  const convertDbCommentToAnnotation = useCallback((dbComment: SectionComment) => {
-    // Create a simpler structure that Recogito can handle better
-    const annotation = {
-      '@context': 'http://www.w3.org/ns/anno.jsonld',
-      type: 'Annotation',
-      id: `#section-comment-${dbComment.section_comment_id}`,
-      // Use a single body object instead of an array for better Recogito compatibility
-      body: {
-        type: 'TextualBody',
-        value: dbComment.comment_text,
-        purpose: 'commenting',
-        creator: {
-          id: dbComment.user_id ? `staff:${dbComment.user_id}` : `contact:${dbComment.contact_id}`,
-          name: dbComment.user_name || dbComment.contact_name || 'Unknown',
-        },
-        created: dbComment.created_at_iso || dbComment.created_at,
-      },
-      target: {
-        selector: [
-          { type: 'TextQuoteSelector', exact: dbComment.selected_text || '' },
-          {
-            type: 'TextPositionSelector',
-            start: dbComment.start_offset,
-            end: dbComment.end_offset,
-          },
-        ],
-      },
-      // Store replies separately for the formatter to access
-      replies: dbComment.replies || [],
-      // Store metadata for the formatter
-      metadata: {
-        comment_text: dbComment.comment_text,
-        author_name: dbComment.user_name || dbComment.contact_name || 'Unknown',
-        created_at: dbComment.created_at_iso || dbComment.created_at,
-        replies: dbComment.replies || [],
-      },
-    };
-
-    console.log('Created annotation:', annotation);
-    return annotation;
-  }, []);
-
-  const recogitoAnnotations = useMemo(() => {
-    if (!request?.section_comments) return [];
-    return request.section_comments.map(convertDbCommentToAnnotation);
-  }, [request?.section_comments, convertDbCommentToAnnotation]);
-
-  // Formatter function to display comment text in popups
-  const formatter = useCallback((annotation: any) => {
-    console.log('Formatting annotation:', annotation);
-    console.log('Annotation underlying:', annotation.underlying);
-    console.log('Annotation body:', annotation.body);
-    console.log('Annotation bodies:', annotation.bodies);
-
-    // Try to access the original annotation data through Recogito's wrapper
-    let originalAnnotation = annotation.underlying || annotation;
-    let commentText = '';
-    let creatorName = 'Unknown';
-    let createdDate = '';
-    let replies = [];
-
-    // First try the metadata approach from our original structure
-    if (originalAnnotation?.metadata) {
-      commentText = originalAnnotation.metadata.comment_text || '';
-      creatorName = originalAnnotation.metadata.author_name || 'Unknown';
-      createdDate = originalAnnotation.metadata.created_at || '';
-      replies = originalAnnotation.metadata.replies || [];
-    }
-    // Try Recogito's bodies array
-    else if (annotation.bodies && annotation.bodies.length > 0) {
-      const mainBody = annotation.bodies[0];
-      commentText = mainBody.value || '';
-      creatorName = mainBody.creator?.name || 'Unknown';
-      createdDate = mainBody.created || '';
-    }
-    // Try original annotation body structure
-    else if (originalAnnotation?.body) {
-      // Handle single body object
-      if (originalAnnotation.body.value) {
-        commentText = originalAnnotation.body.value;
-        creatorName = originalAnnotation.body.creator?.name || 'Unknown';
-        createdDate = originalAnnotation.body.created || '';
-      }
-      // Handle array of bodies
-      else if (Array.isArray(originalAnnotation.body)) {
-        const mainComment = originalAnnotation.body.find(
-          (body: any) => body.purpose === 'commenting'
-        );
-        if (mainComment) {
-          commentText = mainComment.value;
-          creatorName = mainComment.creator?.name || 'Unknown';
-          createdDate = mainComment.created || '';
-        }
-      }
-      replies = originalAnnotation.replies || [];
-    }
-    // Try direct annotation properties (Recogito might expose them directly)
-    else if (annotation.body && annotation.body.value) {
-      commentText = annotation.body.value;
-      creatorName = annotation.body.creator?.name || 'Unknown';
-      createdDate = annotation.body.created || '';
-    }
-
-    console.log('Extracted data:', { commentText, creatorName, createdDate, replies });
-
-    if (!commentText) {
-      console.log('No comment text found, returning fallback');
-      return '<div style="padding: 8px;">No comment text available</div>';
-    }
-
-    const formattedDate = createdDate ? new Date(createdDate).toLocaleString() : '';
-
-    let html = `
-      <div style="padding: 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-width: 250px; max-width: 400px;">
-        <div style="font-weight: 600; margin-bottom: 8px; color: #1976d2;">${creatorName}</div>
-        <div style="margin-bottom: 8px; line-height: 1.4; color: #333;">${commentText}</div>
-        ${formattedDate ? `<div style="font-size: 0.85em; color: #666; border-top: 1px solid #eee; padding-top: 6px; margin-top: 6px;">${formattedDate}</div>` : ''}
-    `;
-
-    // Add replies if they exist
-    if (replies && replies.length > 0) {
-      html += `<div style="margin-top: 12px; border-top: 1px solid #eee; padding-top: 8px;">`;
-      replies.forEach((reply: any) => {
-        const replyDate = reply.created_at_iso || reply.created_at;
-        const replyFormattedDate = replyDate ? new Date(replyDate).toLocaleString() : '';
-        html += `
-          <div style="margin-bottom: 8px; padding: 6px; background: #f5f5f5; border-radius: 4px;">
-            <div style="font-weight: 500; font-size: 0.9em; color: #1976d2;">${reply.author_name || reply.user_name || reply.client_name || 'Unknown'}</div>
-            <div style="font-size: 0.9em; color: #333; margin: 4px 0;">${reply.reply_text}</div>
-            ${replyFormattedDate ? `<div style="font-size: 0.8em; color: #666;">${replyFormattedDate}</div>` : ''}
-          </div>
-        `;
-      });
-      html += `</div>`;
-    }
-
-    html += `</div>`;
-
-    console.log('Generated HTML:', html);
-    return html;
-  }, []);
+  // No longer needed - using shared RecogitoManager utility
 
   const fetchRequestDetails = useCallback(async () => {
     setLoading(true);
@@ -359,279 +221,74 @@ function ApprovalRequestDetailContent() {
     }
   }, [id, isValidUser, fetchRequestDetails]);
 
+  // Initialize Recogito using shared RecogitoManager
   useEffect(() => {
-    if (!sanitizedHtmlContent) {
-      if (recogitoInstance.current) {
-        recogitoInstance.current.destroy();
-        recogitoInstance.current = null;
+    if (!sanitizedHtmlContent || !request?.section_comments || !id || !token) {
+      if (recogitoManagerRef.current) {
+        recogitoManagerRef.current.destroy();
+        recogitoManagerRef.current = null;
       }
       return;
     }
 
-    // Always destroy and recreate to ensure formatter is applied correctly
-    if (recogitoInstance.current) {
-      console.log('Destroying existing Recogito instance');
-      recogitoInstance.current.destroy();
-      recogitoInstance.current = null;
+    // Clean up previous instance
+    if (recogitoManagerRef.current) {
+      recogitoManagerRef.current.destroy();
+      recogitoManagerRef.current = null;
     }
 
-    let isMounted = true;
-    const initRecogitoForStaff = async () => {
-      // Add a small delay to ensure DOM is fully ready
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      const contentElement = document.getElementById('content-view');
-      if (!isMounted || !contentElement) {
-        console.log('Content element not found or component unmounted');
-        return;
-      }
-
-      console.log('Initializing Recogito with', recogitoAnnotations.length, 'annotations');
-      console.log('Formatter function:', formatter);
-
-      const r = await initVersionRecogito({
-        contentElementId: 'content-view',
-        annotations: recogitoAnnotations,
-        readOnly: false, // Allow interaction since this is the staff approval interface
-        currentInstance: null,
-        formatter: formatter, // Enable the formatter to display comment text
-      });
-
-      if (r && isMounted) {
-        recogitoInstance.current = r;
-
-        // Add comprehensive event listeners for debugging
-        r.on('selectAnnotation', (annotation: any) => {
-          console.log('Annotation selected:', annotation);
-          console.log('Annotation body:', annotation.body);
-          console.log('Annotation metadata:', annotation.metadata);
-
-          // Try to manually set the popup content with reply functionality
-          setTimeout(() => {
-            const popup = document.querySelector('.r6o-editor-inner');
-            if (popup) {
-              console.log('Found popup element, attempting to inject content');
-              const formattedContent = formatter(annotation);
-              console.log('Formatted content to inject:', formattedContent);
-
-              // Get the section comment ID for replies
-              const sectionCommentId =
-                annotation.id?.replace('#section-comment-', '') ||
-                annotation.underlying?.id?.replace('#section-comment-', '');
-
-              // Create a unique function name for this reply to avoid conflicts
-              const replyFunctionName = `addReply_${sectionCommentId}_${Date.now()}`;
-              const cancelFunctionName = `cancelReply_${sectionCommentId}_${Date.now()}`;
-
-              // Create reply form
-              const replyForm = `
-                <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #eee;">
-                  <textarea id="reply-input-${sectionCommentId}" placeholder="Add a reply..." style="width: 100%; min-height: 60px; background: white !important; color: #000 !important; border: 1px solid #ccc; border-radius: 4px; padding: 8px; font-family: inherit; resize: vertical;"></textarea>
-                  <div style="margin-top: 8px;">
-                    <button onclick="${replyFunctionName}()" style="background: #1976d2; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 13px; cursor: pointer; margin-right: 8px;">Add Reply</button>
-                    <button onclick="${cancelFunctionName}()" style="background: #666; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 13px; cursor: pointer;">Cancel</button>
-                  </div>
-                </div>
-              `;
-
-              // Clear existing content and inject our formatted content with reply form
-              popup.innerHTML =
-                formattedContent +
-                replyForm +
-                '<div class="r6o-footer"><button class="r6o-btn">Close</button></div>';
-
-              // Add unique global functions for reply handling with current token
-              (window as any)[replyFunctionName] = async () => {
-                const textarea = document.getElementById(
-                  `reply-input-${sectionCommentId}`
-                ) as HTMLTextAreaElement;
-                if (textarea && textarea.value.trim()) {
-                  try {
-                    console.log('Sending reply with token:', token ? 'present' : 'missing');
-                    const response = await axios.post(
-                      `/api/approval-requests/${id}/section-comments/${sectionCommentId}/replies`,
-                      {
-                        replyText: textarea.value.trim(),
-                      },
-                      {
-                        headers: {
-                          'x-auth-token': token,
-                        },
-                      }
-                    );
-
-                    console.log('Reply saved to database:', response.data);
-                    showSuccess('Reply added successfully');
-
-                    // Refresh the request data to show the new reply
-                    fetchRequestDetails();
-
-                    // Close the popup
-                    try {
-                      if (r.cancelSelected) {
-                        r.cancelSelected();
-                      } else if (r.clearSelection) {
-                        r.clearSelection();
-                      } else {
-                        // Fallback: manually close the popup by removing it from DOM
-                        const popup = document.querySelector('.r6o-editor');
-                        if (popup) {
-                          popup.remove();
-                        }
-                      }
-                    } catch (error) {
-                      console.log('Could not close popup automatically:', error);
-                    }
-                  } catch (error) {
-                    console.error('Error saving reply:', error);
-                    showError('Failed to save reply');
-                  }
-                }
-              };
-
-              (window as any)[cancelFunctionName] = () => {
-                const textarea = document.getElementById(
-                  `reply-input-${sectionCommentId}`
-                ) as HTMLTextAreaElement;
-                if (textarea) {
-                  textarea.value = '';
-                }
-
-                // Close the popup with fallbacks
-                try {
-                  if (r.cancelSelected) {
-                    r.cancelSelected();
-                  } else if (r.clearSelection) {
-                    r.clearSelection();
-                  } else {
-                    // Fallback: manually close the popup by removing it from DOM
-                    const popup = document.querySelector('.r6o-editor');
-                    if (popup) {
-                      popup.remove();
-                    }
-                  }
-                } catch (error) {
-                  console.log('Could not close popup automatically:', error);
-                  // Manual fallback
-                  const popup = document.querySelector('.r6o-editor');
-                  if (popup) {
-                    popup.remove();
-                  }
-                }
-              };
-            } else {
-              console.log('Popup element not found');
-            }
-          }, 100);
+    const initRecogito = async () => {
+      try {
+        // Create RecogitoManager instance
+        const manager = new RecogitoManager({
+          contentElementId: 'content-view',
+          annotations: request.section_comments || [],
+          isReadOnly: false, // Staff can interact
+          requestId: id,
+          auth: {
+            type: 'staff',
+            token: token,
+          },
+          onReplySuccess: () => {
+            showSuccess('Reply added successfully');
+            fetchRequestDetails();
+          },
+          onError: (message: string) => {
+            showError(message);
+          },
         });
 
-        r.on('createAnnotation', async (annotation: any) => {
-          console.log('Annotation created:', annotation);
-          console.log('Annotation body:', annotation.body);
-          console.log('Annotation bodies:', annotation.bodies);
-          console.log('Annotation quote:', annotation.quote);
-          console.log('Annotation start/end:', annotation.start, annotation.end);
-
-          // Save new annotation to database
-          try {
-            // Try multiple ways to get the comment text based on the structure we see
-            let commentText = '';
-            let selectedText = '';
-            let startOffset = 0;
-            let endOffset = 0;
-
-            // Check underlying first (new annotations)
-            const annotationData = annotation.underlying || annotation;
-
-            if (
-              annotationData.body &&
-              Array.isArray(annotationData.body) &&
-              annotationData.body.length > 0
-            ) {
-              commentText = annotationData.body[0].value;
-            } else if (annotationData.body && annotationData.body.value) {
-              commentText = annotationData.body.value;
-            } else if (annotationData.bodies && annotationData.bodies.length > 0) {
-              commentText = annotationData.bodies[0].value;
-            }
-
-            // Extract target information
-            if (annotationData.target && annotationData.target.selector) {
-              const selectors = annotationData.target.selector;
-              const textQuoteSelector = selectors.find((s: any) => s.type === 'TextQuoteSelector');
-              const textPositionSelector = selectors.find(
-                (s: any) => s.type === 'TextPositionSelector'
-              );
-
-              if (textQuoteSelector) {
-                selectedText = textQuoteSelector.exact || '';
-              }
-
-              if (textPositionSelector) {
-                startOffset = textPositionSelector.start || 0;
-                endOffset = textPositionSelector.end || 0;
-              }
-            }
-
-            console.log('Extracted comment text:', commentText);
-            console.log('Selected text:', selectedText);
-            console.log('Position:', startOffset, 'to', endOffset);
-
-            if (commentText && commentText.trim()) {
-              console.log('Attempting to save new comment to database...');
-              const response = await axios.post(
-                `/api/approval-requests/${id}/section-comments`,
-                {
-                  commentText: commentText.trim(), // API expects 'commentText' not 'comment'
-                  selectedText: selectedText,
-                  startOffset: startOffset,
-                  endOffset: endOffset,
-                },
-                {
-                  headers: {
-                    'x-auth-token': token,
-                  },
-                }
-              );
-
-              console.log('New comment saved to database:', response.data);
-              showSuccess('Comment added successfully');
-
-              // Refresh the request data to show the new comment
-              fetchRequestDetails();
-            } else {
-              console.log('No comment text found, not saving to database');
-            }
-          } catch (error) {
-            console.error('Error saving comment:', error);
-            showError('Failed to save comment');
-          }
-        });
-
-        // Log successful initialization
-        console.log('Recogito instance created successfully');
+        // Initialize the manager
+        const success = await manager.initialize();
+        if (success) {
+          recogitoManagerRef.current = manager;
+          console.log('Staff RecogitoManager initialized successfully');
+        } else {
+          console.error('Failed to initialize RecogitoManager');
+        }
+      } catch (error) {
+        console.error('Error initializing RecogitoManager:', error);
       }
     };
 
-    initRecogitoForStaff();
+    // Small delay to ensure DOM is ready
+    const timeout = setTimeout(initRecogito, 100);
 
     return () => {
-      isMounted = false;
-      if (recogitoInstance.current) {
-        console.log('Cleaning up Recogito instance');
-        recogitoInstance.current.destroy();
-        recogitoInstance.current = null;
+      clearTimeout(timeout);
+      if (recogitoManagerRef.current) {
+        recogitoManagerRef.current.destroy();
+        recogitoManagerRef.current = null;
       }
     };
   }, [
     sanitizedHtmlContent,
-    recogitoAnnotations,
-    formatter,
+    request?.section_comments,
     id,
     token,
-    fetchRequestDetails,
     showSuccess,
     showError,
+    fetchRequestDetails,
   ]);
 
   // Now we can have conditional returns
@@ -948,7 +605,8 @@ function ApprovalRequestDetailContent() {
                                 icon={<PersonIcon />}
                                 color={contact.has_approved ? 'success' : 'default'}
                                 variant="outlined"
-                                sx={{ mb: 1 }}
+                                sx={{ mb: 1, cursor: 'pointer' }}
+                                onClick={() => handleContactClick(contact)}
                                 deleteIcon={
                                   <Tooltip
                                     title={
@@ -1079,6 +737,15 @@ function ApprovalRequestDetailContent() {
           )}
         </Box>
       </IntercomLayout>
+
+      {/* View Log Modal */}
+      <ViewLogModal
+        open={openViewLogModal}
+        onClose={() => setOpenViewLogModal(false)}
+        contactViews={selectedContact}
+        resendingContactId={resendingContactId}
+        onResendNotification={handleResendNotification}
+      />
     </>
   );
 }
