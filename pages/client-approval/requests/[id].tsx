@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import {
   Typography,
@@ -18,6 +19,12 @@ import {
   DialogTitle,
   TextField,
   Tooltip,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Switch,
+  FormControlLabel,
 } from '@mui/material';
 import {
   Check as CheckIcon,
@@ -25,6 +32,10 @@ import {
   Person as PersonIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
+  Edit as EditIcon,
+  Save as SaveIcon,
+  Cancel as CancelIcon,
+  History as HistoryIcon,
 } from '@mui/icons-material';
 import { IntercomLayout } from '../../../components/layout/IntercomLayout';
 import {
@@ -43,6 +54,9 @@ import ReactionPicker from 'components/ReactionPicker';
 import ViewLogModal from 'components/ViewLogModal';
 import AddReviewersModal from 'components/AddReviewersModal';
 import { RecogitoManager, type RecogitoAnnotation } from '../../../utils/recogitoManager';
+
+// Dynamically import JoditEditor to prevent SSR issues
+const JoditEditor = dynamic(() => import('jodit-react'), { ssr: false });
 
 // Interfaces
 type SectionComment = RecogitoAnnotation; // Use shared interface
@@ -135,8 +149,16 @@ function ApprovalRequestDetailContent() {
   const [error, setError] = useState<string | null>(null);
   const [selectedContact, setSelectedContact] = useState<ContactWithViews | null>(null);
   const [resendingContactId, setResendingContactId] = useState<number | null>(null);
+
+  // Edit mode state
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editedContent, setEditedContent] = useState<string>('');
+  const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
+  const [savingVersion, setSavingVersion] = useState(false);
+
   const contentRef = useRef<HTMLDivElement>(null);
   const recogitoManagerRef = useRef<RecogitoManager | null>(null);
+  const editorRef = useRef(null);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -178,6 +200,80 @@ function ApprovalRequestDetailContent() {
     } finally {
       setResendingContactId(null);
     }
+  };
+
+  // Edit mode handlers
+  const handleEnterEditMode = () => {
+    if (request) {
+      // For HTML content, use sanitized content
+      if (isRecogitoContentType(request) && sanitizedHtmlContent) {
+        setEditedContent(sanitizedHtmlContent);
+      }
+      // For Google Docs or other content, we'll handle the iframe URL change
+      setIsEditMode(true);
+      // Don't destroy Recogito here - let the useEffect handle it
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditMode(false);
+    setEditedContent('');
+    // Reinitialize Recogito when exiting edit mode
+    // The useEffect will handle this automatically
+  };
+
+  const handleSaveVersion = async () => {
+    if (!request) return;
+
+    // For HTML content, we need edited content
+    if (isRecogitoContentType(request) && !editedContent.trim()) {
+      showError('Please enter content before saving');
+      return;
+    }
+
+    setSavingVersion(true);
+    try {
+      const payload: any = {
+        comments: `Edited version created on ${new Date().toISOString()}`,
+      };
+
+      // For HTML content types, save the inline content
+      if (isRecogitoContentType(request)) {
+        payload.inline_content = editedContent;
+        payload.content_type = request.content_type || 'html';
+      }
+      // For Google Docs, just create a new version entry (the doc is already edited)
+      else {
+        payload.google_doc_id = request.google_doc_id;
+        payload.content_type = request.content_type || 'google_doc';
+        // For Google Docs, we don't have inline_content to save
+        payload.inline_content = request.inline_content; // Keep existing content reference
+      }
+
+      const response = await axios.post(`/api/approval-requests/${id}/versions`, payload, {
+        headers: {
+          'x-auth-token': token,
+        },
+      });
+
+      showSuccess('New version saved successfully');
+      setIsEditMode(false);
+      setEditedContent('');
+
+      // Refresh the request data to get the new version
+      await fetchRequestDetails();
+    } catch (error) {
+      console.error('Error saving new version:', error);
+      showError('Failed to save new version');
+    } finally {
+      setSavingVersion(false);
+    }
+  };
+
+  const handleVersionChange = async (versionId: number) => {
+    setSelectedVersionId(versionId);
+    // TODO: Load version-specific content and annotations
+    // This will be implemented when we add the version selector
   };
 
   const isRecogitoContentType = (request: ApprovalRequest | null): boolean => {
@@ -223,18 +319,29 @@ function ApprovalRequestDetailContent() {
 
   // Initialize Recogito using shared RecogitoManager
   useEffect(() => {
-    if (!sanitizedHtmlContent || !request?.section_comments || !id || !token) {
+    // Don't initialize Recogito when in edit mode
+    if (isEditMode || !sanitizedHtmlContent || !request?.section_comments || !id || !token) {
       if (recogitoManagerRef.current) {
-        recogitoManagerRef.current.destroy();
-        recogitoManagerRef.current = null;
+        try {
+          recogitoManagerRef.current.destroy();
+        } catch (error) {
+          console.warn('Error cleaning up Recogito during useEffect:', error);
+        } finally {
+          recogitoManagerRef.current = null;
+        }
       }
       return;
     }
 
     // Clean up previous instance
     if (recogitoManagerRef.current) {
-      recogitoManagerRef.current.destroy();
-      recogitoManagerRef.current = null;
+      try {
+        recogitoManagerRef.current.destroy();
+      } catch (error) {
+        console.warn('Error cleaning up previous Recogito instance:', error);
+      } finally {
+        recogitoManagerRef.current = null;
+      }
     }
 
     const initRecogito = async () => {
@@ -277,11 +384,17 @@ function ApprovalRequestDetailContent() {
     return () => {
       clearTimeout(timeout);
       if (recogitoManagerRef.current) {
-        recogitoManagerRef.current.destroy();
-        recogitoManagerRef.current = null;
+        try {
+          recogitoManagerRef.current.destroy();
+        } catch (error) {
+          console.warn('Error cleaning up Recogito in useEffect cleanup:', error);
+        } finally {
+          recogitoManagerRef.current = null;
+        }
       }
     };
   }, [
+    isEditMode,
     sanitizedHtmlContent,
     request?.section_comments,
     id,
@@ -648,6 +761,43 @@ function ApprovalRequestDetailContent() {
                                 Approve Content
                               </IntercomButton>
                             )}
+
+                            {/* Edit mode buttons - show for all content types */}
+                            {!isEditMode && (
+                              <IntercomButton
+                                variant="secondary"
+                                onClick={handleEnterEditMode}
+                                startIcon={<EditIcon />}
+                              >
+                                Edit Document
+                              </IntercomButton>
+                            )}
+
+                            {/* Edit mode save/cancel buttons */}
+                            {isEditMode && (
+                              <>
+                                <IntercomButton
+                                  variant="primary"
+                                  onClick={handleSaveVersion}
+                                  startIcon={<SaveIcon />}
+                                  disabled={savingVersion}
+                                >
+                                  {savingVersion ? (
+                                    <CircularProgress size={20} />
+                                  ) : (
+                                    'Save New Version'
+                                  )}
+                                </IntercomButton>
+                                <IntercomButton
+                                  variant="secondary"
+                                  onClick={handleCancelEdit}
+                                  startIcon={<CancelIcon />}
+                                  disabled={savingVersion}
+                                >
+                                  Cancel
+                                </IntercomButton>
+                              </>
+                            )}
                           </Box>
                         </Grid>
                       </Grid>
@@ -672,10 +822,75 @@ function ApprovalRequestDetailContent() {
 
                           {isRecogitoContentType(request) ? (
                             <Box>
-                              <Typography variant="h6">Client Feedback</Typography>
+                              <Typography variant="h6">
+                                {isEditMode ? 'Edit Document' : 'Client Feedback'}
+                              </Typography>
+
+                              {/* Edit Mode - Rich Text Editor */}
+                              <Box sx={{ mt: 2, display: isEditMode ? 'block' : 'none' }}>
+                                <Box
+                                  sx={{
+                                    border: '1px solid #ddd',
+                                    borderRadius: '4px',
+                                    minHeight: '400px',
+                                    '& .jodit-container': {
+                                      borderRadius: '4px',
+                                    },
+                                  }}
+                                >
+                                  <JoditEditor
+                                    ref={editorRef}
+                                    value={editedContent}
+                                    onChange={setEditedContent}
+                                    config={
+                                      {
+                                        readonly: false,
+                                        height: 400,
+                                        buttons: [
+                                          'bold',
+                                          'italic',
+                                          'underline',
+                                          '|',
+                                          'ul',
+                                          'ol',
+                                          '|',
+                                          'link',
+                                          '|',
+                                          'align',
+                                          '|',
+                                          'undo',
+                                          'redo',
+                                          '|',
+                                          'font',
+                                          'fontsize',
+                                          '|',
+                                          'brush',
+                                          '|',
+                                          'paragraph',
+                                          '|',
+                                          'table',
+                                          '|',
+                                          'source',
+                                        ],
+                                      } as any
+                                    }
+                                  />
+                                </Box>
+                                <Typography
+                                  variant="caption"
+                                  color="textSecondary"
+                                  sx={{ mt: 1, display: 'block' }}
+                                >
+                                  Use the rich text editor above to format your content. Saving will
+                                  create a new version of the document.
+                                </Typography>
+                              </Box>
+
+                              {/* View Mode - Recogito Annotations */}
                               <Box
                                 ref={contentRef}
                                 sx={{
+                                  display: isEditMode ? 'none' : 'block',
                                   '.r6o-annotation': {
                                     borderBottom: '3px solid #FFD700',
                                     backgroundColor: 'rgba(255, 215, 0, 0.2)',
@@ -712,19 +927,36 @@ function ApprovalRequestDetailContent() {
                               </Box>
                             </Box>
                           ) : (
-                            <Box
-                              sx={{ height: '700px', border: '1px solid', borderColor: 'divider' }}
-                            >
-                              <iframe
-                                src={getEmbeddableGoogleDocUrl(
-                                  request.inline_content || '',
-                                  request.status,
-                                  isMinimalMode
-                                )}
-                                width="100%"
-                                height="100%"
-                                frameBorder="0"
-                              />
+                            <Box>
+                              {/* Show edit mode notice for Google Docs */}
+                              {isEditMode && (
+                                <Alert severity="info" sx={{ mb: 2 }}>
+                                  <Typography variant="body2">
+                                    <strong>Edit Mode:</strong> The document is now in edit mode.
+                                    Make your changes directly in the Google Doc, then click
+                                    &quot;Save New Version&quot; below to create a new version.
+                                  </Typography>
+                                </Alert>
+                              )}
+
+                              <Box
+                                sx={{
+                                  height: '700px',
+                                  border: '1px solid',
+                                  borderColor: 'divider',
+                                }}
+                              >
+                                <iframe
+                                  src={getEmbeddableGoogleDocUrl(
+                                    request.inline_content || '',
+                                    isEditMode ? 'pending' : request.status, // Force edit mode when isEditMode is true
+                                    isMinimalMode
+                                  )}
+                                  width="100%"
+                                  height="100%"
+                                  frameBorder="0"
+                                />
+                              </Box>
                             </Box>
                           )}
                         </Paper>

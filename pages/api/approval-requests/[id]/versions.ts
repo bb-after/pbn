@@ -11,6 +11,28 @@ const pool = mysql.createPool({
   connectionLimit: 20,
 });
 
+// Function to validate staff token using database lookup
+async function validateToken(token: string): Promise<any> {
+  try {
+    const query = `
+      SELECT id, name, email, role
+      FROM users 
+      WHERE user_token = ?
+    `;
+
+    const [rows] = await pool.query(query, [token]);
+
+    if ((rows as any[]).length === 0) {
+      return null;
+    }
+
+    return (rows as any[])[0];
+  } catch (error) {
+    console.error('Error validating token against database:', error);
+    return null;
+  }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { id } = req.query;
 
@@ -20,12 +42,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const requestId = Number(id);
 
-  // Temporarily disable auth check for testing
-  // const userInfo = await validateUserToken(req);
-  // if (!userInfo.isValid) {
-  //   return res.status(401).json({ error: 'Unauthorized' });
-  // }
-  const userInfo = { isValid: true, user_id: 'test-user' };
+  // Validate staff authentication
+  const authToken = req.headers['x-auth-token'] as string;
+  if (!authToken) {
+    return res.status(401).json({ error: 'Unauthorized - Authentication token required' });
+  }
+
+  const userInfo = await validateToken(authToken);
+  if (!userInfo) {
+    return res.status(401).json({ error: 'Unauthorized - Invalid staff token' });
+  }
 
   switch (req.method) {
     case 'GET':
@@ -85,10 +111,24 @@ async function addVersion(
   res: NextApiResponse,
   userInfo: any
 ) {
-  const { fileUrl, inlineContent, comments, contentType, googleDocId } = req.body;
+  const {
+    fileUrl,
+    inlineContent,
+    inline_content, // Support both naming conventions
+    comments,
+    contentType,
+    content_type, // Support both naming conventions
+    googleDocId,
+    google_doc_id, // Support both naming conventions
+  } = req.body;
 
-  // Either fileUrl or inlineContent must be provided (supporting both for backward compatibility)
-  if (!fileUrl && !inlineContent) {
+  // Use the provided values, preferring the snake_case versions to match our frontend
+  const finalInlineContent = inline_content || inlineContent;
+  const finalContentType = content_type || contentType;
+  const finalGoogleDocId = google_doc_id || googleDocId;
+
+  // Either fileUrl or inline content must be provided (supporting both for backward compatibility)
+  if (!fileUrl && !finalInlineContent) {
     return res.status(400).json({ error: 'Either file URL or inline content is required' });
   }
 
@@ -124,8 +164,8 @@ async function addVersion(
 
     // Determine the content type for the new version
     // If explicitly provided, use that. Otherwise, inherit from the existing request
-    const versionContentType = contentType || existingRequest.content_type || 'html';
-    const versionGoogleDocId = googleDocId || existingRequest.google_doc_id || null;
+    const versionContentType = finalContentType || existingRequest.content_type || 'html';
+    const versionGoogleDocId = finalGoogleDocId || existingRequest.google_doc_id || null;
 
     // 3. Add the new version
     const insertQuery = `
@@ -139,7 +179,7 @@ async function addVersion(
       requestId,
       newVersionNumber,
       fileUrl || null, // Use fileUrl if provided, otherwise null
-      inlineContent || null, // Store inline content in versions table
+      finalInlineContent || null, // Store inline content in versions table
       versionContentType,
       versionGoogleDocId,
       comments || null,
@@ -165,7 +205,7 @@ async function addVersion(
 
     await connection.query(updateQuery, [
       fileUrl || null,
-      inlineContent || null,
+      finalInlineContent || null,
       versionContentType,
       versionGoogleDocId,
       requestId,

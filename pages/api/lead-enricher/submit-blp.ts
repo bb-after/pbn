@@ -31,6 +31,9 @@ const dbConfig = {
   connectionLimit: 10,
 };
 
+// Create a connection pool
+const pool = mysql.createPool(dbConfig);
+
 // Google Sheets configuration for BLP lists
 const CLAY_COMPANY_ENRICHER_BLP_GOOGLE_SHEET_ID =
   process.env.CLAY_COMPANY_ENRICHER_BLP_GOOGLE_SHEET_ID;
@@ -55,7 +58,7 @@ const getGoogleSheetsClient = async () => {
 const getUserFromToken = async (
   userToken: string
 ): Promise<{ id: number; name: string } | null> => {
-  const connection = await mysql.createConnection(dbConfig);
+  const connection = await pool.getConnection();
 
   try {
     const [rows] = await connection.execute('SELECT id, name FROM users WHERE user_token = ?', [
@@ -65,27 +68,39 @@ const getUserFromToken = async (
     const users = rows as any[];
     return users.length > 0 ? { id: users[0].id, name: users[0].name } : null;
   } finally {
-    await connection.end();
+    connection.release();
   }
 };
 
-// Get user name from user ID
-const getUserNameFromId = async (userId: number): Promise<string | null> => {
-  const connection = await mysql.createConnection(dbConfig);
+// Get user names for multiple user IDs in a single query
+const getUserNamesByIds = async (userIds: number[]): Promise<{ [userId: number]: string }> => {
+  if (userIds.length === 0) return {};
+
+  const connection = await pool.getConnection();
 
   try {
-    const [rows] = await connection.execute('SELECT name FROM users WHERE id = ?', [userId]);
+    const placeholders = userIds.map(() => '?').join(',');
+    const [rows] = await connection.execute(
+      `SELECT id, name FROM users WHERE id IN (${placeholders})`,
+      userIds
+    );
 
     const users = rows as any[];
-    return users.length > 0 ? users[0].name : null;
+    const userMap: { [userId: number]: string } = {};
+
+    users.forEach(user => {
+      userMap[user.id] = user.name;
+    });
+
+    return userMap;
   } finally {
-    await connection.end();
+    connection.release();
   }
 };
 
 // Save submission to database with list_type
 const saveSubmissionToDatabase = async (userId: number, rowCount: number) => {
-  const connection = await mysql.createConnection(dbConfig);
+  const connection = await pool.getConnection();
 
   try {
     const [result] = await connection.execute(
@@ -95,7 +110,7 @@ const saveSubmissionToDatabase = async (userId: number, rowCount: number) => {
 
     return result;
   } finally {
-    await connection.end();
+    connection.release();
   }
 };
 
@@ -103,99 +118,74 @@ const saveSubmissionToDatabase = async (userId: number, rowCount: number) => {
 const addDataToGoogleSheets = async (data: BLPCSVRowData[]) => {
   const sheets = await getGoogleSheetsClient();
 
-  // First, read the existing headers to understand the sheet structure
-  let existingHeaders: string[] = [];
-  try {
-    const headerResponse = await sheets.spreadsheets.values.get({
-      spreadsheetId: CLAY_COMPANY_ENRICHER_BLP_GOOGLE_SHEET_ID,
-      range: 'A1:Z1', // Get first row to check headers
-    });
+  // Get all unique user IDs from the data
+  const uniqueUserIds = [...new Set(data.map(row => row.OwnerUserId))];
 
-    if (headerResponse.data.values && headerResponse.data.values[0]) {
-      existingHeaders = headerResponse.data.values[0] as string[];
-      console.log('Existing BLP Google Sheet headers:', existingHeaders);
-    }
-  } catch (headerError) {
-    console.log('Could not read existing headers, assuming new sheet');
-  }
+  // Batch lookup all user names
+  const userNamesMap = await getUserNamesByIds(uniqueUserIds);
 
-  // If no headers exist, create the default structure
-  if (existingHeaders.length === 0) {
-    // Default column order for BLP data
-    existingHeaders = [
-      'Company Name',
-      'Website',
-      'Industry',
-      'Location',
-      'Employee Count',
-      'Revenue',
-      'Contact Name',
-      'Contact Title',
-      'Contact Email',
-      'Owner',
-      'Upload Date',
-    ];
-    console.log('Adding headers to BLP Google Sheet:', existingHeaders);
-    try {
-      await sheets.spreadsheets.values.update({
-        spreadsheetId: CLAY_COMPANY_ENRICHER_BLP_GOOGLE_SHEET_ID,
-        range: 'A1:K1',
-        valueInputOption: 'RAW',
-        requestBody: {
-          values: [existingHeaders],
-        },
-      });
-    } catch (headerError) {
-      console.log('Could not add headers, proceeding with data only');
-    }
-  }
+  // Get existing headers from the sheet
+  const existingHeadersResponse = await sheets.spreadsheets.values.get({
+    spreadsheetId: CLAY_COMPANY_ENRICHER_BLP_GOOGLE_SHEET_ID,
+    range: 'A1:L1',
+  });
 
-  // Create a mapping from our data fields to Google Sheet columns
+  const existingHeaders = existingHeadersResponse.data.values?.[0] || [];
+
+  // Map our fields to the correct column positions
   const fieldToColumnMap: { [key: string]: number } = {};
-
-  // Map our internal field names to the Google Sheet column positions
-  existingHeaders.forEach((header, index) => {
-    const normalizedHeader = header.toLowerCase().replace(/[^a-z]/g, '');
-
-    switch (normalizedHeader) {
+  existingHeaders.forEach((header: string, index: number) => {
+    const lowerHeader = header.toLowerCase().trim();
+    switch (lowerHeader) {
+      case 'company name':
       case 'companyname':
       case 'company':
         fieldToColumnMap['companyName'] = index;
         break;
       case 'website':
       case 'url':
+      case 'domain':
         fieldToColumnMap['website'] = index;
         break;
       case 'industry':
+      case 'sector':
         fieldToColumnMap['industry'] = index;
         break;
       case 'location':
+      case 'address':
+      case 'city':
         fieldToColumnMap['location'] = index;
         break;
+      case 'employee count':
       case 'employeecount':
       case 'employees':
         fieldToColumnMap['employeeCount'] = index;
         break;
       case 'revenue':
+      case 'income':
         fieldToColumnMap['revenue'] = index;
         break;
+      case 'contact name':
       case 'contactname':
       case 'contact':
         fieldToColumnMap['contactName'] = index;
         break;
+      case 'contact title':
       case 'contacttitle':
       case 'title':
         fieldToColumnMap['contactTitle'] = index;
         break;
+      case 'contact email':
       case 'contactemail':
       case 'email':
         fieldToColumnMap['contactEmail'] = index;
         break;
-      case 'owner':
+      case 'user name':
       case 'username':
+      case 'user':
+      case 'owner':
         fieldToColumnMap['userName'] = index;
         break;
-      case 'uploaddate':
       case 'timestamp':
       case 'date':
         fieldToColumnMap['timestamp'] = index;
@@ -207,63 +197,60 @@ const addDataToGoogleSheets = async (data: BLPCSVRowData[]) => {
   console.log('userName column index:', fieldToColumnMap['userName']);
 
   // Prepare data for Google Sheets - map each field to the correct column position
-  const values = await Promise.all(
-    data.map(async (row, index) => {
-      // Create an array with the same length as headers, filled with empty strings
-      const rowData = new Array(existingHeaders.length).fill('');
+  const values = data.map((row, index) => {
+    // Create an array with the same length as headers, filled with empty strings
+    const rowData = new Array(existingHeaders.length).fill('');
+
+    // Debug logging for the first row
+    if (index === 0) {
+      console.log('Processing first row for BLP submission:');
+      console.log('OwnerUserId:', row.OwnerUserId);
+      console.log('Row data:', row);
+    }
+
+    // Get the owner's name from the cached map
+    const ownerName = userNamesMap[row.OwnerUserId] || `Unknown User (ID: ${row.OwnerUserId})`;
+
+    // Debug logging for the first row
+    if (index === 0) {
+      console.log('Owner name retrieved:', ownerName);
+      console.log('userName field mapping position:', fieldToColumnMap['userName']);
+    }
+
+    // Map each of our fields to the correct column position
+    if (fieldToColumnMap['companyName'] !== undefined)
+      rowData[fieldToColumnMap['companyName']] = row.companyName;
+    if (fieldToColumnMap['website'] !== undefined)
+      rowData[fieldToColumnMap['website']] = row.website || '';
+    if (fieldToColumnMap['industry'] !== undefined)
+      rowData[fieldToColumnMap['industry']] = row.industry || '';
+    if (fieldToColumnMap['location'] !== undefined)
+      rowData[fieldToColumnMap['location']] = row.location || '';
+    if (fieldToColumnMap['employeeCount'] !== undefined)
+      rowData[fieldToColumnMap['employeeCount']] = row.employeeCount || '';
+    if (fieldToColumnMap['revenue'] !== undefined)
+      rowData[fieldToColumnMap['revenue']] = row.revenue || '';
+    if (fieldToColumnMap['contactName'] !== undefined)
+      rowData[fieldToColumnMap['contactName']] = row.contactName || '';
+    if (fieldToColumnMap['contactTitle'] !== undefined)
+      rowData[fieldToColumnMap['contactTitle']] = row.contactTitle || '';
+    if (fieldToColumnMap['contactEmail'] !== undefined)
+      rowData[fieldToColumnMap['contactEmail']] = row.contactEmail || '';
+    if (fieldToColumnMap['userName'] !== undefined) {
+      rowData[fieldToColumnMap['userName']] = ownerName;
 
       // Debug logging for the first row
       if (index === 0) {
-        console.log('Processing first row for BLP submission:');
-        console.log('OwnerUserId:', row.OwnerUserId);
-        console.log('Row data:', row);
+        console.log('Setting owner value:', ownerName);
+        console.log('At position:', fieldToColumnMap['userName']);
+        console.log('Row data after setting owner:', rowData);
       }
+    }
+    if (fieldToColumnMap['timestamp'] !== undefined)
+      rowData[fieldToColumnMap['timestamp']] = new Date().toISOString();
 
-      // Get the owner's name from their user ID
-      const ownerName = await getUserNameFromId(row.OwnerUserId);
-
-      // Debug logging for the first row
-      if (index === 0) {
-        console.log('Owner name retrieved:', ownerName);
-        console.log('userName field mapping position:', fieldToColumnMap['userName']);
-      }
-
-      // Map each of our fields to the correct column position
-      if (fieldToColumnMap['companyName'] !== undefined)
-        rowData[fieldToColumnMap['companyName']] = row.companyName;
-      if (fieldToColumnMap['website'] !== undefined)
-        rowData[fieldToColumnMap['website']] = row.website || '';
-      if (fieldToColumnMap['industry'] !== undefined)
-        rowData[fieldToColumnMap['industry']] = row.industry || '';
-      if (fieldToColumnMap['location'] !== undefined)
-        rowData[fieldToColumnMap['location']] = row.location || '';
-      if (fieldToColumnMap['employeeCount'] !== undefined)
-        rowData[fieldToColumnMap['employeeCount']] = row.employeeCount || '';
-      if (fieldToColumnMap['revenue'] !== undefined)
-        rowData[fieldToColumnMap['revenue']] = row.revenue || '';
-      if (fieldToColumnMap['contactName'] !== undefined)
-        rowData[fieldToColumnMap['contactName']] = row.contactName || '';
-      if (fieldToColumnMap['contactTitle'] !== undefined)
-        rowData[fieldToColumnMap['contactTitle']] = row.contactTitle || '';
-      if (fieldToColumnMap['contactEmail'] !== undefined)
-        rowData[fieldToColumnMap['contactEmail']] = row.contactEmail || '';
-      if (fieldToColumnMap['userName'] !== undefined) {
-        const ownerValue = ownerName || `Unknown User (ID: ${row.OwnerUserId})`;
-        rowData[fieldToColumnMap['userName']] = ownerValue;
-
-        // Debug logging for the first row
-        if (index === 0) {
-          console.log('Setting owner value:', ownerValue);
-          console.log('At position:', fieldToColumnMap['userName']);
-          console.log('Row data after setting owner:', rowData);
-        }
-      }
-      if (fieldToColumnMap['timestamp'] !== undefined)
-        rowData[fieldToColumnMap['timestamp']] = new Date().toISOString();
-
-      return rowData;
-    })
-  );
+    return rowData;
+  });
 
   console.log('Sample BLP mapped row data:', values[0]);
 

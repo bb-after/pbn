@@ -25,6 +25,9 @@ const dbConfig = {
   connectionLimit: 10,
 };
 
+// Create a connection pool
+const pool = mysql.createPool(dbConfig);
+
 // Google Sheets configuration
 const SPREADSHEET_ID = process.env.CLAY_COMPANY_ENRICHER_GOOGLE_SHEET_ID;
 const RANGE = 'A:E'; // Use columns A-E including user name
@@ -48,7 +51,7 @@ const getGoogleSheetsClient = async () => {
 const getUserFromToken = async (
   userToken: string
 ): Promise<{ id: number; name: string } | null> => {
-  const connection = await mysql.createConnection(dbConfig);
+  const connection = await pool.getConnection();
 
   try {
     const [rows] = await connection.execute('SELECT id, name FROM users WHERE user_token = ?', [
@@ -58,27 +61,39 @@ const getUserFromToken = async (
     const users = rows as any[];
     return users.length > 0 ? { id: users[0].id, name: users[0].name } : null;
   } finally {
-    await connection.end();
+    connection.release();
   }
 };
 
-// Get user name from user ID
-const getUserNameFromId = async (userId: number): Promise<string | null> => {
-  const connection = await mysql.createConnection(dbConfig);
+// Get user names for multiple user IDs in a single query
+const getUserNamesByIds = async (userIds: number[]): Promise<{ [userId: number]: string }> => {
+  if (userIds.length === 0) return {};
+
+  const connection = await pool.getConnection();
 
   try {
-    const [rows] = await connection.execute('SELECT name FROM users WHERE id = ?', [userId]);
+    const placeholders = userIds.map(() => '?').join(',');
+    const [rows] = await connection.execute(
+      `SELECT id, name FROM users WHERE id IN (${placeholders})`,
+      userIds
+    );
 
     const users = rows as any[];
-    return users.length > 0 ? users[0].name : null;
+    const userMap: { [userId: number]: string } = {};
+
+    users.forEach(user => {
+      userMap[user.id] = user.name;
+    });
+
+    return userMap;
   } finally {
-    await connection.end();
+    connection.release();
   }
 };
 
 // Save submission to database
 const saveSubmissionToDatabase = async (userId: number, rowCount: number) => {
-  const connection = await mysql.createConnection(dbConfig);
+  const connection = await pool.getConnection();
 
   try {
     const [result] = await connection.execute(
@@ -88,13 +103,19 @@ const saveSubmissionToDatabase = async (userId: number, rowCount: number) => {
 
     return result;
   } finally {
-    await connection.end();
+    connection.release();
   }
 };
 
 // Add data to Google Sheets
 const addDataToGoogleSheets = async (data: CSVRowData[]) => {
   const sheets = await getGoogleSheetsClient();
+
+  // Get all unique user IDs from the data
+  const uniqueUserIds = [...new Set(data.map(row => row.OwnerUserId))];
+
+  // Batch lookup all user names
+  const userNamesMap = await getUserNamesByIds(uniqueUserIds);
 
   // First, read the existing headers to understand the sheet structure
   let existingHeaders: string[] = [];
@@ -115,7 +136,7 @@ const addDataToGoogleSheets = async (data: CSVRowData[]) => {
   // If no headers exist, create the default structure
   if (existingHeaders.length === 0) {
     // Default column order for company data
-    existingHeaders = ['Company', 'Keyword', 'URL', 'Timestamp', 'User Name'];
+    existingHeaders = ['Company', 'Keyword', 'URL', 'Owner', 'Upload Date'];
     console.log('Adding headers to Google Sheet:', existingHeaders);
     try {
       await sheets.spreadsheets.values.update({
@@ -165,29 +186,26 @@ const addDataToGoogleSheets = async (data: CSVRowData[]) => {
   console.log('Field to column mapping:', fieldToColumnMap);
 
   // Prepare data for Google Sheets - map each field to the correct column position
-  const values = await Promise.all(
-    data.map(async row => {
-      // Create an array with the same length as headers, filled with empty strings
-      const rowData = new Array(existingHeaders.length).fill('');
+  const values = data.map(row => {
+    // Create an array with the same length as headers, filled with empty strings
+    const rowData = new Array(existingHeaders.length).fill('');
 
-      // Get the owner's name from their user ID
-      const ownerName = await getUserNameFromId(row.OwnerUserId);
+    // Get the owner's name from the cached map
+    const ownerName = userNamesMap[row.OwnerUserId] || `Unknown User (ID: ${row.OwnerUserId})`;
 
-      // Map each of our fields to the correct column position
-      if (fieldToColumnMap['Company'] !== undefined)
-        rowData[fieldToColumnMap['Company']] = row.Company;
-      if (fieldToColumnMap['Keyword'] !== undefined)
-        rowData[fieldToColumnMap['Keyword']] = row.Keyword;
-      if (fieldToColumnMap['URL'] !== undefined) rowData[fieldToColumnMap['URL']] = row.URL;
-      if (fieldToColumnMap['timestamp'] !== undefined)
-        rowData[fieldToColumnMap['timestamp']] = new Date().toISOString();
-      if (fieldToColumnMap['userName'] !== undefined)
-        rowData[fieldToColumnMap['userName']] =
-          ownerName || `Unknown User (ID: ${row.OwnerUserId})`;
+    // Map each of our fields to the correct column position
+    if (fieldToColumnMap['Company'] !== undefined)
+      rowData[fieldToColumnMap['Company']] = row.Company;
+    if (fieldToColumnMap['Keyword'] !== undefined)
+      rowData[fieldToColumnMap['Keyword']] = row.Keyword;
+    if (fieldToColumnMap['URL'] !== undefined) rowData[fieldToColumnMap['URL']] = row.URL;
+    if (fieldToColumnMap['timestamp'] !== undefined)
+      rowData[fieldToColumnMap['timestamp']] = new Date().toISOString();
+    if (fieldToColumnMap['userName'] !== undefined)
+      rowData[fieldToColumnMap['userName']] = ownerName;
 
-      return rowData;
-    })
-  );
+    return rowData;
+  });
 
   console.log('Sample mapped row data:', values[0]);
 
