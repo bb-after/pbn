@@ -477,8 +477,50 @@ export class RecogitoManager {
   destroy() {
     if (this.instance) {
       console.log('RecogitoManager: Destroying instance');
-      this.instance.destroy();
-      this.instance = null;
+      try {
+        // First, try to close any open popups/editors
+        if (this.instance.cancelSelected) {
+          this.instance.cancelSelected();
+        }
+        if (this.instance.clearSelection) {
+          this.instance.clearSelection();
+        }
+
+        // Clean up any popup elements
+        const popups = document.querySelectorAll('.r6o-editor, .r6o-popup, .r6o-widget');
+        popups.forEach(popup => {
+          try {
+            if (popup.parentNode) {
+              popup.parentNode.removeChild(popup);
+            }
+          } catch (e) {
+            // Ignore if already removed
+          }
+        });
+
+        // Try to remove Recogito-specific event listeners more carefully
+        const contentElement = document.getElementById(this.options.contentElementId);
+        if (contentElement) {
+          // Remove any remaining annotation elements
+          const annotations = contentElement.querySelectorAll('.r6o-annotation');
+          annotations.forEach(annotation => {
+            try {
+              // Remove Recogito classes but keep the content
+              annotation.classList.remove('r6o-annotation');
+              annotation.removeAttribute('data-annotation-id');
+            } catch (e) {
+              // Ignore errors
+            }
+          });
+        }
+
+        // Then destroy the Recogito instance
+        this.instance.destroy();
+      } catch (error) {
+        console.warn('RecogitoManager: Error during cleanup:', error);
+      } finally {
+        this.instance = null;
+      }
     }
   }
 
