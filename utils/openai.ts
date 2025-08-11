@@ -325,7 +325,7 @@ export const callOpenAISuperstarVersion = async (inputData: any) => {
     const GPTRequest = async (message: any) => {
       const response = await openai.chat.completions.create({
         model: modelType,
-        temperature: 0.8,
+        temperature: 1,
         messages: message,
       });
 
