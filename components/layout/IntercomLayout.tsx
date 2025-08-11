@@ -144,6 +144,12 @@ const navigationItems: NavigationItem[] = [
         href: '/superstar-site-submissions',
       },
       {
+        id: 'superstar-create-new-submission',
+        label: 'Create New Submission',
+        icon: <AddCircleOutlineIcon />,
+        href: '/superstar-form',
+      },
+      {
         id: 'superstar-create-new',
         label: 'Create New Site',
         icon: <AddCircleOutlineIcon />,
