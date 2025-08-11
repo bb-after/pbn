@@ -9,6 +9,13 @@ import {
   TextField,
   Chip,
   Box,
+  Button,
+  FormControl,
+  FormLabel,
+  RadioGroup,
+  Radio,
+  FormControlLabel,
+  CircularProgress,
 } from '@mui/material';
 import ClientDropdown from 'components/ClientDropdown';
 import axios from 'axios';
@@ -55,6 +62,8 @@ const SuperstarFormPage: React.FC = () => {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [contentMode, setContentMode] = useState<'generate' | 'paste'>('paste');
+  const [generating, setGenerating] = useState(false);
   const { token } = useValidateUserToken();
   const [authors, setAuthors] = useState<
     {
@@ -167,7 +176,7 @@ const SuperstarFormPage: React.FC = () => {
     if (
       !selectedSite ||
       !title ||
-      !content ||
+      (!content && contentMode === 'paste') ||
       !clientName ||
       (!categories.length && !selectedRegion)
     ) {
@@ -208,6 +217,28 @@ const SuperstarFormPage: React.FC = () => {
       alert('Failed to post content.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleGenerate = async () => {
+    if (!selectedSite) {
+      alert('Please select a Superstar site first');
+      return;
+    }
+    const topicParam = encodeURIComponent(categories.join(','));
+    setGenerating(true);
+    try {
+      const response = await axios.get(
+        `/api/generateContent?topic=${encodeURIComponent(topicParam)}&siteId=${selectedSite.id}`
+      );
+      const { title: genTitle, body: genBody } = response.data;
+      setTitle(genTitle || '');
+      setContent(genBody || '');
+    } catch (error: any) {
+      console.error('Error generating content:', error);
+      alert('There was an error generating content.');
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -323,6 +354,40 @@ const SuperstarFormPage: React.FC = () => {
             )}
           </Box>
 
+          <Box sx={{ mt: 1, mb: 2 }}>
+            <FormControl>
+              <FormLabel>Content Source</FormLabel>
+              <RadioGroup
+                row
+                value={contentMode}
+                onChange={(_, v) => setContentMode((v as 'generate' | 'paste') || 'paste')}
+              >
+                <FormControlLabel value="paste" control={<Radio />} label="Paste content" />
+                <FormControlLabel value="generate" control={<Radio />} label="Generate with AI" />
+              </RadioGroup>
+            </FormControl>
+          </Box>
+
+          {contentMode === 'generate' && (
+            <Box sx={{ mb: 2 }}>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={handleGenerate}
+                disabled={
+                  !selectedSite ||
+                  generating ||
+                  (selectedType === 'industry' && categories.length === 0)
+                }
+              >
+                {generating ? <CircularProgress size={20} /> : 'Generate Content'}
+              </Button>
+              <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                Uses the site’s prompt and your tags to generate content.
+              </Typography>
+            </Box>
+          )}
+
           <TextField
             label="Article Title"
             value={title}
@@ -334,7 +399,7 @@ const SuperstarFormPage: React.FC = () => {
           />
 
           <Typography variant="subtitle1" style={{ marginTop: '16px' }}>
-            Article Content
+            {contentMode === 'generate' ? 'Generated Content (editable)' : 'Article Content'}
           </Typography>
           <Box sx={{ mb: 2, mt: 1 }}>
             <ReactQuill
