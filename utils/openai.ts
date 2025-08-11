@@ -116,7 +116,7 @@ export const callOpenAI = async (inputData: any) => {
     }
   }
 
-  if (engine === 'gpt-4o-mini' || engine === 'gpt-4') {
+  if (engine === 'gpt-5' || engine === 'gpt-4o-mini' || engine === 'gpt-4') {
     const gptMessage = trimContentToFitTokenLimit(
       [
         {
@@ -133,7 +133,7 @@ export const callOpenAI = async (inputData: any) => {
       const response = await openai.chat.completions.create({
         model: engine,
         messages: gptMessage,
-        temperature: 0.8,
+        temperature: engine == 'gpt-5' ? 1 : 0.8,
       });
 
       console.log('OpenAI Response:', response.choices[0].message.content);
@@ -284,7 +284,7 @@ export const insertBacklinks = async (
     const response = await openai.chat.completions.create({
       model: modelType,
       messages: gptMessage,
-      temperature: 0.8,
+      temperature: modelType == 'gpt-5-mini' ? 1 : 0.8,
     });
 
     // Ensure `content` is a string or fallback to the original response
