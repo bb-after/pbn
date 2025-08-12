@@ -121,10 +121,11 @@ const ArticleForm: React.FC<ArticleFormProps> = ({
           style={{
             width: '100%',
             marginTop: 20,
-            fontFamily: 'Roboto',
-            fontWeight: 400,
+            fontFamily: 'inherit',
             fontSize: '1rem',
             padding: '0.5rem',
+            color: 'inherit',
+            backgroundColor: 'inherit',
           }}
         />
       ) : (
@@ -210,10 +211,11 @@ const ArticleForm: React.FC<ArticleFormProps> = ({
         style={{
           width: '100%',
           marginTop: 20,
-          fontFamily: 'Roboto',
-          fontWeight: 400,
           fontSize: '1rem',
+          fontFamily: 'inherit',
           padding: '0.5rem',
+          color: 'inherit',
+          backgroundColor: 'inherit',
         }}
       />
       <Button variant="contained" type="submit">

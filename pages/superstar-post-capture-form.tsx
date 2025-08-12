@@ -1,25 +1,40 @@
-// pages/pbn-form.tsx
-import React from "react";
-import { Typography, Link, Paper, TableContainer } from "@mui/material";
-import SuperstarPostCaptureForm from "../components/SuperstarPostCaptureForm";
-import LayoutContainer from "components/LayoutContainer";
-import StyledHeader from "components/StyledHeader";
+import React from 'react';
+import { Box, Typography } from '@mui/material';
+import SuperstarPostCaptureForm from '../components/SuperstarPostCaptureForm';
+import { IntercomLayout, ToastProvider, IntercomCard } from '../components/ui';
+import useValidateUserToken from 'hooks/useValidateUserToken';
+import UnauthorizedAccess from 'components/UnauthorizedAccess';
 
-const PbnFormPage: React.FC = () => {
+const pageTitle = 'Capture Superstar Article Submission';
+
+function SuperstarCapturePage() {
+  const { token } = useValidateUserToken();
+
+  if (!token) {
+    return <UnauthorizedAccess />;
+  }
+
   return (
-    <LayoutContainer>
-      <StyledHeader />
-      <TableContainer component={Paper} style={{ padding: "1rem" }}>
-        <h1>Superstar Sites</h1>
-
-        <Typography variant="h5" gutterBottom>
-          <Link href="https://sales.statuscrawl.io">Portal</Link> &raquo;
-          Capture Superstar Article Submission
-        </Typography>
-        <SuperstarPostCaptureForm />
-      </TableContainer>
-    </LayoutContainer>
+    <IntercomLayout
+      title={pageTitle}
+      breadcrumbs={[{ label: 'Superstar' }, { label: 'Capture Submission' }]}
+    >
+      <IntercomCard>
+        <Box p={3}>
+          <Typography variant="h5" component="h1" gutterBottom>
+            {pageTitle}
+          </Typography>
+          <SuperstarPostCaptureForm />
+        </Box>
+      </IntercomCard>
+    </IntercomLayout>
   );
-};
+}
 
-export default PbnFormPage;
+export default function SuperstarPostCaptureFormPage() {
+  return (
+    <ToastProvider>
+      <SuperstarCapturePage />
+    </ToastProvider>
+  );
+}

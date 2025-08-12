@@ -35,6 +35,7 @@ import {
   CheckCircle as CheckCircleIcon,
   Article as ArticleIcon,
   Star as StarIcon,
+  Language as LanguageIcon,
   Explore as ExploreIcon,
   Assessment as AssessmentIcon,
   Notifications as NotificationsIcon,
@@ -124,6 +125,12 @@ const navigationItems: NavigationItem[] = [
         icon: <AddCircleOutlineIcon />,
         href: '/pbn-form',
       },
+      {
+        id: 'pbn-upload',
+        label: 'Manual / Bulk Upload',
+        icon: <AssignmentIcon />,
+        href: '/pbn-upload',
+      },
     ],
   },
   {
@@ -148,6 +155,12 @@ const navigationItems: NavigationItem[] = [
         label: 'Create New Submission',
         icon: <AddCircleOutlineIcon />,
         href: '/superstar-form',
+      },
+      {
+        id: 'superstar-capture-post',
+        label: 'Capture WP Submission',
+        icon: <LanguageIcon />,
+        href: '/superstar-post-capture-form',
       },
       {
         id: 'superstar-create-new',
