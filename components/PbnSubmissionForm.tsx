@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, ChangeEvent } from "react";
-import dynamic from "next/dynamic";
+import React, { useState, useEffect, useRef, ChangeEvent } from 'react';
+import dynamic from 'next/dynamic';
 import {
   TextField,
   Button,
@@ -15,12 +15,13 @@ import {
   Typography,
   Box,
   Alert,
-} from "@mui/material";
-import CopyToClipboardButton from "./CopyToClipboardButton";
-import useValidateUserToken from "../hooks/useValidateUserToken";
+} from '@mui/material';
+import ClientDropdown from 'components/ClientDropdown';
+import CopyToClipboardButton from './CopyToClipboardButton';
+import useValidateUserToken from '../hooks/useValidateUserToken';
 
 // Dynamically load JoditEditor to prevent SSR issues
-const JoditEditor = dynamic(() => import("jodit-react"), { ssr: false });
+const JoditEditor = dynamic(() => import('jodit-react'), { ssr: false });
 
 interface PbnFormProps {
   articleTitle: string;
@@ -47,8 +48,8 @@ import * as mammoth from 'mammoth';
 
 const PbnSubmissionForm: React.FC<PbnFormProps> = ({
   articleTitle,
-  clientName = "",
-  categories = "",
+  clientName = '',
+  categories = '',
   submissionId,
   content,
   onSubmit,
@@ -59,10 +60,10 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
   const [client, setClient] = useState(clientName);
   const [id, setId] = useState(submissionId);
   const [category, setCategory] = useState(categories);
-  const [submissionUrl, setSubmissionUrl] = useState("");
+  const [submissionUrl, setSubmissionUrl] = useState('');
   const [submissionUrls, setSubmissionUrls] = useState<string[]>([]);
   const [isSubmissionSuccessful, setIsSubmissionSuccessful] = useState(false);
-  const [submissionType, setSubmissionType] = useState<'individual'|'bulk'>('individual');
+  const [submissionType, setSubmissionType] = useState<'individual' | 'bulk'>('individual');
   const [uploadMethod, setUploadMethod] = useState<string>('docx');
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [docFiles, setDocFiles] = useState<File[]>([]);
@@ -74,24 +75,24 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
   const docxInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Available upload methods
   const uploadMethods: UploadMethod[] = [
     {
       id: 'docx',
       name: 'Word Documents',
-      description: 'Upload DOCX files from Google Docs with formatting preserved'
+      description: 'Upload DOCX files from Google Docs with formatting preserved',
     },
     {
       id: 'csv',
       name: 'CSV File',
-      description: 'Upload a CSV file with title and content columns'
+      description: 'Upload a CSV file with title and content columns',
     },
     {
       id: 'docs',
       name: 'HTML Files',
-      description: 'Upload HTML exports from Google Docs'
-    }
+      description: 'Upload HTML exports from Google Docs',
+    },
   ];
   const { token } = useValidateUserToken();
 
@@ -104,7 +105,7 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
   const handleSubmissionTypeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const newType = event.target.value as 'individual' | 'bulk';
     setSubmissionType(newType);
-    
+
     // Reset all upload data when switching types
     if (newType === 'individual') {
       setCsvData([]);
@@ -114,7 +115,7 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
       setDocError(null);
       setDocxFiles([]);
       setDocxError(null);
-      
+
       // Reset file inputs if they exist
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -127,12 +128,12 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
       }
     }
   };
-  
+
   // Handle upload method change
   const handleUploadMethodChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const newMethod = event.target.value;
     setUploadMethod(newMethod);
-    
+
     // Reset data for the previous method
     setCsvData([]);
     setCsvFile(null);
@@ -141,7 +142,7 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
     setDocError(null);
     setDocxFiles([]);
     setDocxError(null);
-    
+
     // Reset file inputs
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -153,18 +154,18 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
       docxInputRef.current.value = '';
     }
   };
-  
+
   // Handle Google Doc HTML files upload
   const handleDocFilesChange = (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     setDocError(null);
     setDocFiles([]);
     setCsvData([]);
-    
+
     if (files && files.length > 0) {
       // Convert FileList to array
       const fileArray = Array.from(files);
-      
+
       // Check if we have too many files
       if (fileArray.length > 20) {
         setDocError('Maximum 20 files allowed. Only the first 20 will be used.');
@@ -172,31 +173,34 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
       } else {
         setDocFiles(fileArray);
       }
-      
+
       // Process HTML files to extract content
       const processFiles = async () => {
         const parsedData: CsvRow[] = [];
-        
+
         for (const file of fileArray.slice(0, 20)) {
           // Only process HTML files
-          if (!file.name.toLowerCase().endsWith('.html') && !file.name.toLowerCase().endsWith('.htm')) {
+          if (
+            !file.name.toLowerCase().endsWith('.html') &&
+            !file.name.toLowerCase().endsWith('.htm')
+          ) {
             console.warn(`File ${file.name} is not an HTML file and will be skipped`);
             continue;
           }
-          
+
           try {
             // Read file content
             const content = await readFileAsText(file);
-            
+
             // Extract title and content
             // For Google Docs HTML exports, we'll assume:
             // 1. The first line is the title
             // 2. The rest is the content with preserved formatting
-            
+
             // Create a temporary div to parse the HTML
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = content;
-            
+
             // Get the title (either first heading or first paragraph)
             let title = '';
             const headings = tempDiv.querySelectorAll('h1, h2, h3');
@@ -216,32 +220,32 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
                 title = file.name.replace(/\.(html|htm)$/i, '');
               }
             }
-            
+
             // The rest is the content with preserved formatting
             const htmlContent = tempDiv.innerHTML;
-            
+
             if (title && htmlContent) {
-              parsedData.push({ 
+              parsedData.push({
                 title: title.trim(),
-                content: htmlContent
+                content: htmlContent,
               });
             }
           } catch (error) {
             console.error(`Error processing file ${file.name}:`, error);
           }
         }
-        
+
         if (parsedData.length === 0) {
           setDocError('No valid HTML files found or content could not be extracted.');
         } else {
           setCsvData(parsedData); // Reuse the same state for all upload methods
         }
       };
-      
+
       processFiles();
     }
   };
-  
+
   // Helper function to read file as text
   const readFileAsText = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -257,18 +261,18 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
       reader.readAsText(file);
     });
   };
-  
+
   // Function to handle DOCX file uploads
   const handleDocxFilesChange = (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     setDocxError(null);
     setDocxFiles([]);
     setCsvData([]);
-    
+
     if (files && files.length > 0) {
       // Convert FileList to array
       const fileArray = Array.from(files);
-      
+
       // Check if we have too many files
       if (fileArray.length > 50) {
         setDocxError('Maximum 50 files allowed. Only the first 50 will be used.');
@@ -276,11 +280,11 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
       } else {
         setDocxFiles(fileArray);
       }
-      
+
       // Process DOCX files to extract content
       const processFiles = async () => {
         const parsedData: CsvRow[] = [];
-        
+
         // Process each DOCX file with mammoth.js
         for (const file of fileArray.slice(0, 20)) {
           // Only process DOCX files
@@ -288,20 +292,20 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
             console.warn(`File ${file.name} is not a DOCX file and will be skipped`);
             continue;
           }
-          
+
           try {
             // Extract title from the filename (we'll use this as fallback)
             const filenameTitle = file.name.replace(/\.docx$/i, '');
-            
+
             // Use mammoth.js to convert DOCX to HTML
             const arrayBuffer = await file.arrayBuffer();
             const result = await mammoth.convertToHtml({ arrayBuffer });
             const htmlContent = result.value; // This preserves hyperlinks and formatting
-            
+
             // Try to extract a better title from the first heading in the document
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = htmlContent;
-            
+
             // Look for the first heading as title
             let title = '';
             const headings = tempDiv.querySelectorAll('h1, h2, h3');
@@ -321,26 +325,26 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
                 title = filenameTitle;
               }
             }
-            
+
             // Use the updated HTML content (with heading/title removed)
             const finalHtmlContent = title !== filenameTitle ? tempDiv.innerHTML : htmlContent;
-            
-            parsedData.push({ 
+
+            parsedData.push({
               title: title.trim(),
-              content: finalHtmlContent
+              content: finalHtmlContent,
             });
           } catch (error) {
             console.error(`Error processing file ${file.name}:`, error);
           }
         }
-        
+
         if (parsedData.length === 0) {
           setDocxError('No valid DOCX files found or content could not be extracted.');
         } else {
           setCsvData(parsedData); // Reuse the same state for all upload methods
         }
       };
-      
+
       processFiles();
     }
   };
@@ -349,16 +353,16 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
   const handleCsvFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     setCsvError(null);
-    
+
     // Clear previous data first to ensure UI updates
     setCsvData([]);
-    
+
     if (files && files.length > 0) {
       const file = files[0];
       setCsvFile(file);
-      
+
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = e => {
         try {
           const csvContent = e.target?.result as string;
           if (!csvContent || csvContent.trim() === '') {
@@ -366,16 +370,16 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
             setCsvData([]);
             return;
           }
-          
+
           // We need to parse the CSV properly to handle quoted content with newlines
           // First, identify where actual CSV rows end by tracking quote state
           const csvRows: string[] = [];
           let currentRow = '';
           let inQuotes = false;
-          
+
           for (let i = 0; i < csvContent.length; i++) {
             const char = csvContent[i];
-            
+
             // Handle quotes
             if (char === '"') {
               if (i + 1 < csvContent.length && csvContent[i + 1] === '"') {
@@ -394,7 +398,7 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
               if (char === '\r' && i + 1 < csvContent.length && csvContent[i + 1] === '\n') {
                 i++; // Skip the \n
               }
-              
+
               // Only add non-empty rows
               if (currentRow.trim()) {
                 csvRows.push(currentRow);
@@ -406,65 +410,66 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
               currentRow += char;
             }
           }
-          
+
           // Add the last row if not empty
           if (currentRow.trim()) {
             csvRows.push(currentRow);
           }
-          
-          if (csvRows.length < 2) { // Need at least header and one data row
+
+          if (csvRows.length < 2) {
+            // Need at least header and one data row
             setCsvError('CSV file must have a header row and at least one data row');
             setCsvData([]);
             return;
           }
-          
+
           // Process header row to find title and content columns
           const headerRow = csvRows[0].toLowerCase();
           const headerCols = parseCSVRow(headerRow);
-          
+
           const titleIndex = headerCols.findIndex(col => col.trim() === 'title');
           const contentIndex = headerCols.findIndex(col => col.trim() === 'content');
-          
+
           if (titleIndex === -1 || contentIndex === -1) {
             setCsvError('CSV file must have both "title" and "content" columns');
             setCsvData([]);
             return;
           }
-          
+
           // Parse the CSV data
           const parsedData: CsvRow[] = [];
-          
+
           // Process each row (skip header)
           for (let i = 1; i < csvRows.length; i++) {
             const columns = parseCSVRow(csvRows[i]);
-            
+
             if (columns.length <= Math.max(titleIndex, contentIndex)) {
-              console.warn(`Row ${i+1} has fewer columns than expected and will be skipped`);
+              console.warn(`Row ${i + 1} has fewer columns than expected and will be skipped`);
               continue;
             }
-            
+
             // Get title and content, preserving whitespace in content
             let title = columns[titleIndex]?.trim() || '';
             let content = columns[contentIndex] || '';
-            
+
             // Remove enclosing quotes if present
             if (title.startsWith('"') && title.endsWith('"')) {
               title = title.slice(1, -1).trim();
             }
-            
+
             if (content.startsWith('"') && content.endsWith('"')) {
               content = content.slice(1, -1);
               // Preserve paragraphs by replacing double quotes with proper HTML
               content = content.replace(/""/g, '"');
             }
-            
+
             if (title && content) {
               parsedData.push({ title, content });
             } else {
-              console.warn(`Row ${i+1} is missing title or content and will be skipped`);
+              console.warn(`Row ${i + 1} is missing title or content and will be skipped`);
             }
           }
-          
+
           // Validate data
           if (parsedData.length === 0) {
             setCsvError('No valid rows found in CSV');
@@ -478,7 +483,7 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
             // Create a new array to ensure React detects the state change
             setCsvData([...parsedData]);
           }
-          
+
           console.log('Parsed CSV data:', parsedData);
         } catch (error) {
           console.error('CSV parsing error:', error);
@@ -486,28 +491,28 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
           setCsvData([]);
         }
       };
-      
+
       reader.onerror = () => {
         setCsvError('Error reading CSV file');
         setCsvData([]);
       };
-      
+
       reader.readAsText(file);
     } else {
       setCsvFile(null);
       setCsvData([]);
     }
   };
-  
+
   // Helper function to parse CSV row handling quotes, commas, and preserving newlines
   const parseCSVRow = (row: string): string[] => {
     const result: string[] = [];
     let current = '';
     let inQuotes = false;
-    
+
     for (let i = 0; i < row.length; i++) {
       const char = row[i];
-      
+
       if (char === '"') {
         // Check if it's an escaped quote (double quote inside quoted field)
         if (inQuotes && i + 1 < row.length && row[i + 1] === '"') {
@@ -525,7 +530,7 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
         current += char;
       }
     }
-    
+
     // Add the last field
     result.push(current);
     return result;
@@ -544,8 +549,8 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
   const postContentToPbn = async () => {
     try {
       if (submissionType === 'individual') {
-        const response = await fetch("/api/postToWordPress", {
-          method: "POST",
+        const response = await fetch('/api/postToWordPress', {
+          method: 'POST',
           body: JSON.stringify({
             title,
             clientName: client,
@@ -555,7 +560,7 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
             tags: [],
             submissionId: id,
           }),
-          headers: { "Content-Type": "application/json" },
+          headers: { 'Content-Type': 'application/json' },
         });
 
         if (response.status === 201) {
@@ -568,22 +573,26 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
         }
       } else if (submissionType === 'bulk' && csvData.length > 0) {
         // Call the bulk upload endpoint
-        const response = await fetch("/api/bulkPostToWordPress", {
-          method: "POST",
+        const response = await fetch('/api/bulkPostToWordPress', {
+          method: 'POST',
           body: JSON.stringify({
             articles: csvData,
             clientName: client,
             userToken: token,
             category,
           }),
-          headers: { "Content-Type": "application/json" },
+          headers: { 'Content-Type': 'application/json' },
         });
 
         if (response.status === 201 || response.status === 200) {
           const responseData = await response.json();
-          
+
           // Check if any articles were successfully posted
-          if (responseData.successCount > 0 && responseData.links && responseData.links.length > 0) {
+          if (
+            responseData.successCount > 0 &&
+            responseData.links &&
+            responseData.links.length > 0
+          ) {
             // Success case - at least some articles were posted
             setSubmissionUrls(responseData.links);
             setSubmissionUrl(responseData.links[0]); // Keep first one in the single URL for backward compatibility
@@ -592,27 +601,27 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
           } else if (responseData.failedCount > 0) {
             // All articles failed case
             setIsSubmissionSuccessful(false);
-            
+
             // Set failed submissions for display
             setFailedSubmissions(responseData.failed);
-            
+
             // Show brief error alert
             alert(`Failed to post articles. See details on screen.`);
           } else {
             // No success, no failures (shouldn't happen, but handle it anyway)
             setSubmissionUrls([]);
-            setSubmissionUrl("No articles were processed");
+            setSubmissionUrl('No articles were processed');
             setIsSubmissionSuccessful(false);
-            alert("No articles were processed. Please try again.");
+            alert('No articles were processed. Please try again.');
           }
         } else {
           handleError(response);
         }
       } else {
-        alert("No CSV data available for bulk upload");
+        alert('No CSV data available for bulk upload');
       }
     } catch (error: any) {
-      alert("Request error: " + error.message);
+      alert('Request error: ' + error.message);
       setIsSubmissionSuccessful(false);
     }
   };
@@ -624,9 +633,9 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
         `Article already uploaded to PBN. Submission response: ${responseData.submission_response}`
       );
     } else if (response.status === 404) {
-      alert("No active blogs found in database");
+      alert('No active blogs found in database');
     } else {
-      alert("Failed to post article to PBN");
+      alert('Failed to post article to PBN');
     }
     setIsSubmissionSuccessful(false);
   };
@@ -645,7 +654,9 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
   };
 
   // State for tracking failed submissions for display
-  const [failedSubmissions, setFailedSubmissions] = useState<{ title: string, error: string }[]>([]);
+  const [failedSubmissions, setFailedSubmissions] = useState<{ title: string; error: string }[]>(
+    []
+  );
 
   return (
     <div>
@@ -672,10 +683,29 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
                   <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
                     Successfully posted {submissionUrls.length} articles
                   </Typography>
-                  <Box sx={{ maxHeight: '400px', overflow: 'auto', border: '1px solid #eee', borderRadius: '4px', p: 2, mt: 2 }}>
+                  <Box
+                    sx={{
+                      maxHeight: '400px',
+                      overflow: 'auto',
+                      border: '1px solid #eee',
+                      borderRadius: '4px',
+                      p: 2,
+                      mt: 2,
+                    }}
+                  >
                     {submissionUrls.map((url, index) => (
-                      <Box key={`url-${index}`} sx={{ mb: 2, pb: 2, borderBottom: index < submissionUrls.length - 1 ? '1px solid #eee' : 'none' }}>
-                        <Typography variant="body2" gutterBottom><strong>Article {index + 1}:</strong></Typography>
+                      <Box
+                        key={`url-${index}`}
+                        sx={{
+                          mb: 2,
+                          pb: 2,
+                          borderBottom:
+                            index < submissionUrls.length - 1 ? '1px solid #eee' : 'none',
+                        }}
+                      >
+                        <Typography variant="body2" gutterBottom>
+                          <strong>Article {index + 1}:</strong>
+                        </Typography>
                         <TextField
                           fullWidth
                           size="small"
@@ -697,12 +727,28 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
               <Alert severity="error" sx={{ mb: 2 }}>
                 Failed to post articles. Please check the errors below.
               </Alert>
-              <Box sx={{ maxHeight: '400px', overflow: 'auto', border: '1px solid #eee', borderRadius: '4px', p: 2 }}>
+              <Box
+                sx={{
+                  maxHeight: '400px',
+                  overflow: 'auto',
+                  border: '1px solid #eee',
+                  borderRadius: '4px',
+                  p: 2,
+                }}
+              >
                 <Typography variant="h6" gutterBottom>
                   Submission Errors:
                 </Typography>
                 {failedSubmissions.map((failure, index) => (
-                  <Box key={`error-${index}`} sx={{ mb: 2, pb: 2, borderBottom: index < failedSubmissions.length - 1 ? '1px solid #eee' : 'none' }}>
+                  <Box
+                    key={`error-${index}`}
+                    sx={{
+                      mb: 2,
+                      pb: 2,
+                      borderBottom:
+                        index < failedSubmissions.length - 1 ? '1px solid #eee' : 'none',
+                    }}
+                  >
                     <Typography variant="body2" gutterBottom>
                       <strong>{failure.title}</strong>
                     </Typography>
@@ -712,9 +758,9 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
                   </Box>
                 ))}
               </Box>
-              <Button 
-                onClick={() => setFailedSubmissions([])} 
-                variant="outlined" 
+              <Button
+                onClick={() => setFailedSubmissions([])}
+                variant="outlined"
                 color="primary"
                 sx={{ mt: 2 }}
               >
@@ -733,28 +779,22 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
               value={submissionType}
               onChange={handleSubmissionTypeChange}
             >
-              <FormControlLabel
-                value="individual"
-                control={<Radio />}
-                label="Individual Article"
-              />
-              <FormControlLabel
-                value="bulk"
-                control={<Radio />}
-                label="Bulk Upload"
-              />
+              <FormControlLabel value="individual" control={<Radio />} label="Individual Article" />
+              <FormControlLabel value="bulk" control={<Radio />} label="Bulk Upload" />
             </RadioGroup>
           </FormControl>
 
           <FormControl component="fieldset" fullWidth>
-            <TextField
-              label="Client Name"
+            <ClientDropdown
               value={client}
+              onChange={val => setClient(val)}
+              onClientIdChange={id => {
+                /* optional, keep existing clientId state logic elsewhere if needed */
+              }}
               fullWidth
               margin="normal"
               required
-              placeholder="Client Name"
-              onChange={handleClientChange}
+              label="Client Name"
             />
           </FormControl>
 
@@ -769,17 +809,17 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
               fullWidth
             >
               {[
-                "Business",
-                "Finance",
-                "Health",
-                "Lifestyle",
-                "Technology",
-                "News",
-                "Education",
-                "Entrepreneurship",
-                "Sports",
-                "General",
-              ].map((cat) => (
+                'Business',
+                'Finance',
+                'Health',
+                'Lifestyle',
+                'Technology',
+                'News',
+                'Education',
+                'Entrepreneurship',
+                'Sports',
+                'General',
+              ].map(cat => (
                 <MenuItem key={cat} value={cat}>
                   {cat}
                 </MenuItem>
@@ -813,7 +853,7 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
           ) : (
             <FormControl component="fieldset" fullWidth>
               <FormLabel>Bulk Upload (Max 50 articles)</FormLabel>
-              
+
               <RadioGroup
                 row
                 name="uploadMethod"
@@ -830,20 +870,23 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
                   />
                 ))}
               </RadioGroup>
-              
+
               <Box sx={{ mt: 2, mb: 2 }}>
                 {uploadMethod === 'csv' && (
                   <>
                     <Typography variant="body2" gutterBottom>
-                      Upload a CSV file with two columns: title and content. Each row will create a separate article.
+                      Upload a CSV file with two columns: title and content. Each row will create a
+                      separate article.
                     </Typography>
                     <Typography variant="body2" color="textSecondary" gutterBottom>
-                      <strong>Format:</strong> Make sure your CSV has &ldquo;title&rdquo; and &ldquo;content&rdquo; in the header row.
+                      <strong>Format:</strong> Make sure your CSV has &ldquo;title&rdquo; and
+                      &ldquo;content&rdquo; in the header row.
                     </Typography>
                     <Typography variant="body2" color="textSecondary" gutterBottom>
                       <strong>Example:</strong> title,content
                       <br />
-                      &ldquo;My Article Title&rdquo;,&ldquo;&lt;p&gt;Article content here...&lt;/p&gt;&rdquo;
+                      &ldquo;My Article Title&rdquo;,&ldquo;&lt;p&gt;Article content
+                      here...&lt;/p&gt;&rdquo;
                     </Typography>
                     <input
                       type="file"
@@ -860,17 +903,20 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
                     )}
                   </>
                 )}
-                
+
                 {uploadMethod === 'docs' && (
                   <>
                     <Typography variant="body2" gutterBottom>
-                      Upload HTML files exported from Google Docs. The system will extract the title from the first heading or paragraph.
+                      Upload HTML files exported from Google Docs. The system will extract the title
+                      from the first heading or paragraph.
                     </Typography>
                     <Typography variant="body2" color="textSecondary" gutterBottom>
                       <strong>How to export from Google Docs:</strong>
                     </Typography>
                     <ol>
-                      <li>In Google Docs, go to File &gt; Download &gt; Web Page (.html, zipped)</li>
+                      <li>
+                        In Google Docs, go to File &gt; Download &gt; Web Page (.html, zipped)
+                      </li>
                       <li>Extract the ZIP file(s)</li>
                       <li>Upload the HTML file(s) here</li>
                     </ol>
@@ -890,11 +936,12 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
                     )}
                   </>
                 )}
-                
+
                 {uploadMethod === 'docx' && (
                   <>
                     <Typography variant="body2" gutterBottom>
-                      Upload DOCX files exported from Google Docs. This preserves all formatting, including hyperlinks.
+                      Upload DOCX files exported from Google Docs. This preserves all formatting,
+                      including hyperlinks.
                     </Typography>
                     <Typography variant="body2" color="textSecondary" gutterBottom>
                       <strong>How to export from Google Docs:</strong>
@@ -919,31 +966,67 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
                     )}
                   </>
                 )}
-                
+
                 {csvData.length > 0 && (
                   <Alert severity="success" sx={{ mt: 2 }}>
                     Successfully loaded {csvData.length} article{csvData.length !== 1 ? 's' : ''}
                   </Alert>
                 )}
-                
+
                 {csvData.length > 0 && (
-                  <Box 
-                    sx={{ mt: 2, maxHeight: '300px', overflow: 'auto', border: '1px solid #ddd', borderRadius: '4px', p: 1 }}
+                  <Box
+                    sx={{
+                      mt: 2,
+                      maxHeight: '300px',
+                      overflow: 'auto',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      p: 1,
+                    }}
                     key={`preview-box-${csvData.length}-${Date.now()}`} // Add dynamic key to force re-render
                   >
-                    <Typography variant="subtitle2" gutterBottom>Preview of loaded articles:</Typography>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Preview of loaded articles:
+                    </Typography>
                     {csvData.map((article, index) => (
-                      <Box key={`article-${index}-${Date.now()}`} sx={{ mb: 2, pb: 2, borderBottom: index < csvData.length - 1 ? '1px solid #eee' : 'none' }}>
-                        <Typography variant="body2"><strong>Title {index + 1}:</strong> {article.title.substring(0, 70)}{article.title.length > 70 ? '...' : ''}</Typography>
-                        <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5, fontSize: '0.8rem' }}>
-                          <strong>Content preview:</strong> {article.content.substring(0, 100).replace(/\n/g, ' ')}{article.content.length > 100 ? '...' : ''}
+                      <Box
+                        key={`article-${index}-${Date.now()}`}
+                        sx={{
+                          mb: 2,
+                          pb: 2,
+                          borderBottom: index < csvData.length - 1 ? '1px solid #eee' : 'none',
+                        }}
+                      >
+                        <Typography variant="body2">
+                          <strong>Title {index + 1}:</strong> {article.title.substring(0, 70)}
+                          {article.title.length > 70 ? '...' : ''}
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          color="textSecondary"
+                          sx={{ mt: 0.5, fontSize: '0.8rem' }}
+                        >
+                          <strong>Content preview:</strong>{' '}
+                          {article.content.substring(0, 100).replace(/\n/g, ' ')}
+                          {article.content.length > 100 ? '...' : ''}
                         </Typography>
                         {uploadMethod === 'docs' || uploadMethod === 'docx' ? (
-                          <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5, fontSize: '0.8rem' }}>
-                            <strong>Format:</strong> {uploadMethod === 'docx' ? 'DOCX with preserved formatting & links' : 'HTML with preserved formatting'}
+                          <Typography
+                            variant="body2"
+                            color="textSecondary"
+                            sx={{ mt: 0.5, fontSize: '0.8rem' }}
+                          >
+                            <strong>Format:</strong>{' '}
+                            {uploadMethod === 'docx'
+                              ? 'DOCX with preserved formatting & links'
+                              : 'HTML with preserved formatting'}
                           </Typography>
                         ) : (
-                          <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5, fontSize: '0.8rem' }}>
+                          <Typography
+                            variant="body2"
+                            color="textSecondary"
+                            sx={{ mt: 0.5, fontSize: '0.8rem' }}
+                          >
                             <strong>Paragraphs:</strong> {article.content.split(/\n+/).length}
                           </Typography>
                         )}
@@ -955,11 +1038,11 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
             </FormControl>
           )}
 
-          <Button 
-            onClick={postContentToPbn} 
-            variant="contained" 
+          <Button
+            onClick={postContentToPbn}
+            variant="contained"
             color="primary"
-            disabled={(submissionType === 'bulk' && csvData.length === 0)}
+            disabled={submissionType === 'bulk' && csvData.length === 0}
             sx={{ mt: 2 }}
           >
             Submit

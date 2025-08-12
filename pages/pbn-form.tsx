@@ -1,5 +1,5 @@
 import React from 'react';
-import Form from '../components/Form';
+import PbnSubmissionForm from '../components/PbnSubmissionForm';
 import Image from 'next/image';
 import { IntercomLayout, ThemeProvider, ToastProvider, IntercomCard } from '../components/ui';
 import { Box, Typography } from '@mui/material';
@@ -35,7 +35,13 @@ function PbnFormPage() {
               {pageTitle}
             </Typography>
           </Box>
-          <Form />
+          <PbnSubmissionForm
+            articleTitle=""
+            clientName=""
+            categories=""
+            content=""
+            onSubmit={() => {}}
+          />
         </Box>
       </IntercomCard>
     </IntercomLayout>
