@@ -40,7 +40,7 @@ const Form: React.FC<FormProps> = () => {
   const [isEditingState, setEditingState] = useState(false);
 
   const [keywords, setKeywords] = useState('');
-  const [engine, setEngine] = useState('gpt-4o-mini');
+  const [engine, setEngine] = useState('gpt-5-mini');
   const [language, setLanguage] = useState('English');
   const [wordCount, setWordCount] = useState(500);
   const [keywordsToExclude, setKeywordsToExclude] = useState('');
