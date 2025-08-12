@@ -40,9 +40,17 @@ interface ClientFormProps {
   client: Client | null;
   onSave: () => void;
   onCancel: () => void;
+  hideRegionMappings?: boolean;
+  initialName?: string;
 }
 
-export default function ClientForm({ client, onSave, onCancel }: ClientFormProps) {
+export default function ClientForm({
+  client,
+  onSave,
+  onCancel,
+  hideRegionMappings = false,
+  initialName,
+}: ClientFormProps) {
   const [clientName, setClientName] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [selectedIndustries, setSelectedIndustries] = useState<Industry[]>([]);
@@ -51,7 +59,7 @@ export default function ClientForm({ client, onSave, onCancel }: ClientFormProps
   const [error, setError] = useState<string | null>(null);
   const isEditMode = Boolean(client);
 
-  // Load client data if in edit mode
+  // Load client data if in edit mode or prefill when creating
   useEffect(() => {
     if (client) {
       setClientName(client.client_name);
@@ -83,8 +91,10 @@ export default function ClientForm({ client, onSave, onCancel }: ClientFormProps
       };
 
       fetchMappings();
+    } else if (initialName) {
+      setClientName(initialName);
     }
-  }, [client]);
+  }, [client, initialName]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -166,14 +176,16 @@ export default function ClientForm({ client, onSave, onCancel }: ClientFormProps
           />
         </Grid>
 
-        <Grid item xs={12}>
-          <Divider sx={{ my: 1 }} />
-          <RegionMappingSelector
-            selectedRegions={selectedRegions}
-            onChange={setSelectedRegions}
-            description="Select geographic regions that this client targets."
-          />
-        </Grid>
+        {!hideRegionMappings && (
+          <Grid item xs={12}>
+            <Divider sx={{ my: 1 }} />
+            <RegionMappingSelector
+              selectedRegions={selectedRegions}
+              onChange={setSelectedRegions}
+              description="Select geographic regions that this client targets."
+            />
+          </Grid>
+        )}
 
         <Grid item xs={12}>
           <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end', mt: 2 }}>

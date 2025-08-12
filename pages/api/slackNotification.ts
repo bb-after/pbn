@@ -8,7 +8,12 @@ export default async function handler(req: any, res: any) {
 
   const webhookUrl = process.env.SLACK_WEBHOOK_URL;
   if (!webhookUrl) {
-    return res.status(500).json({ success: false, message: "Server configuration error. Slack webhook URL is not set." });
+    return res
+      .status(500)
+      .json({
+        success: false,
+        message: 'Server configuration error. Slack webhook URL is not set.',
+      });
   }
 
   try {
@@ -19,7 +24,7 @@ export default async function handler(req: any, res: any) {
       },
       body: JSON.stringify({
         username: 'PBNJ Bot',
-        icon_url: 'https://ai.statuscrawl.io/_next/image?url=%2Fimages%2Fpbnj.png&w=128&q=75',
+        icon_url: 'https://statusapprovals.com/_next/image?url=%2Fimages%2Fpbnj.png&w=128&q=75',
         text: notificationMessage,
         channel, // Add the channel to the payload
       }),

@@ -19,9 +19,11 @@ import {
 import ClientDropdown from 'components/ClientDropdown';
 import CopyToClipboardButton from './CopyToClipboardButton';
 import useValidateUserToken from '../hooks/useValidateUserToken';
+import { useTheme as useMuiTheme } from '@mui/material/styles';
 
-// Dynamically load JoditEditor to prevent SSR issues
-const JoditEditor = dynamic(() => import('jodit-react'), { ssr: false });
+// Use the same editor as Superstar: ReactQuill
+const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
+import 'react-quill/dist/quill.snow.css';
 
 interface PbnFormProps {
   articleTitle: string;
@@ -657,6 +659,7 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
   const [failedSubmissions, setFailedSubmissions] = useState<{ title: string; error: string }[]>(
     []
   );
+  const muiTheme = useMuiTheme();
 
   return (
     <div>
@@ -795,6 +798,7 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
               margin="normal"
               required
               label="Client Name"
+              enableCreate={true}
             />
           </FormControl>
 
@@ -842,12 +846,25 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
               </FormControl>
               <FormControl component="fieldset" fullWidth>
                 <FormLabel>Content</FormLabel>
-                <JoditEditor
-                  key={`editor-${submissionId || articleTitle}`} // Unique key for each instance
-                  value={editorContent}
-                  onBlur={handleContentChange} // Update content on blur
-                  onChange={handleContentChange} // Update content on each change
-                />
+                <Box
+                  sx={{
+                    '& .ql-container': {
+                      backgroundColor: muiTheme.palette.background.paper,
+                      color: muiTheme.palette.text.primary,
+                      borderRadius: 1,
+                    },
+                    '& .ql-editor': {
+                      color: muiTheme.palette.text.primary,
+                      minHeight: 200,
+                    },
+                  }}
+                >
+                  <ReactQuill
+                    key={`editor-${submissionId || articleTitle}`}
+                    value={editorContent}
+                    onChange={handleContentChange}
+                  />
+                </Box>
               </FormControl>
             </>
           ) : (
