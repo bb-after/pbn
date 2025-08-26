@@ -116,7 +116,12 @@ export const callOpenAI = async (inputData: any) => {
     }
   }
 
-  if (engine === 'gpt-5' || engine === 'gpt-4o-mini' || engine === 'gpt-4') {
+  if (
+    engine === 'gpt-5-mini' ||
+    engine === 'gpt-5' ||
+    engine === 'gpt-4o-mini' ||
+    engine === 'gpt-4'
+  ) {
     const gptMessage = trimContentToFitTokenLimit(
       [
         {
@@ -133,7 +138,7 @@ export const callOpenAI = async (inputData: any) => {
       const response = await openai.chat.completions.create({
         model: engine,
         messages: gptMessage,
-        temperature: engine == 'gpt-5' ? 1 : 0.8,
+        temperature: engine == 'gpt-5' || engine == 'gpt-5-mini' ? 1 : 0.8,
       });
 
       console.log('OpenAI Response:', response.choices[0].message.content);
