@@ -69,36 +69,41 @@ async function getInactiveSuperstarSites() {
     console.log(`Checking for sites with no posts since: ${thresholdDateString}`);
 
     const query = `
-      SELECT 
-        ss.id,
-        ss.domain,
-        ss.login,
-        ss.active,
-        ss.created_at as site_created_at,
-        COUNT(sss.id) as total_posts,
-        MAX(sss.created) as last_post_date,
-        DATEDIFF(CURDATE(), MAX(sss.created)) as days_since_last_post,
-        CASE 
-          WHEN MAX(sss.created) IS NULL THEN 'Never posted'
-          WHEN MAX(sss.created) < ? THEN 'Inactive'
-          ELSE 'Active'
-        END as status
-      FROM superstar_sites ss
-      LEFT JOIN superstar_site_submissions sss ON ss.id = sss.superstar_site_id 
-        AND sss.deleted_at IS NULL
-      WHERE ss.active = 1
-      GROUP BY ss.id, ss.domain, ss.login, ss.active, ss.created_at
-      HAVING 
-        status = 'Inactive' OR status = 'Never posted'
-      ORDER BY 
-        CASE 
-          WHEN MAX(sss.created) IS NULL THEN 1
-          ELSE 0
-        END,
-        last_post_date ASC
-    `;
+    SELECT 
+      ss.id,
+      ss.domain,
+      ss.login,
+      ss.active,
+      ss.created_at as site_created_at,
+      COUNT(sss.id) as total_posts,
+      MAX(sss.created) as last_post_date,
+      DATEDIFF(CURDATE(), MAX(sss.created)) as days_since_last_post,
+      CASE 
+        WHEN MAX(sss.created) IS NULL THEN 'Never posted'
+        WHEN MAX(sss.created) < ? THEN 'Inactive'
+        ELSE 'Active'
+      END as status
+    FROM superstar_sites ss
+    LEFT JOIN superstar_site_submissions sss ON ss.id = sss.superstar_site_id 
+      AND sss.deleted_at IS NULL
+    WHERE ss.active = 1
+    GROUP BY ss.id, ss.domain, ss.login, ss.active, ss.created_at
+    HAVING 
+      (CASE 
+        WHEN MAX(sss.created) IS NULL THEN 'Never posted'
+        WHEN MAX(sss.created) < ? THEN 'Inactive'
+        ELSE 'Active'
+      END) IN ('Inactive', 'Never posted')
+    ORDER BY 
+      CASE 
+        WHEN MAX(sss.created) IS NULL THEN 1
+        ELSE 0
+      END,
+      MAX(sss.created) ASC
+  `;
 
-    const [rows] = await connection.query(query, [thresholdDateString]);
+    const [rows] = await connection.query(query, [thresholdDateString, thresholdDateString]);
+
     return rows as any[];
   } finally {
     await connection.end();
