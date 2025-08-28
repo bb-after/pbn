@@ -51,6 +51,7 @@ import {
   TravelExplore as TravelExploreIcon,
   Wallpaper as WallpaperIcon,
   Business as BusinessIcon,
+  Public as PublicIcon,
 } from '@mui/icons-material';
 import { tokens } from '../../theme/intercom-theme';
 
@@ -181,6 +182,12 @@ const navigationItems: NavigationItem[] = [
     label: 'Other Tooling',
     icon: <BuildIcon />,
     children: [
+      {
+        id: 'geo-checker',
+        label: 'GEO Checker',
+        icon: <PublicIcon />,
+        href: '/geo-checker',
+      },
       {
         id: 'lead-enricher',
         label: 'Lead Enricher',
