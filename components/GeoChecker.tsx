@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Box,
   Card,
@@ -26,7 +26,11 @@ import {
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SearchIcon from '@mui/icons-material/Search';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import ClientDropdown from './ClientDropdown';
+import GeoPdfExport from './GeoPdfExport';
+import { exportToPDF } from '../utils/pdfExporter';
+import { formatSuperstarContent } from '../utils/formatSuperstarContent';
 import {
   getAllDataSources,
   GeoAnalysisResult,
@@ -53,6 +57,24 @@ export default function GeoChecker() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<GeoAnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const pdfRef = useRef<HTMLDivElement>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  const handleExportPDF = async () => {
+    if (!pdfRef.current || !result) return;
+
+    setPdfLoading(true);
+    try {
+      const filename = `GEO_Analysis_${keyword.replace(/\s+/g, '_')}_${clientName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}`;
+      await exportToPDF(pdfRef.current, filename);
+    } catch (error) {
+      console.error('PDF export failed:', error);
+      setError('Failed to export PDF. Please try again.');
+    } finally {
+      setPdfLoading(false);
+    }
+  };
 
   const dataSources = getAllDataSources().sort((a, b) => a.name.localeCompare(b.name));
 
@@ -240,11 +262,24 @@ export default function GeoChecker() {
       {result && (
         <Card>
           <CardContent>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-              <TrendingUpIcon sx={{ mr: 1 }} />
-              <Typography variant="h6">
-                Analysis Results for &ldquo;{result.keyword}&rdquo; - {result.clientName}
-              </Typography>
+            <Box
+              sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <TrendingUpIcon sx={{ mr: 1 }} />
+                <Typography variant="h6">
+                  Analysis Results for &ldquo;{result.keyword}&rdquo; - {result.clientName}
+                </Typography>
+              </Box>
+              <Button
+                variant="outlined"
+                startIcon={pdfLoading ? <CircularProgress size={16} /> : <PictureAsPdfIcon />}
+                onClick={handleExportPDF}
+                disabled={pdfLoading}
+                sx={{ ml: 2 }}
+              >
+                {pdfLoading ? 'Generating...' : 'Export PDF'}
+              </Button>
             </Box>
 
             {/* Aggregated Insights */}
@@ -523,9 +558,10 @@ export default function GeoChecker() {
                     <Typography
                       variant="body2"
                       sx={{ whiteSpace: 'pre-wrap', color: 'text.primary' }}
-                    >
-                      {engineResult.summary}
-                    </Typography>
+                      dangerouslySetInnerHTML={{
+                        __html: formatSuperstarContent(engineResult.summary, '').content,
+                      }}
+                    />
                   )}
                 </AccordionDetails>
               </Accordion>
@@ -538,6 +574,15 @@ export default function GeoChecker() {
             </Box>
           </CardContent>
         </Card>
+      )}
+
+      {/* Hidden PDF Export Component */}
+      {result && (
+        <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
+          <div ref={pdfRef}>
+            <GeoPdfExport result={result} />
+          </div>
+        </div>
       )}
     </Box>
   );
