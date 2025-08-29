@@ -24,36 +24,32 @@ export async function getClaudeSentiment(keyword: string, dataSourceId: number) 
           model: engine,
           max_tokens: maxAnthropicTokens,
           messages: messages,
-          tools: [
-            {
-              name: 'web_search',
-              description:
-                'Search the web for current information about topics, trends, and market data',
-              input_schema: {
-                type: 'object',
-                properties: {
-                  query: {
-                    type: 'string',
-                    description: 'The search query',
-                  },
-                },
-                required: ['query'],
-              },
-            },
-          ],
         },
         {
           headers: {
             'x-api-key': anthropicApiKey,
             'content-type': 'application/json',
-            'anthropic-version': '2024-10-22',
-            'anthropic-beta': 'tools-2024-10-22',
+            'anthropic-version': '2023-06-01',
+            // 'anthropic-beta': 'tools-2024-10-22',
           },
         }
       );
 
       console.log('Claude response for keyword:', keyword);
-      const result = response.data.content[0].text || 'No Summary available';
+      console.log('Full Claude response:', JSON.stringify(response.data, null, 2));
+
+      // Handle multiple content blocks and tool use
+      let result = '';
+      if (response.data.content && Array.isArray(response.data.content)) {
+        for (const content of response.data.content) {
+          if (content.type === 'text') {
+            result += content.text + '\n';
+          }
+          // If there are tool use blocks, we might need to handle them differently
+        }
+      }
+
+      result = result.trim() || 'No Summary available';
 
       return {
         engine: dataSource.name,

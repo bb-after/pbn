@@ -28,7 +28,7 @@ export async function getDataSourceById(dataSourceId: number): Promise<DataSourc
     2: {
       id: 2,
       name: 'Claude 4 Sonnet',
-      model: 'claude-4-sonnet-20250109',
+      model: 'claude-sonnet-4-20250514',
       prompt:
         'Perform a geo-targeted analysis of "{keyword}" including local search sentiment, regional variations, and market positioning. Analyze: 1) Local search volume implications, 2) Geographic sentiment patterns, 3) Competitive positioning, 4) Regional market opportunities, 5) Local SEO potential. Provide actionable insights for local market penetration.',
       isActive: true,
@@ -36,7 +36,7 @@ export async function getDataSourceById(dataSourceId: number): Promise<DataSourc
     3: {
       id: 3,
       name: 'Gemini 2.5 Flash',
-      model: 'gemini-2.5-flash-002',
+      model: 'gemini-2.5-flash',
       prompt:
         'Evaluate "{keyword}" from a geographic and local market perspective with the latest multimodal capabilities. Analyze: 1) Local search trends and sentiment, 2) Geographic distribution of interest, 3) Regional competitive landscape, 4) Local market opportunities, 5) Geographic SEO considerations. Focus on actionable geo-targeting insights.',
       isActive: true,
@@ -44,7 +44,8 @@ export async function getDataSourceById(dataSourceId: number): Promise<DataSourc
     4: {
       id: 4,
       name: 'Perplexity',
-      model: 'llama-3.1-sonar-large-128k-online',
+      // model: 'llama-3.1-sonar-large-128k-online',
+      model: 'sonar-pro',
       prompt:
         'Research and analyze "{keyword}" with focus on geographic and local search patterns. Provide insights on: 1) Current local search trends, 2) Geographic market sentiment, 3) Regional competition analysis, 4) Local SEO opportunities, 5) Geographic targeting recommendations. Include recent data and market intelligence.',
       isActive: true,
@@ -67,7 +68,7 @@ export async function getDataSourceById(dataSourceId: number): Promise<DataSourc
     8: {
       id: 8,
       name: 'Claude 4 Opus',
-      model: 'claude-4-opus-20250109',
+      model: 'claude-opus-4-1-20250805',
       prompt:
         'Perform a geo-targeted analysis of "{keyword}" including local search sentiment, regional variations, and market positioning. Analyze: 1) Local search volume implications, 2) Geographic sentiment patterns, 3) Competitive positioning, 4) Regional market opportunities, 5) Local SEO potential. Provide actionable insights for local market penetration.',
       isActive: true,
@@ -120,7 +121,7 @@ export function getAllDataSources(): DataSource[] {
     {
       id: 2,
       name: 'Claude 4 Sonnet',
-      model: 'claude-4-sonnet-20250109',
+      model: 'claude-sonnet-4-20250514',
       prompt:
         'Perform a geo-targeted analysis of "{keyword}" including local search sentiment, regional variations, and market positioning. Analyze: 1) Local search volume implications, 2) Geographic sentiment patterns, 3) Competitive positioning, 4) Regional market opportunities, 5) Local SEO potential. Provide actionable insights for local market penetration.',
       isActive: true,
@@ -128,7 +129,7 @@ export function getAllDataSources(): DataSource[] {
     {
       id: 3,
       name: 'Gemini 2.5 Flash',
-      model: 'gemini-2.5-flash-002',
+      model: 'gemini-2.5-flash',
       prompt:
         'Evaluate "{keyword}" from a geographic and local market perspective with the latest multimodal capabilities. Analyze: 1) Local search trends and sentiment, 2) Geographic distribution of interest, 3) Regional competitive landscape, 4) Local market opportunities, 5) Geographic SEO considerations. Focus on actionable geo-targeting insights.',
       isActive: true,
@@ -136,7 +137,8 @@ export function getAllDataSources(): DataSource[] {
     {
       id: 4,
       name: 'Perplexity',
-      model: 'llama-3.1-sonar-large-128k-online',
+      // model: 'llama-3.1-sonar-large-128k-online',
+      model: 'sonar-pro',
       prompt:
         'Research and analyze "{keyword}" with focus on geographic and local search patterns. Provide insights on: 1) Current local search trends, 2) Geographic market sentiment, 3) Regional competition analysis, 4) Local SEO opportunities, 5) Geographic targeting recommendations. Include recent data and market intelligence.',
       isActive: true,
@@ -159,7 +161,7 @@ export function getAllDataSources(): DataSource[] {
     {
       id: 8,
       name: 'Claude 4 Opus',
-      model: 'claude-4-opus-20250109',
+      model: 'claude-opus-4-20250805',
       prompt:
         'Perform a geo-targeted analysis of "{keyword}" including local search sentiment, regional variations, and market positioning. Analyze: 1) Local search volume implications, 2) Geographic sentiment patterns, 3) Competitive positioning, 4) Regional market opportunities, 5) Local SEO potential. Provide actionable insights for local market penetration.',
       isActive: true,
