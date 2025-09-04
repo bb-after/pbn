@@ -22,11 +22,23 @@ import {
   Divider,
   Paper,
   Grid,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
+  FormLabel,
+  IconButton,
+  Modal,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SearchIcon from '@mui/icons-material/Search';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import EditIcon from '@mui/icons-material/Edit';
+import LockIcon from '@mui/icons-material/Lock';
 import ClientDropdown from './ClientDropdown';
 import GeoPdfExport from './GeoPdfExport';
 import { exportToPDF } from '../utils/pdfExporter';
@@ -50,13 +62,123 @@ const MenuProps = {
   },
 };
 
+const BRAND_INTENT_CATEGORIES = [
+  {
+    value: 'general_overview',
+    label: 'General Overview',
+    prompt: 'What is [Brand Name]? Tell me about [Brand Name]',
+  },
+  { value: 'ownership', label: 'Ownership', prompt: 'Who owns [Brand Name]?' },
+  {
+    value: 'founding_history',
+    label: 'Founding & History',
+    prompt: "Who founded [Brand Name] and when? What's the story behind [Brand Name]?",
+  },
+  { value: 'leadership', label: 'Leadership', prompt: 'Who is the CEO of [Brand Name]?' },
+  {
+    value: 'reputation',
+    label: 'Reputation',
+    prompt: 'Is [Brand Name] trustworthy? What do people think of [Brand Name]?',
+  },
+  {
+    value: 'product_service',
+    label: 'Product / Service Details',
+    prompt: 'What does [Brand Name] do? What products does [Brand Name] offer?',
+  },
+  {
+    value: 'industry_context',
+    label: 'Industry Context',
+    prompt: 'How does [Brand Name] compare to [Competitor]? What makes [Brand Name] different?',
+  },
+  {
+    value: 'news_controversy',
+    label: 'News & Controversy',
+    prompt:
+      'Has [Brand Name] been in the news recently? What controversies has [Brand Name] been involved in?',
+  },
+  {
+    value: 'reviews_opinion',
+    label: 'Reviews / Public Opinion',
+    prompt: 'What are people saying about [Brand Name]? Customer reviews for [Brand Name]?',
+  },
+  {
+    value: 'funding_investors',
+    label: 'Funding / Investors',
+    prompt: 'Who has invested in [Brand Name]? Is [Brand Name] VC-backed?',
+  },
+  {
+    value: 'employment_culture',
+    label: 'Employment / Culture',
+    prompt: "Is [Brand Name] a good company to work for? What's the culture at [Brand Name]?",
+  },
+  {
+    value: 'legitimacy_scam',
+    label: 'Legitimacy / Scam Check',
+    prompt: 'Is [Brand Name] legit or a scam?',
+  },
+];
+
+const INDIVIDUAL_INTENT_CATEGORIES = [
+  { value: 'general_overview', label: 'General Overview', prompt: 'Who is [Full Name]?' },
+  {
+    value: 'background',
+    label: 'Background',
+    prompt: 'What is [Full Name] known for? What does [Full Name] do?',
+  },
+  {
+    value: 'reputation',
+    label: 'Reputation',
+    prompt: 'Is [Full Name] trustworthy? What do people say about [Full Name]?',
+  },
+  {
+    value: 'employment_leadership',
+    label: 'Employment / Leadership',
+    prompt: "What is [Full Name]'s role at [Company]? Is [Full Name] the CEO of [Company]?",
+  },
+  {
+    value: 'notable_events',
+    label: 'Notable Events',
+    prompt: 'Has [Full Name] been in the news recently? What is [Full Name] best known for?',
+  },
+  {
+    value: 'net_worth_influence',
+    label: 'Net Worth / Influence',
+    prompt: "What is [Full Name]'s net worth? How influential is [Full Name]?",
+  },
+  {
+    value: 'social_media',
+    label: 'Social Media Presence',
+    prompt: 'Where can I find [Full Name] online?',
+  },
+  {
+    value: 'education_credentials',
+    label: 'Education / Credentials',
+    prompt: "Where did [Full Name] go to school? What is [Full Name]'s background?",
+  },
+  {
+    value: 'affiliation',
+    label: 'Affiliation',
+    prompt: 'Is [Full Name] affiliated with [Brand/Org]?',
+  },
+  {
+    value: 'legal_controversy',
+    label: 'Legal / Controversy',
+    prompt: 'Has [Full Name] been involved in any controversies?',
+  },
+];
+
 export default function GeoChecker() {
   const [clientName, setClientName] = useState('');
   const [keyword, setKeyword] = useState('');
+  const [analysisType, setAnalysisType] = useState<'brand' | 'individual'>('brand');
+  const [intentCategory, setIntentCategory] = useState('');
+  const [customPrompt, setCustomPrompt] = useState('');
   const [selectedEngines, setSelectedEngines] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<GeoAnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedSource, setSelectedSource] = useState<any>(null);
+  const [sourceModalOpen, setSourceModalOpen] = useState(false);
 
   const pdfRef = useRef<HTMLDivElement>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -86,6 +208,35 @@ export default function GeoChecker() {
     }
   };
 
+  const generatePromptPreview = () => {
+    if (!intentCategory || !keyword.trim()) return '';
+
+    const categories =
+      analysisType === 'brand' ? BRAND_INTENT_CATEGORIES : INDIVIDUAL_INTENT_CATEGORIES;
+    const category = categories.find(cat => cat.value === intentCategory);
+
+    if (!category) return '';
+
+    let prompt = category.prompt;
+
+    // Replace placeholders with actual keyword
+    if (analysisType === 'brand') {
+      prompt = prompt.replace(/\[Brand Name\]/g, keyword.trim());
+      prompt = prompt.replace(/\[Competitor\]/g, 'competitors');
+    } else {
+      prompt = prompt.replace(/\[Full Name\]/g, keyword.trim());
+      prompt = prompt.replace(/\[Company\]/g, 'their company');
+      prompt = prompt.replace(/\[Brand\/Org\]/g, 'any organization');
+    }
+
+    return prompt;
+  };
+
+  // Update custom prompt when intent category or keyword changes
+  React.useEffect(() => {
+    setCustomPrompt(generatePromptPreview());
+  }, [intentCategory, keyword, analysisType]);
+
   const handleEngineChange = (event: any) => {
     const value = event.target.value;
     if (value.includes('all')) {
@@ -100,8 +251,10 @@ export default function GeoChecker() {
   };
 
   const handleAnalyze = async () => {
-    if (!clientName.trim() || !keyword.trim() || selectedEngines.length === 0) {
-      setError('Please fill in all fields and select at least one AI engine.');
+    if (!clientName.trim() || !keyword.trim() || !intentCategory || selectedEngines.length === 0) {
+      setError(
+        'Please fill in all fields, select an intent category, and select at least one AI engine.'
+      );
       return;
     }
 
@@ -114,6 +267,9 @@ export default function GeoChecker() {
         keyword: keyword.trim(),
         clientName: clientName.trim(),
         selectedEngineIds: selectedEngines,
+        customPrompt: customPrompt.trim(),
+        analysisType,
+        intentCategory,
       });
 
       setResult(response.data);
@@ -186,6 +342,63 @@ export default function GeoChecker() {
                 margin="normal"
                 required
                 placeholder="Enter keyword to analyze"
+              />
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <FormControl component="fieldset" margin="normal">
+                <FormLabel component="legend">Analysis Type</FormLabel>
+                <RadioGroup
+                  value={analysisType}
+                  onChange={e => {
+                    setAnalysisType(e.target.value as 'brand' | 'individual');
+                    setIntentCategory(''); // Reset intent when changing type
+                  }}
+                  row
+                >
+                  <FormControlLabel value="brand" control={<Radio />} label="Brand" />
+                  <FormControlLabel value="individual" control={<Radio />} label="Individual" />
+                </RadioGroup>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12}>
+              <FormControl fullWidth margin="normal" required>
+                <InputLabel>Intent Category</InputLabel>
+                <Select
+                  value={intentCategory}
+                  onChange={e => setIntentCategory(e.target.value)}
+                  input={<OutlinedInput label="Intent Category" />}
+                >
+                  {(analysisType === 'brand'
+                    ? BRAND_INTENT_CATEGORIES
+                    : INDIVIDUAL_INTENT_CATEGORIES
+                  ).map(category => (
+                    <MenuItem key={category.value} value={category.value}>
+                      {category.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12}>
+              <TextField
+                label="Analysis Prompt"
+                value={customPrompt}
+                onChange={e => setCustomPrompt(e.target.value)}
+                fullWidth
+                margin="normal"
+                multiline
+                rows={3}
+                placeholder="Select an intent category above to generate a prompt, or write your own custom prompt"
+                helperText="This prompt will be sent to all AI engines. It auto-updates when you change selections above, but you can edit it directly."
+                sx={{
+                  '& .MuiInputBase-input': {
+                    fontFamily: 'monospace',
+                    fontSize: '0.9rem',
+                  },
+                }}
               />
             </Grid>
 
@@ -386,6 +599,13 @@ export default function GeoChecker() {
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
+                            cursor: source.excerpts ? 'pointer' : 'default',
+                          }}
+                          onClick={() => {
+                            if (source.excerpts && source.excerpts.length > 0) {
+                              setSelectedSource(source);
+                              setSourceModalOpen(true);
+                            }
                           }}
                         >
                           <Typography
@@ -395,6 +615,8 @@ export default function GeoChecker() {
                               maxWidth: '70%',
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
+                              color: source.excerpts ? 'primary.main' : 'text.primary',
+                              textDecoration: source.excerpts ? 'underline' : 'none',
                             }}
                           >
                             {source.source}
@@ -418,6 +640,51 @@ export default function GeoChecker() {
                 </Paper>
               </Grid>
             </Grid>
+
+            {/* URL Sources */}
+            {result.aggregatedInsights.urlSources &&
+              result.aggregatedInsights.urlSources.length > 0 && (
+                <Paper sx={{ p: 3, mb: 3 }}>
+                  <Typography variant="h6" gutterBottom>
+                    🔗 URLs Referenced by AI Engines
+                  </Typography>
+                  <Grid container spacing={2}>
+                    {result.aggregatedInsights.urlSources.map((urlSource, index) => (
+                      <Grid item xs={12} sm={6} md={4} key={index}>
+                        <Paper
+                          sx={{
+                            p: 2,
+                            cursor: 'pointer',
+                            '&:hover': { backgroundColor: 'grey.100' },
+                            border: '1px solid',
+                            borderColor: 'grey.300',
+                          }}
+                          onClick={() => {
+                            setSelectedSource(urlSource);
+                            setSourceModalOpen(true);
+                          }}
+                        >
+                          <Typography
+                            variant="subtitle2"
+                            sx={{
+                              color: 'primary.main',
+                              textDecoration: 'underline',
+                              mb: 1,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            {urlSource.source}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Referenced by {urlSource.engines.join(', ')} ({urlSource.count} times)
+                          </Typography>
+                        </Paper>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Paper>
+              )}
 
             {/* Sentiment Highlights */}
             {(result.aggregatedInsights.mainSentimentHighlights.positive.length > 0 ||
@@ -555,13 +822,36 @@ export default function GeoChecker() {
                       Failed to get results from {engineResult.engine}: {engineResult.error}
                     </Alert>
                   ) : (
-                    <Typography
-                      variant="body2"
-                      sx={{ whiteSpace: 'pre-wrap', color: 'text.primary' }}
-                      dangerouslySetInnerHTML={{
-                        __html: formatSuperstarContent(engineResult.summary, '').content,
-                      }}
-                    />
+                    <Box>
+                      <Typography
+                        variant="body2"
+                        sx={{ whiteSpace: 'pre-wrap', color: 'text.primary', mb: 2 }}
+                        dangerouslySetInnerHTML={{
+                          __html: formatSuperstarContent(engineResult.summary, '').content,
+                        }}
+                      />
+
+                      {engineResult.sources && engineResult.sources.length > 0 && (
+                        <Box sx={{ mt: 2, p: 2, backgroundColor: 'grey.50', borderRadius: 1 }}>
+                          <Typography variant="subtitle2" gutterBottom>
+                            🔗 Sources Referenced:
+                          </Typography>
+                          {engineResult.sources.map((source, idx) => (
+                            <Typography key={idx} variant="body2" sx={{ mb: 0.5 }}>
+                              •{' '}
+                              <a
+                                href={source}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ color: '#1976d2' }}
+                              >
+                                {source}
+                              </a>
+                            </Typography>
+                          ))}
+                        </Box>
+                      )}
+                    </Box>
                   )}
                 </AccordionDetails>
               </Accordion>
@@ -584,6 +874,39 @@ export default function GeoChecker() {
           </div>
         </div>
       )}
+
+      {/* Source Excerpts Modal */}
+      <Dialog
+        open={sourceModalOpen}
+        onClose={() => setSourceModalOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Source Excerpts: {selectedSource?.source}</DialogTitle>
+        <DialogContent>
+          {selectedSource?.excerpts && selectedSource.excerpts.length > 0 ? (
+            <Box>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Referenced by: {selectedSource.engines.join(', ')}
+              </Typography>
+              {selectedSource.excerpts.map((excerpt: string, index: number) => (
+                <Paper key={index} sx={{ p: 2, mb: 2, backgroundColor: 'grey.50' }}>
+                  <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
+                    &quot;{excerpt}&quot;
+                  </Typography>
+                </Paper>
+              ))}
+            </Box>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              No excerpts available for this source.
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSourceModalOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

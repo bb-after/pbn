@@ -2,10 +2,24 @@ import axios from 'axios';
 import { getDataSourceById } from './dataSource';
 import { grokApiKey } from '../../config';
 
-export async function getGrokSentiment(keyword: string, dataSourceId: number) {
+export async function getGrokSentiment(
+  keyword: string,
+  dataSourceId: number,
+  additionalInstructions?: string,
+  analysisType?: 'brand' | 'individual',
+  intentCategory?: string,
+  customPrompt?: string
+) {
   try {
     const dataSource = await getDataSourceById(dataSourceId);
-    const prompt = dataSource.prompt.replace('{keyword}', keyword);
+
+    // Use custom prompt if provided, otherwise use default data source prompt
+    let prompt = customPrompt || dataSource.prompt.replace('{keyword}', keyword);
+
+    // Only add additional instructions if not already included in custom prompt
+    if (!customPrompt && additionalInstructions && additionalInstructions.trim()) {
+      prompt += `\n\nAdditional specific instructions: ${additionalInstructions.trim()}`;
+    }
 
     if (!grokApiKey) {
       throw new Error('XAI_API_KEY or GROK_API_KEY is not set in the environment variables.');
