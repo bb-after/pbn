@@ -5,11 +5,170 @@ import { searchPerplexity } from './perplexity';
 import { getGrokSentiment } from './grok';
 import { getAllDataSources } from './dataSource';
 
+const BRAND_INTENT_CATEGORIES = [
+  {
+    value: 'general_overview',
+    label: 'General Overview',
+    prompt: 'What is [Brand Name]? Tell me about [Brand Name]',
+  },
+  { value: 'ownership', label: 'Ownership', prompt: 'Who owns [Brand Name]?' },
+  {
+    value: 'founding_history',
+    label: 'Founding & History',
+    prompt: "Who founded [Brand Name] and when? What's the story behind [Brand Name]?",
+  },
+  { value: 'leadership', label: 'Leadership', prompt: 'Who is the CEO of [Brand Name]?' },
+  {
+    value: 'reputation',
+    label: 'Reputation',
+    prompt: 'Is [Brand Name] trustworthy? What do people think of [Brand Name]?',
+  },
+  {
+    value: 'product_service',
+    label: 'Product / Service Details',
+    prompt: 'What does [Brand Name] do? What products does [Brand Name] offer?',
+  },
+  {
+    value: 'industry_context',
+    label: 'Industry Context',
+    prompt: 'How does [Brand Name] compare to [Competitor]? What makes [Brand Name] different?',
+  },
+  {
+    value: 'news_controversy',
+    label: 'News & Controversy',
+    prompt:
+      'Has [Brand Name] been in the news recently? What controversies has [Brand Name] been involved in?',
+  },
+  {
+    value: 'reviews_opinion',
+    label: 'Reviews / Public Opinion',
+    prompt: 'What are people saying about [Brand Name]? Customer reviews for [Brand Name]?',
+  },
+  {
+    value: 'funding_investors',
+    label: 'Funding / Investors',
+    prompt: 'Who has invested in [Brand Name]? Is [Brand Name] VC-backed?',
+  },
+  {
+    value: 'employment_culture',
+    label: 'Employment / Culture',
+    prompt: "Is [Brand Name] a good company to work for? What's the culture at [Brand Name]?",
+  },
+  {
+    value: 'legitimacy_scam',
+    label: 'Legitimacy / Scam Check',
+    prompt: 'Is [Brand Name] legit or a scam?',
+  },
+];
+
+const INDIVIDUAL_INTENT_CATEGORIES = [
+  { value: 'general_overview', label: 'General Overview', prompt: 'Who is [Full Name]?' },
+  {
+    value: 'background',
+    label: 'Background',
+    prompt: 'What is [Full Name] known for? What does [Full Name] do?',
+  },
+  {
+    value: 'reputation',
+    label: 'Reputation',
+    prompt: 'Is [Full Name] trustworthy? What do people say about [Full Name]?',
+  },
+  {
+    value: 'employment_leadership',
+    label: 'Employment / Leadership',
+    prompt: "What is [Full Name]'s role at [Company]? Is [Full Name] the CEO of [Company]?",
+  },
+  {
+    value: 'notable_events',
+    label: 'Notable Events',
+    prompt: 'Has [Full Name] been in the news recently? What is [Full Name] best known for?',
+  },
+  {
+    value: 'net_worth_influence',
+    label: 'Net Worth / Influence',
+    prompt: "What is [Full Name]'s net worth? How influential is [Full Name]?",
+  },
+  {
+    value: 'social_media',
+    label: 'Social Media Presence',
+    prompt: 'Where can I find [Full Name] online?',
+  },
+  {
+    value: 'education_credentials',
+    label: 'Education / Credentials',
+    prompt: "Where did [Full Name] go to school? What is [Full Name]'s background?",
+  },
+  {
+    value: 'affiliation',
+    label: 'Affiliation',
+    prompt: 'Is [Full Name] affiliated with [Brand/Org]?',
+  },
+  {
+    value: 'legal_controversy',
+    label: 'Legal / Controversy',
+    prompt: 'Has [Full Name] been involved in any controversies?',
+  },
+];
+
+function extractUrlsFromText(text: string): string[] {
+  console.log('Extracting URLs from text:', text.substring(0, 200) + '...');
+
+  const urlRegex = /https?:\/\/[^\s\])"']+/gi;
+  const urls = text.match(urlRegex) || [];
+
+  console.log('Found URLs:', urls);
+
+  // Clean and deduplicate URLs
+  const cleanUrls = urls
+    .map(url => url.replace(/[.,;:)}\]]+$/, '')) // Remove trailing punctuation
+    .filter((url, index, arr) => arr.indexOf(url) === index) // Remove duplicates
+    .filter(url => url.length > 10); // Filter out very short URLs
+
+  console.log('Clean URLs:', cleanUrls);
+  return cleanUrls;
+}
+
+function buildIntentPrompt(
+  keyword: string,
+  analysisType: 'brand' | 'individual',
+  intentCategory: string,
+  additionalInstructions?: string
+): string {
+  const categories =
+    analysisType === 'brand' ? BRAND_INTENT_CATEGORIES : INDIVIDUAL_INTENT_CATEGORIES;
+  const category = categories.find(cat => cat.value === intentCategory);
+
+  if (!category) {
+    throw new Error(
+      `Intent category '${intentCategory}' not found for analysis type '${analysisType}'`
+    );
+  }
+
+  let prompt = category.prompt;
+
+  // Replace placeholders with actual keyword
+  if (analysisType === 'brand') {
+    prompt = prompt.replace(/\[Brand Name\]/g, keyword);
+    prompt = prompt.replace(/\[Competitor\]/g, 'competitors'); // Generic replacement for competitor placeholder
+  } else {
+    prompt = prompt.replace(/\[Full Name\]/g, keyword);
+    prompt = prompt.replace(/\[Company\]/g, 'their company'); // Generic replacement
+    prompt = prompt.replace(/\[Brand\/Org\]/g, 'any organization'); // Generic replacement
+  }
+
+  if (additionalInstructions && additionalInstructions.trim()) {
+    prompt += `\n\nAdditional specific instructions: ${additionalInstructions.trim()}`;
+  }
+
+  return prompt;
+}
+
 export interface AIEngineResult {
   engine: string;
   summary: string;
   model: string;
   error?: string;
+  sources?: string[];
 }
 
 export interface TagFrequency {
@@ -22,6 +181,8 @@ export interface SourceInfo {
   source: string;
   count: number;
   engines: string[];
+  url?: string;
+  excerpts?: string[];
 }
 
 export interface SentimentBreakdown {
@@ -43,6 +204,7 @@ export interface GeoAnalysisResult {
     recommendations: string[];
     topTags: TagFrequency[];
     sources: SourceInfo[];
+    urlSources: SourceInfo[];
     sentimentBreakdown: SentimentBreakdown;
     mainSentimentHighlights: {
       positive: string[];
@@ -68,7 +230,10 @@ const engineFunctions = {
 export async function analyzeKeywordWithEngines(
   keyword: string,
   clientName: string,
-  selectedEngineIds: number[]
+  selectedEngineIds: number[],
+  customPrompt?: string,
+  analysisType?: 'brand' | 'individual',
+  intentCategory?: string
 ): Promise<GeoAnalysisResult> {
   const results: AIEngineResult[] = [];
   const dataSources = getAllDataSources();
@@ -80,7 +245,20 @@ export async function analyzeKeywordWithEngines(
         throw new Error(`Engine with ID ${engineId} not found`);
       }
 
-      const result = await engineFunction(keyword, engineId);
+      const result = await engineFunction(
+        keyword,
+        engineId,
+        undefined,
+        analysisType,
+        intentCategory,
+        customPrompt
+      );
+
+      // Extract URLs from the response
+      if (result) {
+        (result as any).sources = extractUrlsFromText(result.summary);
+      }
+
       return result;
     } catch (error) {
       console.error(`Engine ${engineId} failed:`, error);
@@ -110,7 +288,10 @@ export async function analyzeKeywordWithEngines(
   };
 }
 
-function aggregateInsights(results: AIEngineResult[], keyword: string) {
+function aggregateInsights(
+  results: AIEngineResult[],
+  keyword: string
+): GeoAnalysisResult['aggregatedInsights'] {
   if (results.length === 0) {
     return {
       overallSentiment: 'neutral' as const,
@@ -120,6 +301,7 @@ function aggregateInsights(results: AIEngineResult[], keyword: string) {
       recommendations: [],
       topTags: [],
       sources: [],
+      urlSources: [],
       sentimentBreakdown: {
         positive: { count: 0, engines: [], highlights: [] },
         negative: { count: 0, engines: [], highlights: [] },
@@ -143,6 +325,9 @@ function aggregateInsights(results: AIEngineResult[], keyword: string) {
   // Extract sources mentioned across engines
   const sources = extractSources(results);
 
+  // Extract URL sources from all results
+  const urlSources = extractUrlSources(results);
+
   // Extract key themes
   const keyThemes = extractKeyThemes(results, keyword);
 
@@ -164,6 +349,7 @@ function aggregateInsights(results: AIEngineResult[], keyword: string) {
     recommendations: extractRecommendations(results, keyword),
     topTags,
     sources,
+    urlSources,
     sentimentBreakdown,
     mainSentimentHighlights,
   };
@@ -514,6 +700,58 @@ function extractRecommendations(results: AIEngineResult[], keyword: string): str
   });
 
   return recommendations.slice(0, 5); // Limit to top 5
+}
+
+function extractUrlSources(results: AIEngineResult[]): SourceInfo[] {
+  const urlCounts = new Map<
+    string,
+    { count: number; engines: Set<string>; excerpts: Set<string> }
+  >();
+
+  results.forEach(result => {
+    if (result.error || !result.sources || result.sources.length === 0) return;
+
+    result.sources.forEach(url => {
+      // Extract domain name for display
+      let domain;
+      try {
+        domain = new URL(url).hostname.replace('www.', '');
+      } catch {
+        domain = url; // Fallback to full URL if parsing fails
+      }
+
+      // Find context around the URL in the summary
+      const urlIndex = result.summary.indexOf(url);
+      let excerpt = '';
+      if (urlIndex !== -1) {
+        const start = Math.max(0, urlIndex - 100);
+        const end = Math.min(result.summary.length, urlIndex + url.length + 100);
+        excerpt = result.summary.substring(start, end).trim();
+        if (start > 0) excerpt = '...' + excerpt;
+        if (end < result.summary.length) excerpt = excerpt + '...';
+      }
+
+      const existing = urlCounts.get(domain) || {
+        count: 0,
+        engines: new Set(),
+        excerpts: new Set(),
+      };
+      existing.count += 1;
+      existing.engines.add(result.engine);
+      if (excerpt) existing.excerpts.add(excerpt);
+      urlCounts.set(domain, existing);
+    });
+  });
+
+  return Array.from(urlCounts.entries())
+    .map(([domain, data]) => ({
+      source: domain,
+      count: data.count,
+      engines: Array.from(data.engines),
+      excerpts: Array.from(data.excerpts),
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
 }
 
 export { getAllDataSources } from './dataSource';

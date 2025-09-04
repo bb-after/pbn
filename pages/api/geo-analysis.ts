@@ -7,11 +7,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { keyword, clientName, selectedEngineIds } = req.body;
+    const { keyword, clientName, selectedEngineIds, customPrompt, analysisType, intentCategory } =
+      req.body;
 
-    if (!keyword || !clientName || !selectedEngineIds || !Array.isArray(selectedEngineIds)) {
+    if (
+      !keyword ||
+      !clientName ||
+      !selectedEngineIds ||
+      !Array.isArray(selectedEngineIds) ||
+      !analysisType ||
+      !intentCategory
+    ) {
       return res.status(400).json({
-        error: 'Missing required fields: keyword, clientName, selectedEngineIds',
+        error:
+          'Missing required fields: keyword, clientName, selectedEngineIds, analysisType, intentCategory',
       });
     }
 
@@ -19,9 +28,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log('Keyword:', keyword);
     console.log('Client:', clientName);
     console.log('Engine IDs:', selectedEngineIds);
+    console.log('Analysis Type:', analysisType);
+    console.log('Intent Category:', intentCategory);
+    console.log('Custom Prompt:', customPrompt);
     console.log('=== STARTING ANALYSIS ===');
 
-    const result = await analyzeKeywordWithEngines(keyword, clientName, selectedEngineIds);
+    const result = await analyzeKeywordWithEngines(
+      keyword,
+      clientName,
+      selectedEngineIds,
+      customPrompt,
+      analysisType,
+      intentCategory
+    );
 
     console.log('=== ANALYSIS COMPLETE ===');
     console.log('Results:', result.results.length, 'engines processed');
