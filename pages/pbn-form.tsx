@@ -18,7 +18,7 @@ function PbnFormPage() {
   return (
     <IntercomLayout
       title={pageTitle}
-      breadcrumbs={[{ label: 'PBNJ' }, { label: 'Create New Submission' }]}
+      breadcrumbs={[{ label: 'PBN' }, { label: 'Create New Submission' }]}
     >
       <IntercomCard>
         <Box p={3}>

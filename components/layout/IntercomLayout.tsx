@@ -1,4 +1,4 @@
-import React, { useState, ReactNode } from 'react';
+import React, { useState, ReactNode, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import useValidateUserToken from '../../hooks/useValidateUserToken';
 import {
@@ -104,8 +104,8 @@ const navigationItems: NavigationItem[] = [
     ],
   },
   {
-    id: 'pbnj',
-    label: 'PBNJ',
+    id: 'pbn',
+    label: 'PBN',
     icon: <ArticleIcon />,
     children: [
       {
@@ -172,10 +172,23 @@ const navigationItems: NavigationItem[] = [
     ],
   },
   {
-    id: 'reports',
-    label: 'Reports',
-    icon: <AssessmentIcon />,
-    href: '/reports',
+    id: 'geo',
+    label: 'GEO',
+    icon: <PublicIcon />,
+    children: [
+      {
+        id: 'geo-checker',
+        label: 'GEO Checker',
+        icon: <PublicIcon />,
+        href: '/geo-checker',
+      },
+      {
+        id: 'geo-history',
+        label: 'GEO History',
+        icon: <AssessmentIcon />,
+        href: '/geo-analysis-history',
+      },
+    ],
   },
   {
     id: 'other-tooling',
@@ -183,10 +196,10 @@ const navigationItems: NavigationItem[] = [
     icon: <BuildIcon />,
     children: [
       {
-        id: 'geo-checker',
-        label: 'GEO Checker',
-        icon: <PublicIcon />,
-        href: '/geo-checker',
+        id: 'reports',
+        label: 'Reports',
+        icon: <AssessmentIcon />,
+        href: '/reports',
       },
       {
         id: 'lead-enricher',
@@ -232,13 +245,34 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
   // Debug logging
   console.log('IntercomLayout user object:', user);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [expandedItems, setExpandedItems] = useState<string[]>([
-    'pbnj',
-    'superstar',
-    'other-tooling',
-  ]);
+
+  // Determine which sections should be expanded based on current route
+  const getExpandedSectionsFromRoute = () => {
+    const currentPath = router.pathname;
+    const expandedSections: string[] = [];
+
+    // Check each navigation section to see if current path matches any of its children
+    navigationItems.forEach(item => {
+      if (item.children) {
+        const hasMatchingChild = item.children.some(child => child.href === currentPath);
+        if (hasMatchingChild) {
+          expandedSections.push(item.id);
+        }
+      }
+    });
+
+    return expandedSections;
+  };
+
+  const [expandedItems, setExpandedItems] = useState<string[]>(getExpandedSectionsFromRoute());
   const [profileAnchorEl, setProfileAnchorEl] = useState<null | HTMLElement>(null);
   const [searchValue, setSearchValue] = useState('');
+
+  // Update expanded sections when route changes
+  useEffect(() => {
+    const newExpandedSections = getExpandedSectionsFromRoute();
+    setExpandedItems(newExpandedSections);
+  }, [router.pathname]);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);

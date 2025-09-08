@@ -9,7 +9,7 @@ const PbnSiteSubmissionsPage = () => {
     <ToastProvider>
       <IntercomLayout
         title="PBN Submissions"
-        breadcrumbs={[{ label: 'PBNJ' }, { label: 'Submissions' }]}
+        breadcrumbs={[{ label: 'PBN' }, { label: 'Submissions' }]}
       >
         <IntercomCard>
           <Box p={3}>

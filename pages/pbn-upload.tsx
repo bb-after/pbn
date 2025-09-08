@@ -18,7 +18,7 @@ function PbnUploadPage() {
   return (
     <IntercomLayout
       title={pageTitle}
-      breadcrumbs={[{ label: 'PBNJ' }, { label: 'Manual / Bulk Upload' }]}
+      breadcrumbs={[{ label: 'PBN' }, { label: 'Manual / Bulk Upload' }]}
     >
       <IntercomCard>
         <Box p={3}>

@@ -160,6 +160,9 @@ function buildIntentPrompt(
     prompt += `\n\nAdditional specific instructions: ${additionalInstructions.trim()}`;
   }
 
+  // Add instruction for sources
+  prompt += ' Include any links to sources.';
+
   return prompt;
 }
 
@@ -182,6 +185,7 @@ export interface SourceInfo {
   count: number;
   engines: string[];
   url?: string;
+  urls?: string[];
   excerpts?: string[];
 }
 
@@ -705,7 +709,7 @@ function extractRecommendations(results: AIEngineResult[], keyword: string): str
 function extractUrlSources(results: AIEngineResult[]): SourceInfo[] {
   const urlCounts = new Map<
     string,
-    { count: number; engines: Set<string>; excerpts: Set<string> }
+    { count: number; engines: Set<string>; fullTexts: Set<string>; urls: Set<string> }
   >();
 
   results.forEach(result => {
@@ -720,25 +724,16 @@ function extractUrlSources(results: AIEngineResult[]): SourceInfo[] {
         domain = url; // Fallback to full URL if parsing fails
       }
 
-      // Find context around the URL in the summary
-      const urlIndex = result.summary.indexOf(url);
-      let excerpt = '';
-      if (urlIndex !== -1) {
-        const start = Math.max(0, urlIndex - 100);
-        const end = Math.min(result.summary.length, urlIndex + url.length + 100);
-        excerpt = result.summary.substring(start, end).trim();
-        if (start > 0) excerpt = '...' + excerpt;
-        if (end < result.summary.length) excerpt = excerpt + '...';
-      }
-
       const existing = urlCounts.get(domain) || {
         count: 0,
         engines: new Set(),
-        excerpts: new Set(),
+        fullTexts: new Set(),
+        urls: new Set(),
       };
       existing.count += 1;
       existing.engines.add(result.engine);
-      if (excerpt) existing.excerpts.add(excerpt);
+      existing.fullTexts.add(result.summary); // Store full text
+      existing.urls.add(url); // Store actual URLs
       urlCounts.set(domain, existing);
     });
   });
@@ -748,7 +743,8 @@ function extractUrlSources(results: AIEngineResult[]): SourceInfo[] {
       source: domain,
       count: data.count,
       engines: Array.from(data.engines),
-      excerpts: Array.from(data.excerpts),
+      excerpts: Array.from(data.fullTexts), // Now contains full texts
+      urls: Array.from(data.urls), // Add URLs array
     }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 8);
