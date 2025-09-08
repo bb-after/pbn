@@ -14,7 +14,7 @@ export default function GeoCheckerPage() {
   return (
     <IntercomLayout
       title="GEO Checker Tool"
-      breadcrumbs={[{ label: 'Other Tooling' }, { label: 'GEO Checker' }]}
+      breadcrumbs={[{ label: 'GEO' }, { label: 'GEO Checker' }]}
     >
       <GeoChecker />
     </IntercomLayout>

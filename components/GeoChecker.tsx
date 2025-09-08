@@ -43,6 +43,7 @@ import ClientDropdown from './ClientDropdown';
 import GeoPdfExport from './GeoPdfExport';
 import { exportToPDF } from '../utils/pdfExporter';
 import { formatSuperstarContent } from '../utils/formatSuperstarContent';
+import useValidateUserToken from '../hooks/useValidateUserToken';
 import {
   getAllDataSources,
   GeoAnalysisResult,
@@ -168,6 +169,7 @@ const INDIVIDUAL_INTENT_CATEGORIES = [
 ];
 
 export default function GeoChecker() {
+  const { token, user, isValidUser } = useValidateUserToken();
   const [clientName, setClientName] = useState('');
   const [keyword, setKeyword] = useState('');
   const [analysisType, setAnalysisType] = useState<'brand' | 'individual'>('brand');
@@ -229,6 +231,9 @@ export default function GeoChecker() {
       prompt = prompt.replace(/\[Brand\/Org\]/g, 'any organization');
     }
 
+    // Add instruction for sources
+    prompt += ' Include any links to sources.';
+
     return prompt;
   };
 
@@ -258,6 +263,11 @@ export default function GeoChecker() {
       return;
     }
 
+    if (!token) {
+      setError('User authentication required. Please refresh the page and try again.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setResult(null);
@@ -270,6 +280,7 @@ export default function GeoChecker() {
         customPrompt: customPrompt.trim(),
         analysisType,
         intentCategory,
+        userToken: token,
       });
 
       setResult(response.data);
@@ -889,13 +900,44 @@ export default function GeoChecker() {
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                 Referenced by: {selectedSource.engines.join(', ')}
               </Typography>
-              {selectedSource.excerpts.map((excerpt: string, index: number) => (
-                <Paper key={index} sx={{ p: 2, mb: 2, backgroundColor: 'grey.50' }}>
-                  <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
-                    &quot;{excerpt}&quot;
-                  </Typography>
-                </Paper>
-              ))}
+              {selectedSource.excerpts.map((fullText: string, index: number) => {
+                // Highlight URLs in the full text
+                let highlightedText = fullText;
+                if (selectedSource.urls) {
+                  selectedSource.urls.forEach((url: string) => {
+                    const urlRegex = new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+                    highlightedText = highlightedText.replace(
+                      urlRegex,
+                      `<mark style="background-color: yellow; padding: 2px 4px; border-radius: 3px;"><a href="${url}" target="_blank" rel="noopener noreferrer" style="color: #1976d2; text-decoration: underline;">${url}</a></mark>`
+                    );
+                  });
+                }
+
+                return (
+                  <Paper key={index} sx={{ p: 2, mb: 2, backgroundColor: 'grey.50' }}>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ mb: 1, display: 'block' }}
+                    >
+                      Engine: {selectedSource.engines[index] || 'Unknown'}
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        whiteSpace: 'pre-wrap',
+                        lineHeight: 1.6,
+                        '& mark': {
+                          backgroundColor: 'yellow',
+                          padding: '2px 4px',
+                          borderRadius: '3px',
+                        },
+                      }}
+                      dangerouslySetInnerHTML={{ __html: highlightedText }}
+                    />
+                  </Paper>
+                );
+              })}
             </Box>
           ) : (
             <Typography variant="body2" color="text.secondary">
