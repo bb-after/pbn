@@ -52,6 +52,7 @@ import {
   Wallpaper as WallpaperIcon,
   Business as BusinessIcon,
   Public as PublicIcon,
+  Schedule as ScheduleIcon,
 } from '@mui/icons-material';
 import { tokens } from '../../theme/intercom-theme';
 
@@ -181,6 +182,18 @@ const navigationItems: NavigationItem[] = [
         label: 'GEO Checker',
         icon: <PublicIcon />,
         href: '/geo-checker',
+      },
+      {
+        id: 'geo-scheduler',
+        label: 'GEO Scheduler',
+        icon: <ScheduleIcon />,
+        href: '/geo-scheduler',
+      },
+      {
+        id: 'geo-schedule-manager',
+        label: 'Schedule Manager',
+        icon: <AssignmentIcon />,
+        href: '/geo-schedule-manager',
       },
       {
         id: 'geo-history',
