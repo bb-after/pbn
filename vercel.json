@@ -8,12 +8,19 @@
     },
     "pages/api/quote-requests/create.ts": {
       "maxDuration": 300
+    },
+    "pages/api/cron/run-scheduled-analyses.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [
     {
       "path": "/api/dialpad-transcripts",
       "schedule": "0 0,12 * * *"
+    },
+    {
+      "path": "/api/cron/run-scheduled-analyses",
+      "schedule": "* * * * *"
     }
   ]
 }
