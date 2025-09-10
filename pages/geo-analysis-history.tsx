@@ -317,7 +317,10 @@ export default function GeoAnalysisHistory() {
                           variant="body2"
                           sx={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis' }}
                         >
-                          {analysis.intent_category.replace('_', ' ')}
+                          {analysis.intent_category
+                            .split('_')
+                            .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+                            .join(' ')}
                         </Typography>
                       </TableCell>
                       <TableCell>
