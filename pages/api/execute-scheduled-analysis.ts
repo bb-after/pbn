@@ -50,17 +50,26 @@ const getScheduledAnalysis = async (id: number, userId: number): Promise<any | n
     let parsedEngineIds;
     try {
       // Handle different formats that might be stored
-      if (typeof row.selected_engine_ids === 'string') {
+      const engineIdsValue = String(row.selected_engine_ids); // Convert to string first
+
+      if (typeof engineIdsValue === 'string') {
         // Try to parse as JSON first
         try {
-          parsedEngineIds = JSON.parse(row.selected_engine_ids);
+          parsedEngineIds = JSON.parse(engineIdsValue);
         } catch {
           // If that fails, try to clean up the string and parse again
-          const cleanedString = row.selected_engine_ids
-            .replace(/\s/g, '') // Remove all spaces
-            .replace(/^\[/, '[') // Ensure proper array format
-            .replace(/\]$/, ']');
-          parsedEngineIds = JSON.parse(cleanedString);
+          try {
+            const cleanedString = engineIdsValue
+              .replace(/\s/g, '') // Remove all spaces
+              .replace(/^\[/, '[') // Ensure proper array format
+              .replace(/\]$/, ']');
+            parsedEngineIds = JSON.parse(cleanedString);
+          } catch {
+            // If cleaning doesn't work, try extracting numbers with regex
+            const matches = engineIdsValue.match(/\d+/g);
+            parsedEngineIds = matches ? matches.map(Number) : [];
+            console.warn(`Used regex fallback for schedule ${row.id}, extracted:`, parsedEngineIds);
+          }
         }
       } else if (Array.isArray(row.selected_engine_ids)) {
         // Already an array

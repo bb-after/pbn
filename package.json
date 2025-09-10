@@ -19,7 +19,8 @@
     "create-compass-tables": "NODE_ENV=development npx ts-node scripts/create-compass-tables.ts",
     "geo-scheduler": "NODE_ENV=production npx ts-node scripts/scheduledGeoAnalysis.ts",
     "geo-scheduler:dev": "NODE_ENV=development npx ts-node scripts/scheduledGeoAnalysis.ts",
-    "fix-schedule-engine-ids": "NODE_ENV=development npx ts-node scripts/fixScheduleEngineIds.ts"
+    "fix-schedule-engine-ids": "NODE_ENV=development npx ts-node scripts/fixScheduleEngineIds.ts",
+    "test-scheduler": "NODE_ENV=development npx ts-node scripts/testScheduler.ts"
   },
   "dependencies": {
     "@babel/preset-typescript": "^7.23.3",

@@ -1,7 +1,7 @@
+import { NextApiRequest, NextApiResponse } from 'next';
 import mysql, { RowDataPacket } from 'mysql2/promise';
-import cron from 'node-cron';
-import { analyzeKeywordWithEngines } from '../utils/ai-engines';
-import { postToSlack } from '../utils/postToSlack';
+import { analyzeKeywordWithEngines } from '../../../utils/ai-engines';
+import { postToSlack } from '../../../utils/postToSlack';
 
 const dbConfig = {
   host: process.env.DB_HOST_NAME,
@@ -16,7 +16,7 @@ const SLACK_CHANNEL = '#geo-scheduled-runs';
 interface ScheduledAnalysis {
   id: number;
   user_id: number;
-  user_name?: string; // Add user name to interface
+  user_name?: string;
   client_name: string;
   keyword: string;
   analysis_type: 'brand' | 'individual';
@@ -112,27 +112,6 @@ async function updateScheduledAnalysis(scheduleId: number, nextRunAt: Date) {
        WHERE id = ?`,
       [nextRunAt, scheduleId]
     );
-  } finally {
-    await connection.end();
-  }
-}
-
-// Get the result ID from the most recent analysis for this user/keyword combination
-async function getAnalysisResultId(
-  userId: number,
-  keyword: string,
-  clientName: string
-): Promise<number | null> {
-  const connection = await mysql.createConnection(dbConfig);
-  try {
-    const [rows] = await connection.execute<RowDataPacket[]>(
-      `SELECT id FROM geo_analysis_results 
-       WHERE user_id = ? AND keyword = ? AND client_name = ?
-       ORDER BY timestamp DESC LIMIT 1`,
-      [userId, keyword, clientName]
-    );
-
-    return rows.length > 0 ? rows[0].id : null;
   } finally {
     await connection.end();
   }
@@ -296,6 +275,10 @@ async function getDueScheduledAnalyses(): Promise<ScheduledAnalysis[]> {
           row.selected_engine_ids,
           error
         );
+        // Log the exact string we're trying to parse for debugging
+        console.error(
+          `Raw value type: ${typeof row.selected_engine_ids}, value: "${row.selected_engine_ids}"`
+        );
         parsedEngineIds = []; // Default to empty array if parsing fails
       }
 
@@ -310,16 +293,18 @@ async function getDueScheduledAnalyses(): Promise<ScheduledAnalysis[]> {
 }
 
 // Main function to process all due scheduled analyses
-async function processScheduledAnalyses(): Promise<void> {
+async function processScheduledAnalyses(): Promise<{ processed: number; errors: number }> {
   try {
     const dueSchedules = await getDueScheduledAnalyses();
 
     if (dueSchedules.length === 0) {
       console.log('📅 No scheduled GEO analyses due at this time');
-      return;
+      return { processed: 0, errors: 0 };
     }
 
     console.log(`📋 Found ${dueSchedules.length} scheduled GEO analyses due for execution`);
+
+    let errors = 0;
 
     // Process each schedule
     for (const schedule of dueSchedules) {
@@ -327,23 +312,44 @@ async function processScheduledAnalyses(): Promise<void> {
         await executeScheduledAnalysis(schedule);
       } catch (error) {
         console.error(`Failed to process schedule ${schedule.id}:`, error);
+        errors++;
       }
     }
 
     console.log(`✨ Completed processing ${dueSchedules.length} scheduled analyses`);
+
+    return { processed: dueSchedules.length, errors };
   } catch (error: any) {
     console.error('❌ Error in processScheduledAnalyses:', error.message);
     await postToSlack(`🚨 **GEO Scheduler Error**: ${error.message}`, SLACK_CHANNEL);
+    throw error;
   }
 }
 
-// Schedule the job to run every minute to check for due analyses
-console.log('🕐 Starting GEO Analysis Scheduler (runs every minute)');
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Verify this is a cron request (Vercel adds specific headers)
+  const cronSecret = req.headers.authorization;
+  if (cronSecret !== `Bearer ${process.env.CRON_SECRET}`) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
 
-cron.schedule('* * * * *', () => {
-  console.log('⏰ Checking for due scheduled GEO analyses...');
-  processScheduledAnalyses();
-});
+  try {
+    console.log('⏰ Vercel Cron: Checking for due scheduled GEO analyses...');
 
-// Export for manual testing if needed
-export { processScheduledAnalyses, executeScheduledAnalysis };
+    const result = await processScheduledAnalyses();
+
+    res.status(200).json({
+      success: true,
+      message: 'Scheduled analyses processed successfully',
+      processed: result.processed,
+      errors: result.errors,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error('Error in cron job:', error);
+    res.status(500).json({
+      error: error.message || 'Internal server error',
+      timestamp: new Date().toISOString(),
+    });
+  }
+}
