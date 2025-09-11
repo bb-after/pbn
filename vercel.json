@@ -20,7 +20,7 @@
     },
     {
       "path": "/api/cron/run-scheduled-analyses",
-      "schedule": "* * * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }

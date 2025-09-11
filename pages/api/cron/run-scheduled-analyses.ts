@@ -67,10 +67,21 @@ function calculateNextRun(schedule: ScheduledAnalysis): Date {
   return nextRun;
 }
 
-// Create a run record in the database
+// Create a run record in the database (with additional safety check)
 async function createScheduledRun(scheduleId: number, scheduledFor: Date): Promise<number> {
   const connection = await mysql.createConnection(dbConfig);
   try {
+    // Double-check that there's no existing running instance before creating
+    const [existingRuns] = await connection.execute(
+      `SELECT COUNT(*) as running_count FROM geo_scheduled_analysis_runs 
+       WHERE scheduled_analysis_id = ? AND status = 'running'`,
+      [scheduleId]
+    );
+
+    if ((existingRuns as any)[0].running_count > 0) {
+      throw new Error(`Schedule ${scheduleId} already has a running instance, skipping`);
+    }
+
     const [result] = await connection.execute(
       `INSERT INTO geo_scheduled_analysis_runs (scheduled_analysis_id, scheduled_for, status, started_at)
        VALUES (?, ?, 'running', NOW())`,
@@ -199,8 +210,17 @@ async function executeScheduledAnalysis(schedule: ScheduledAnalysis): Promise<vo
       error.message
     );
 
-    // Update run record as failed
-    await updateScheduledRun(runId, 'failed', undefined, error.message);
+    // Update run record as failed (with additional error handling)
+    try {
+      await updateScheduledRun(runId, 'failed', undefined, error.message);
+    } catch (updateError: any) {
+      console.error(`❌ Failed to update run record ${runId} as failed:`, updateError.message);
+      // Log to Slack about the stuck run since we couldn't update the DB
+      await postToSlack(
+        `🚨 **Critical Error**: Run ${runId} is stuck - failed to update database status. Manual intervention required.`,
+        SLACK_CHANNEL
+      );
+    }
 
     // Send failure notification to Slack
     const errorMessage = `❌ **Scheduled GEO Analysis Failed**
@@ -217,7 +237,7 @@ _The schedule remains active and will retry at the next scheduled time._`;
   }
 }
 
-// Get all due scheduled analyses
+// Get all due scheduled analyses (exclude those with running instances)
 async function getDueScheduledAnalyses(): Promise<ScheduledAnalysis[]> {
   const connection = await mysql.createConnection(dbConfig);
 
@@ -230,54 +250,46 @@ async function getDueScheduledAnalyses(): Promise<ScheduledAnalysis[]> {
         gsa.is_active, gsa.last_run_at, gsa.next_run_at, gsa.run_count
       FROM geo_scheduled_analyses gsa
       LEFT JOIN users u ON gsa.user_id = u.id
-      WHERE gsa.is_active = 1 AND gsa.next_run_at <= NOW()
+      WHERE gsa.is_active = 1 
+        AND gsa.next_run_at <= NOW()
+        AND NOT EXISTS (
+          SELECT 1 FROM geo_scheduled_analysis_runs gsar 
+          WHERE gsar.scheduled_analysis_id = gsa.id 
+            AND gsar.status = 'running'
+        )
       ORDER BY gsa.next_run_at ASC`
     );
 
     return rows.map(row => {
       let parsedEngineIds;
       try {
-        // Handle different formats that might be stored
-        const engineIdsValue = String(row.selected_engine_ids); // Convert to string first
+        const engineIdsValue = String(row.selected_engine_ids);
 
-        if (typeof engineIdsValue === 'string') {
-          // Try to parse as JSON first
-          try {
-            parsedEngineIds = JSON.parse(engineIdsValue);
-          } catch {
-            // If that fails, try to clean up the string and parse again
-            try {
-              const cleanedString = engineIdsValue
-                .replace(/\s/g, '') // Remove all spaces
-                .replace(/^\[/, '[') // Ensure proper array format
-                .replace(/\]$/, ']');
-              parsedEngineIds = JSON.parse(cleanedString);
-            } catch {
-              // If cleaning doesn't work, try extracting numbers with regex
-              const matches = engineIdsValue.match(/\d+/g);
-              parsedEngineIds = matches ? matches.map(Number) : [];
-              console.warn(
-                `Used regex fallback for schedule ${row.id}, extracted:`,
-                parsedEngineIds
-              );
-            }
-          }
-        } else if (Array.isArray(row.selected_engine_ids)) {
+        if (Array.isArray(row.selected_engine_ids)) {
           // Already an array
           parsedEngineIds = row.selected_engine_ids;
+        } else if (engineIdsValue.startsWith('[') && engineIdsValue.endsWith(']')) {
+          // JSON array format like "[1,2,3]"
+          parsedEngineIds = JSON.parse(engineIdsValue);
+        } else if (engineIdsValue.includes(',')) {
+          // Comma-separated string like "8,3,5,6,4"
+          parsedEngineIds = engineIdsValue
+            .split(',')
+            .map(id => parseInt(id.trim(), 10))
+            .filter(id => !isNaN(id));
+        } else if (/^\d+$/.test(engineIdsValue)) {
+          // Single number like "5"
+          parsedEngineIds = [parseInt(engineIdsValue, 10)];
         } else {
-          // Fallback
-          parsedEngineIds = [];
+          // Fallback to regex extraction
+          const matches = engineIdsValue.match(/\d+/g);
+          parsedEngineIds = matches ? matches.map(Number) : [];
         }
       } catch (error) {
         console.error(
           `Error parsing selected_engine_ids for schedule ${row.id}:`,
           row.selected_engine_ids,
           error
-        );
-        // Log the exact string we're trying to parse for debugging
-        console.error(
-          `Raw value type: ${typeof row.selected_engine_ids}, value: "${row.selected_engine_ids}"`
         );
         parsedEngineIds = []; // Default to empty array if parsing fails
       }
@@ -292,9 +304,32 @@ async function getDueScheduledAnalyses(): Promise<ScheduledAnalysis[]> {
   }
 }
 
+// Cleanup stuck runs that have been running for more than 10 minutes
+async function cleanupStuckRuns(): Promise<number> {
+  const connection = await mysql.createConnection(dbConfig);
+  try {
+    const [result] = await connection.execute(
+      `UPDATE geo_scheduled_analysis_runs 
+       SET status = 'failed', 
+           completed_at = NOW(),
+           error_message = 'Automatically marked as failed due to stuck running state (>10 minutes)'
+       WHERE status = 'running' AND started_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE)`
+    );
+    return (result as any).affectedRows;
+  } finally {
+    await connection.end();
+  }
+}
+
 // Main function to process all due scheduled analyses
 async function processScheduledAnalyses(): Promise<{ processed: number; errors: number }> {
   try {
+    // First, cleanup any stuck runs
+    const cleanedUp = await cleanupStuckRuns();
+    if (cleanedUp > 0) {
+      console.log(`🧹 Cleaned up ${cleanedUp} stuck runs`);
+    }
+
     const dueSchedules = await getDueScheduledAnalyses();
 
     if (dueSchedules.length === 0) {
