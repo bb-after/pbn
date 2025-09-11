@@ -22,10 +22,15 @@ const getOpenAIClient: () => OpenAI = (() => {
   };
 })();
 
-// Choose token param shape based on model family.
-function tokenParams(model: string) {
+// Choose token param shape based on model family and API type.
+function tokenParams(model: string, isResponsesApi = false) {
   if (NEW_PARAM_MODELS.has(model)) {
-    return { max_completion_tokens: 2000 as number };
+    // Responses API uses max_output_tokens, Chat API uses max_completion_tokens
+    // Increase tokens for GPT-5 to account for reasoning + response
+    const maxTokens = model === 'gpt-5' ? 4000 : 2000;
+    return isResponsesApi
+      ? { max_output_tokens: maxTokens as number }
+      : { max_completion_tokens: maxTokens as number };
   }
   return { max_tokens: 2000 as number, temperature: 0.8 as number };
 }
@@ -101,30 +106,171 @@ export async function getOpenAISentiment(
     // });
     // const resultText = resp.output_text ?? "No response";
 
-    // Primary path: Responses API (recommended for GPT-5 / o-series)
-    const resp = await openai.responses.create({
-      model: dataSource.model,
-      input: prompt,
-      ...tokenParams(dataSource.model),
-      ...maybeReasoning(dataSource.model),
-    });
+    console.log(`OpenAI analyzing keyword: ${keyword}`);
+    console.log(`model? ${dataSource.model}`);
 
-    const resultText = resp.output_text ?? 'No response';
+    // Use direct HTTP API for Responses API (more up-to-date than SDK)
+    try {
+      const responsesApiPayload = {
+        model: dataSource.model,
+        input: prompt,
+        ...tokenParams(dataSource.model, true), // true = isResponsesApi
+        ...maybeReasoning(dataSource.model),
+      };
 
-    // Minimal, useful diagnostics
-    // eslint-disable-next-line no-console
-    console.log(
-      `OpenAI response: model=${dataSource.model} req=${resp._request_id ?? 'n/a'} ` +
-        `keyword="${keyword}" preview="${resultText.slice(0, 100)}..."`
-    );
+      console.log(
+        `Trying Responses API with payload:`,
+        JSON.stringify(responsesApiPayload, null, 2)
+      );
 
-    // console.log('OpenAI response for keyword:', keyword, resultText.substring(0, 100) + '...');
+      const response = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${openAIApiKey}`,
+          'Content-Type': 'application/json',
+          ...(openAIOrganizationId ? { 'OpenAI-Organization': openAIOrganizationId } : {}),
+        },
+        body: JSON.stringify(responsesApiPayload),
+      });
 
-    return {
-      engine: dataSource.name,
-      summary: resultText,
-      model: dataSource.model,
-    };
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorDetails;
+        try {
+          errorDetails = JSON.parse(errorText);
+        } catch {
+          errorDetails = { raw_error: errorText };
+        }
+
+        console.log(`Responses API failed with ${response.status}: ${response.statusText}`);
+        console.log(`Error details:`, JSON.stringify(errorDetails, null, 2));
+
+        throw new Error(
+          `Responses API failed: ${response.status} ${response.statusText} - ${JSON.stringify(errorDetails)}`
+        );
+      }
+
+      let data = await response.json();
+
+      console.log(`Responses API initial data:`, JSON.stringify(data, null, 2));
+
+      // Handle incomplete responses by polling
+      if (data.status === 'in_progress' || data.status === 'incomplete') {
+        console.log(`Response status: ${data.status}, polling for completion...`);
+
+        const responseId = data.id;
+        const maxPollingAttempts = 30; // 30 seconds max
+
+        for (let attempt = 1; attempt <= maxPollingAttempts; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+
+          const pollResponse = await fetch(`https://api.openai.com/v1/responses/${responseId}`, {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${openAIApiKey}`,
+              'Content-Type': 'application/json',
+              ...(openAIOrganizationId ? { 'OpenAI-Organization': openAIOrganizationId } : {}),
+            },
+          });
+
+          if (!pollResponse.ok) {
+            console.log(`Polling failed on attempt ${attempt}: ${pollResponse.status}`);
+            break;
+          }
+
+          data = await pollResponse.json();
+          console.log(`Polling attempt ${attempt}: status = ${data.status}`);
+
+          if (data.status === 'completed') {
+            console.log(`Response completed after ${attempt} polling attempts`);
+            break;
+          } else if (data.status === 'failed' || data.status === 'cancelled') {
+            console.log(`Response failed with status: ${data.status}`);
+            break;
+          }
+        }
+      }
+
+      console.log(`Final Responses API data:`, JSON.stringify(data, null, 2));
+
+      // Check final status
+      if (data.status !== 'completed') {
+        throw new Error(`Response not completed. Final status: ${data.status}`);
+      }
+
+      // Extract text from the nested response structure
+      let resultText = 'No response';
+      if (data.output && Array.isArray(data.output)) {
+        // Find the message output (not reasoning)
+        const messageOutput = data.output.find((item: any) => item.type === 'message');
+        if (messageOutput && messageOutput.content && Array.isArray(messageOutput.content)) {
+          // Find the text content
+          const textContent = messageOutput.content.find(
+            (item: any) => item.type === 'output_text'
+          );
+          if (textContent && textContent.text) {
+            resultText = textContent.text;
+          }
+        } else {
+          // No message output found - check if we only have reasoning
+          const reasoningOutput = data.output.find((item: any) => item.type === 'reasoning');
+          if (reasoningOutput) {
+            console.log('Warning: Only reasoning output found, no message content generated');
+            console.log('Reasoning output:', JSON.stringify(reasoningOutput, null, 2));
+
+            // Check if reasoning has a summary or content we can use
+            if (reasoningOutput.summary && reasoningOutput.summary.length > 0) {
+              resultText = `Reasoning summary: ${reasoningOutput.summary.join(' ')}`;
+            } else {
+              resultText =
+                'GPT-5 completed reasoning but generated no response text. Try increasing max_output_tokens or adjusting the prompt.';
+            }
+          }
+        }
+      }
+
+      console.log(`Extracted text length: ${resultText.length} characters`);
+
+      console.log(
+        `OpenAI response (Responses API): model=${dataSource.model} req=${data._request_id ?? data.id ?? 'n/a'} ` +
+          `keyword="${keyword}" preview="${resultText.slice(0, 100)}..."`
+      );
+
+      return {
+        engine: dataSource.name,
+        summary: resultText,
+        model: dataSource.model,
+      };
+    } catch (responsesError: any) {
+      console.log(
+        `Responses API error: ${responsesError.message}, falling back to Chat Completions`
+      );
+
+      // Fallback: Chat Completions API via SDK
+      const response = await openai.chat.completions.create({
+        model: dataSource.model,
+        messages: [
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        ...tokenParams(dataSource.model, false), // false = not ResponsesApi
+      });
+
+      const resultText = response.choices[0]?.message?.content ?? 'No response';
+
+      console.log(
+        `OpenAI response (Chat API fallback): model=${dataSource.model} req=${response.id ?? 'n/a'} ` +
+          `keyword="${keyword}" preview="${resultText.slice(0, 100)}..."`
+      );
+
+      return {
+        engine: dataSource.name,
+        summary: resultText,
+        model: dataSource.model,
+      };
+    }
   } catch (error) {
     console.error('Error fetching data from OpenAI:', error);
     throw new Error('Failed to get OpenAI result');
