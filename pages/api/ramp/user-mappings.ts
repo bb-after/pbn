@@ -15,9 +15,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     if (req.method === 'GET') {
       // Get all user mappings
-      const rows = (await query(
+      const [rows] = (await query(
         'SELECT * FROM ramp_user_sheet_mappings ORDER BY ramp_user_name ASC'
-      )) as unknown as UserMapping[];
+      )) as unknown as [UserMapping[], any];
 
       res.status(200).json(rows);
     } else if (req.method === 'POST') {

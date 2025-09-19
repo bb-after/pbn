@@ -19,9 +19,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const rows = (await query('SELECT * FROM ramp_user_sheet_mappings WHERE ramp_user_id = ?', [
+    const [rows] = (await query('SELECT * FROM ramp_user_sheet_mappings WHERE ramp_user_id = ?', [
       userId,
-    ])) as unknown as UserMapping[];
+    ])) as unknown as [UserMapping[], any];
 
     if (!rows || rows.length === 0) {
       return res.status(404).json({ error: 'User mapping not found' });

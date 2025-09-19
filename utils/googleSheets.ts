@@ -42,10 +42,53 @@ export interface ExpenseRow {
   receipt_url?: string;
 }
 
+export async function checkTabProtectionStatus(
+  sheetId: string,
+  tabName: string
+): Promise<{ isProtected: boolean; protectionDetails?: any }> {
+  try {
+    const response = await sheets.spreadsheets.get({
+      spreadsheetId: sheetId,
+      includeGridData: false,
+    });
+
+    const sheet = response.data.sheets?.find(sheet => sheet.properties?.title === tabName);
+
+    if (!sheet || !sheet.properties?.sheetId) {
+      return { isProtected: false };
+    }
+
+    // Check if the sheet has any protection ranges
+    const protectedRanges = sheet.protectedRanges || [];
+
+    // Check if the entire sheet is protected
+    const isSheetProtected = protectedRanges.some(range => {
+      // A protected range that covers the entire sheet typically has no range specified
+      // or has a range that covers all cells
+      return (
+        !range.range ||
+        (range.range.startRowIndex === undefined &&
+          range.range.endRowIndex === undefined &&
+          range.range.startColumnIndex === undefined &&
+          range.range.endColumnIndex === undefined)
+      );
+    });
+
+    return {
+      isProtected: isSheetProtected,
+      protectionDetails: isSheetProtected ? protectedRanges[0] : null,
+    };
+  } catch (error) {
+    console.error('Error checking tab protection status:', error);
+    // If we can't check, assume it's not protected to avoid blocking legitimate use
+    return { isProtected: false };
+  }
+}
+
 export async function findMatchingSheetTab(
   sheetId: string,
   expectedTabName: string
-): Promise<{ exists: boolean; tabName?: string; allTabs: string[] }> {
+): Promise<{ exists: boolean; tabName?: string; allTabs: string[]; isProtected?: boolean }> {
   try {
     const response = await sheets.spreadsheets.get({
       spreadsheetId: sheetId,
@@ -56,7 +99,13 @@ export async function findMatchingSheetTab(
     // Look for exact match first
     const exactMatch = allTabs.find(tabName => tabName === expectedTabName);
     if (exactMatch) {
-      return { exists: true, tabName: exactMatch, allTabs };
+      const protectionStatus = await checkTabProtectionStatus(sheetId, exactMatch);
+      return {
+        exists: true,
+        tabName: exactMatch,
+        allTabs,
+        isProtected: protectionStatus.isProtected,
+      };
     }
 
     // Look for similar match (case-insensitive)
@@ -64,10 +113,16 @@ export async function findMatchingSheetTab(
       tabName => tabName.toLowerCase() === expectedTabName.toLowerCase()
     );
     if (similarMatch) {
-      return { exists: true, tabName: similarMatch, allTabs };
+      const protectionStatus = await checkTabProtectionStatus(sheetId, similarMatch);
+      return {
+        exists: true,
+        tabName: similarMatch,
+        allTabs,
+        isProtected: protectionStatus.isProtected,
+      };
     }
 
-    return { exists: false, allTabs };
+    return { exists: false, allTabs, isProtected: false };
   } catch (error) {
     console.error('Error finding matching sheet tab:', error);
     throw new Error(
@@ -106,62 +161,230 @@ export async function getClientOptionsFromSheet(
 export async function writeExpensesToSheet(
   sheetId: string,
   sheetName: string,
-  expenses: ExpenseRow[]
+  expenses: ExpenseRow[],
+  clientMappings?: Record<string, string>,
+  expenseCategoryMappings?: Record<string, string>
 ): Promise<{ recordsProcessed: number }> {
   try {
-    // Check if sheet exists, create if not
+    // Check if sheet exists, throw error if not
     await ensureSheetExists(sheetId, sheetName);
 
-    // Clear existing content (except headers)
-    await clearSheetContent(sheetId, sheetName);
+    // If no mappings provided, fall back to simple tabular format
+    if (!clientMappings || !expenseCategoryMappings) {
+      return await writeExpensesInTabularFormat(sheetId, sheetName, expenses);
+    }
 
-    // Add headers
-    const headers = [
-      'Date',
-      'Employee',
-      'Amount',
-      'Currency',
-      'Description',
-      'Category',
-      'Merchant',
-      'Receipt URL',
-      'Expense ID',
-    ];
-
-    // Prepare data rows
-    const rows = expenses.map(expense => [
-      new Date(expense.date).toLocaleDateString(),
-      expense.user_name,
-      expense.amount,
-      expense.currency,
-      expense.description,
-      expense.category,
-      expense.merchant,
-      expense.receipt_url || '',
-      expense.id,
-    ]);
-
-    const values = [headers, ...rows];
-
-    // Write to sheet
-    const response = await sheets.spreadsheets.values.update({
-      spreadsheetId: sheetId,
-      range: `${sheetName}!A1`,
-      valueInputOption: 'RAW',
-      requestBody: {
-        values,
-      },
-    });
-
-    // Format headers
-    await formatHeaders(sheetId, sheetName, headers.length);
-
-    return { recordsProcessed: rows.length };
+    // Use matrix format with client and expense category mappings
+    return await writeExpensesInMatrixFormat(
+      sheetId,
+      sheetName,
+      expenses,
+      clientMappings,
+      expenseCategoryMappings
+    );
   } catch (error) {
     console.error('Error writing to Google Sheets:', error);
     throw new Error(
       `Failed to write to Google Sheets: ${error instanceof Error ? error.message : 'Unknown error'}`
     );
+  }
+}
+
+async function writeExpensesInTabularFormat(
+  sheetId: string,
+  sheetName: string,
+  expenses: ExpenseRow[]
+): Promise<{ recordsProcessed: number }> {
+  // Check if sheet exists first
+  await ensureSheetExists(sheetId, sheetName);
+
+  // Clear existing content (except headers)
+  await clearSheetContent(sheetId, sheetName);
+
+  // Add headers
+  const headers = [
+    'Date',
+    'Employee',
+    'Amount',
+    'Currency',
+    'Description',
+    'Category',
+    'Merchant',
+    'Receipt URL',
+    'Expense ID',
+  ];
+
+  // Prepare data rows
+  const rows = expenses.map(expense => [
+    new Date(expense.date).toLocaleDateString(),
+    expense.user_name,
+    expense.amount,
+    expense.currency,
+    expense.description,
+    expense.category,
+    expense.merchant,
+    expense.receipt_url || '',
+    expense.id,
+  ]);
+
+  const values = [headers, ...rows];
+
+  // Write to sheet
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: sheetId,
+    range: `${sheetName}!A1`,
+    valueInputOption: 'RAW',
+    requestBody: {
+      values,
+    },
+  });
+
+  // Format headers
+  await formatHeaders(sheetId, sheetName, headers.length);
+
+  return { recordsProcessed: rows.length };
+}
+
+async function writeExpensesInMatrixFormat(
+  sheetId: string,
+  sheetName: string,
+  expenses: ExpenseRow[],
+  clientMappings: Record<string, string>,
+  expenseCategoryMappings: Record<string, string>
+): Promise<{ recordsProcessed: number }> {
+  // First, read the existing sheet to understand the structure
+  const existingData = await readExistingSheetStructure(sheetId, sheetName);
+
+  // Get unique clients and expense categories from mappings
+  const uniqueClients = Array.from(new Set(Object.values(clientMappings)));
+  const uniqueExpenseCategories = Array.from(new Set(Object.values(expenseCategoryMappings)));
+
+  // Create a map to aggregate expenses by client and category
+  const expenseMatrix: Record<string, Record<string, number>> = {};
+
+  // Initialize matrix
+  uniqueClients.forEach(client => {
+    expenseMatrix[client] = {};
+    uniqueExpenseCategories.forEach(category => {
+      expenseMatrix[client][category] = 0;
+    });
+  });
+
+  // Aggregate expenses
+  expenses.forEach(expense => {
+    const client = clientMappings[expense.id];
+    const category = expenseCategoryMappings[expense.id];
+
+    if (client && category) {
+      expenseMatrix[client][category] += expense.amount;
+    }
+  });
+
+  // Update the sheet with the aggregated data
+  await updateMatrixInSheet(sheetId, sheetName, expenseMatrix, existingData);
+
+  return { recordsProcessed: expenses.length };
+}
+
+async function readExistingSheetStructure(
+  sheetId: string,
+  sheetName: string
+): Promise<{
+  clients: string[];
+  expenseCategories: string[];
+  clientRowMap: Record<string, number>;
+  categoryColumnMap: Record<string, string>;
+}> {
+  try {
+    // Read column headers (row 1) from J to Z to get expense categories
+    const headerResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: `${sheetName}!J1:Z1`,
+    });
+
+    const headers = headerResponse.data.values?.[0] || [];
+    const expenseCategories = headers.filter(header => header && header.trim() !== '');
+
+    // Create column mapping (J=0, K=1, etc.)
+    const categoryColumnMap: Record<string, string> = {};
+    expenseCategories.forEach((category, index) => {
+      const columnLetter = String.fromCharCode(74 + index); // J=74
+      categoryColumnMap[category] = columnLetter;
+    });
+
+    // Read client names from column A (starting from row 2)
+    const clientResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: `${sheetName}!A2:A1000`,
+    });
+
+    const clientValues = clientResponse.data.values || [];
+    const clients = clientValues.flat().filter(client => client && client.trim() !== '');
+
+    // Create client row mapping (row 2=0, row 3=1, etc.)
+    const clientRowMap: Record<string, number> = {};
+    clients.forEach((client, index) => {
+      clientRowMap[client] = index + 2; // +2 because we start from row 2
+    });
+
+    return {
+      clients,
+      expenseCategories,
+      clientRowMap,
+      categoryColumnMap,
+    };
+  } catch (error) {
+    console.error('Error reading existing sheet structure:', error);
+    // Return empty structure if sheet doesn't exist or can't be read
+    return {
+      clients: [],
+      expenseCategories: [],
+      clientRowMap: {},
+      categoryColumnMap: {},
+    };
+  }
+}
+
+async function updateMatrixInSheet(
+  sheetId: string,
+  sheetName: string,
+  expenseMatrix: Record<string, Record<string, number>>,
+  existingData: {
+    clients: string[];
+    expenseCategories: string[];
+    clientRowMap: Record<string, number>;
+    categoryColumnMap: Record<string, string>;
+  }
+): Promise<void> {
+  const updates: any[] = [];
+
+  // For each client-category combination, update the corresponding cell
+  Object.entries(expenseMatrix).forEach(([client, categoryAmounts]) => {
+    const rowNumber = existingData.clientRowMap[client];
+
+    if (rowNumber) {
+      Object.entries(categoryAmounts).forEach(([category, amount]) => {
+        const columnLetter = existingData.categoryColumnMap[category];
+
+        if (columnLetter && amount > 0) {
+          updates.push({
+            range: `${sheetName}!${columnLetter}${rowNumber}`,
+            values: [[amount]],
+          });
+        }
+      });
+    }
+  });
+
+  // Batch update all the cells
+  if (updates.length > 0) {
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: sheetId,
+      requestBody: {
+        valueInputOption: 'RAW',
+        data: updates,
+      },
+    });
   }
 }
 
@@ -174,24 +397,16 @@ async function ensureSheetExists(spreadsheetId: string, sheetName: string): Prom
     const sheetExists = response.data.sheets?.some(sheet => sheet.properties?.title === sheetName);
 
     if (!sheetExists) {
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId,
-        requestBody: {
-          requests: [
-            {
-              addSheet: {
-                properties: {
-                  title: sheetName,
-                },
-              },
-            },
-          ],
-        },
-      });
+      throw new Error(
+        `Sheet tab "${sheetName}" does not exist. Please create this tab in your Google Sheet before syncing.`
+      );
     }
   } catch (error) {
+    if (error instanceof Error && error.message.includes('does not exist')) {
+      throw error; // Re-throw our custom error
+    }
     throw new Error(
-      `Failed to ensure sheet exists: ${error instanceof Error ? error.message : 'Unknown error'}`
+      `Failed to check if sheet exists: ${error instanceof Error ? error.message : 'Unknown error'}`
     );
   }
 }
