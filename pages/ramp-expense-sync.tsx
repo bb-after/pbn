@@ -790,6 +790,12 @@ const RampExpenseSync: React.FC = () => {
     return expenses.filter(exp => selectedExpenseIds.has(exp.id) && !selectedClients.has(exp.id));
   };
 
+  const getUnmappedExpenseCategories = () => {
+    return expenses.filter(
+      exp => selectedExpenseIds.has(exp.id) && !selectedExpenseCategories.has(exp.id)
+    );
+  };
+
   const syncToGoogleSheets = async () => {
     const selectedExpenses = expenses.filter(exp => selectedExpenseIds.has(exp.id));
 
@@ -807,6 +813,16 @@ const RampExpenseSync: React.FC = () => {
       setSyncStatus({
         status: 'error',
         message: `Please map all expenses to a Sheet Client. ${unmappedExpenses.length} expense(s) are missing client mappings.`,
+      });
+      return;
+    }
+
+    // Check for unmapped expense categories
+    const unmappedExpenseCategories = getUnmappedExpenseCategories();
+    if (unmappedExpenseCategories.length > 0) {
+      setSyncStatus({
+        status: 'error',
+        message: `Please map all expenses to a Sheet Expense Category. ${unmappedExpenseCategories.length} expense(s) are missing category mappings.`,
       });
       return;
     }
@@ -1118,6 +1134,7 @@ const RampExpenseSync: React.FC = () => {
                     selectedExpenseIds.size === 0 ||
                     !googleSheetUrl ||
                     getUnmappedExpenses().length > 0 ||
+                    getUnmappedExpenseCategories().length > 0 ||
                     (sheetTabInfo && !sheetTabInfo.exists) ||
                     (sheetTabInfo?.exists && sheetTabInfo?.isProtected)
                   }
@@ -1131,7 +1148,9 @@ const RampExpenseSync: React.FC = () => {
                         ? 'Sheet Tab is Protected'
                         : getUnmappedExpenses().length > 0
                           ? `Map ${getUnmappedExpenses().length} Missing Client(s)`
-                          : `Sync ${selectedExpenseIds.size} Selected Expenses`}
+                          : getUnmappedExpenseCategories().length > 0
+                            ? `Map ${getUnmappedExpenseCategories().length} Missing Category/Categories`
+                            : `Sync ${selectedExpenseIds.size} Selected Expenses`}
                 </Button>
               </Box>
             </CardContent>
@@ -1222,7 +1241,14 @@ const RampExpenseSync: React.FC = () => {
                   />
                   {getUnmappedExpenses().length > 0 && (
                     <Chip
-                      label={`${getUnmappedExpenses().length} unmapped`}
+                      label={`${getUnmappedExpenses().length} unmapped clients`}
+                      color="error"
+                      variant="outlined"
+                    />
+                  )}
+                  {getUnmappedExpenseCategories().length > 0 && (
+                    <Chip
+                      label={`${getUnmappedExpenseCategories().length} unmapped categories`}
                       color="error"
                       variant="outlined"
                     />
@@ -1234,6 +1260,14 @@ const RampExpenseSync: React.FC = () => {
                     <strong>Missing Client Mappings:</strong> {getUnmappedExpenses().length}{' '}
                     expense(s) highlighted in red need to have a Sheet Client selected before
                     syncing.
+                  </Alert>
+                )}
+
+                {getUnmappedExpenseCategories().length > 0 && (
+                  <Alert severity="warning" sx={{ mb: 2 }}>
+                    <strong>Missing Category Mappings:</strong>{' '}
+                    {getUnmappedExpenseCategories().length} expense(s) highlighted in red need to
+                    have a Sheet Expense Category selected before syncing.
                   </Alert>
                 )}
 
@@ -1305,7 +1339,9 @@ const RampExpenseSync: React.FC = () => {
                     <TableBody>
                       {getSortedExpenses().map(expense => {
                         const isUnmapped =
-                          selectedExpenseIds.has(expense.id) && !selectedClients.has(expense.id);
+                          selectedExpenseIds.has(expense.id) &&
+                          (!selectedClients.has(expense.id) ||
+                            !selectedExpenseCategories.has(expense.id));
                         return (
                           <TableRow
                             key={expense.id}
