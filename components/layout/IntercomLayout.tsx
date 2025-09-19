@@ -53,6 +53,8 @@ import {
   Business as BusinessIcon,
   Public as PublicIcon,
   Schedule as ScheduleIcon,
+  AccountBalance as AccountBalanceIcon,
+  Sync as SyncIcon,
 } from '@mui/icons-material';
 import { tokens } from '../../theme/intercom-theme';
 
@@ -178,6 +180,12 @@ const navigationItems: NavigationItem[] = [
     icon: <PublicIcon />,
     children: [
       {
+        id: 'geo-competitive',
+        label: 'GEO Competitive Analysis',
+        icon: <InsightsIcon />,
+        href: '/geo-competitive-analysis',
+      },
+      {
         id: 'geo-checker',
         label: 'GEO Checker',
         icon: <PublicIcon />,
@@ -200,6 +208,12 @@ const navigationItems: NavigationItem[] = [
         label: 'GEO History',
         icon: <AssessmentIcon />,
         href: '/geo-analysis-history',
+      },
+      {
+        id: 'geo-runs',
+        label: 'GEO Runs',
+        icon: <AssessmentIcon />,
+        href: '/geo-runs',
       },
     ],
   },
@@ -237,6 +251,25 @@ const navigationItems: NavigationItem[] = [
         label: 'Zoom Backdrop',
         icon: <WallpaperIcon />,
         href: '/zoom',
+      },
+    ],
+  },
+  {
+    id: 'ramp',
+    label: 'Ramp',
+    icon: <AccountBalanceIcon />,
+    children: [
+      {
+        id: 'ramp-expense-sync',
+        label: 'Expense Sync',
+        icon: <SyncIcon />,
+        href: '/ramp-expense-sync',
+      },
+      {
+        id: 'ramp-user-mappings',
+        label: 'User Mappings',
+        icon: <PeopleIcon />,
+        href: '/ramp-user-mappings',
       },
     ],
   },
