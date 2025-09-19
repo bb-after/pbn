@@ -500,6 +500,54 @@ const RampExpenseSync: React.FC = () => {
     setSelectedClients(newSelectedClients);
   };
 
+  const extractClientFromMemo = (memo: string, expenseClient: string): string => {
+    if (!memo) return '';
+
+    console.log('Extracting client from memo:', { memo, expenseClient });
+
+    // Special patterns for Status Labs Deutschland
+    if (expenseClient === 'Status Labs Deutschland') {
+      // Pattern 1: "Jean-Claude Bastos" -> should map to "ORM Jean-Claude Bastos"
+      if (memo.toLowerCase().includes('jean-claude bastos')) {
+        return 'ORM Jean-Claude Bastos';
+      }
+
+      // Pattern 2: "Läderach Content (German + Swiss)" -> should map to "ORM Läderach"
+      if (memo.toLowerCase().includes('läderach')) {
+        return 'ORM Läderach';
+      }
+
+      // Pattern 3: Extract ORM client names - look for common patterns
+      // "ORM [ClientName]" or "[ClientName] ORM" patterns
+      const ormMatch = memo.match(/ORM\s+([^-\(\)]+)|([^-\(\)]+)\s+ORM/i);
+      if (ormMatch) {
+        const clientName = (ormMatch[1] || ormMatch[2] || '').trim();
+        if (clientName && clientName.length > 2) {
+          return `ORM ${clientName}`;
+        }
+      }
+
+      // Pattern 4: Look for specific keywords that indicate client names
+      const clientKeywords = ['content', 'reputation', 'wiki', 'seo', 'pr'];
+      const words = memo.toLowerCase().split(/[\s\-\(\)]+/);
+
+      for (const word of words) {
+        // Skip common words and focus on potential client names
+        if (word.length > 3 && !clientKeywords.includes(word) && !word.match(/^\d+$/)) {
+          // Capitalize first letter and try as ORM client
+          const potentialClient = word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+          if (potentialClient !== 'German' && potentialClient !== 'Swiss') {
+            console.log('Potential ORM client extracted:', `ORM ${potentialClient}`);
+            return `ORM ${potentialClient}`;
+          }
+        }
+      }
+    }
+
+    // For other special cases, return the full memo for now
+    return memo;
+  };
+
   const findBestClientMatch = (expense: RampExpense, clientOptions: string[]): string => {
     if (clientOptions.length === 0) return '';
 
@@ -521,10 +569,15 @@ const RampExpenseSync: React.FC = () => {
     }
 
     // Special cases for memo-based mapping (excluding Status Labs)
-    const memoBasedSpecialCases = ['Digital Status Limited', 'Status Labs Deutchland'];
-    const searchTerm = memoBasedSpecialCases.includes(expense.client)
-      ? expense.description
-      : expense.client;
+    const memoBasedSpecialCases = ['Digital Status Limited', 'Status Labs Deutschland'];
+
+    let searchTerm: string;
+    if (memoBasedSpecialCases.includes(expense.client)) {
+      // For Status Labs Deutschland, extract client name from memo
+      searchTerm = extractClientFromMemo(expense.description, expense.client);
+    } else {
+      searchTerm = expense.client;
+    }
 
     if (!searchTerm || searchTerm === 'No client') {
       console.log('No search term, checking for **Special Projects fallback');
