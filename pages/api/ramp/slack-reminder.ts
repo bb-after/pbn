@@ -65,7 +65,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 You haven't synced your Ramp expenses for **${monthDisplay}** yet. 
 
-Please visit the expense sync page to complete your sync: https://statusapprovals.com/ramp-expense-sync
+Please visit the expense sync page to complete your sync: https://ai.statuscrawl.io/ramp-expense-sync
 
 Thank you! 🙏`;
 
