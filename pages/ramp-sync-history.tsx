@@ -120,7 +120,7 @@ const RampSyncHistory: React.FC = () => {
 
   // Get users who haven't synced for the selected month
   const getUsersWithoutSyncs = (selectedMonth: string): UserMapping[] => {
-    if (!selectedMonth || !userMappings.length || !syncLogs.length) {
+    if (!selectedMonth || !userMappings.length) {
       return [];
     }
 
@@ -132,6 +132,7 @@ const RampSyncHistory: React.FC = () => {
     );
 
     // Return users who don't have successful syncs for this month
+    // If no syncs exist for this month at all, all users are considered unsynced
     return userMappings.filter(user => !syncedUserIds.has(user.ramp_user_id));
   };
 
@@ -352,8 +353,8 @@ const RampSyncHistory: React.FC = () => {
         </Grid>
       )}
 
-      {/* Missing Syncs Section */}
-      {syncMonth && (
+      {/* Missing Syncs Section - Only show when viewing all users and a specific month */}
+      {syncMonth && !targetUserId && (
         <Card sx={{ mb: 3 }}>
           <CardContent>
             <Typography
