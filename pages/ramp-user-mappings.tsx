@@ -33,6 +33,8 @@ import {
   Link as LinkIcon,
 } from '@mui/icons-material';
 import { IntercomLayout } from '../components/layout/IntercomLayout';
+import useValidateUserToken from '../hooks/useValidateUserToken';
+import UnauthorizedAccess from '../components/UnauthorizedAccess';
 
 interface User {
   id: string;
@@ -51,6 +53,7 @@ interface UserMapping {
 }
 
 const RampUserMappings: React.FC = () => {
+  const { token } = useValidateUserToken();
   const [users, setUsers] = useState<User[]>([]);
   const [mappings, setMappings] = useState<UserMapping[]>([]);
   const [loading, setLoading] = useState(true);
@@ -189,6 +192,10 @@ const RampUserMappings: React.FC = () => {
         : !mappedUserIds.includes(user.id)
     );
   };
+
+  if (!token) {
+    return <UnauthorizedAccess />;
+  }
 
   return (
     <IntercomLayout

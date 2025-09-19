@@ -55,6 +55,7 @@ import {
   Schedule as ScheduleIcon,
   AccountBalance as AccountBalanceIcon,
   Sync as SyncIcon,
+  History as HistoryIcon,
 } from '@mui/icons-material';
 import { tokens } from '../../theme/intercom-theme';
 
@@ -270,6 +271,12 @@ const navigationItems: NavigationItem[] = [
         label: 'User Mappings',
         icon: <PeopleIcon />,
         href: '/ramp-user-mappings',
+      },
+      {
+        id: 'ramp-sync-history',
+        label: 'Sync History',
+        icon: <HistoryIcon />,
+        href: '/ramp-sync-history',
       },
     ],
   },

@@ -37,6 +37,8 @@ import { useRouter } from 'next/router';
 import { IntercomLayout } from '../components/layout/IntercomLayout';
 import { ContentCopy, CallSplit } from '@mui/icons-material';
 import { IconButton, Tooltip } from '@mui/material';
+import useValidateUserToken from '../hooks/useValidateUserToken';
+import UnauthorizedAccess from '../components/UnauthorizedAccess';
 
 interface User {
   id: string;
@@ -80,6 +82,7 @@ interface AuthStatus {
 
 const RampExpenseSync: React.FC = () => {
   const router = useRouter();
+  const { token } = useValidateUserToken();
   const [users, setUsers] = useState<User[]>([]);
   const [mappedUsers, setMappedUsers] = useState<User[]>([]);
   const [selectedUser, setSelectedUser] = useState<string>('');
@@ -100,6 +103,7 @@ const RampExpenseSync: React.FC = () => {
     tabName?: string;
     allTabs: string[];
     expectedTabName: string;
+    isProtected?: boolean;
   } | null>(null);
   const [checkingTab, setCheckingTab] = useState<boolean>(false);
   const [clientOptions, setClientOptions] = useState<string[]>([]);
@@ -782,6 +786,10 @@ const RampExpenseSync: React.FC = () => {
     });
   };
 
+  const getUnmappedExpenses = () => {
+    return expenses.filter(exp => selectedExpenseIds.has(exp.id) && !selectedClients.has(exp.id));
+  };
+
   const syncToGoogleSheets = async () => {
     const selectedExpenses = expenses.filter(exp => selectedExpenseIds.has(exp.id));
 
@@ -789,6 +797,34 @@ const RampExpenseSync: React.FC = () => {
       setSyncStatus({
         status: 'error',
         message: 'Please provide Google Sheet URL and select at least one expense',
+      });
+      return;
+    }
+
+    // Check for unmapped expenses
+    const unmappedExpenses = getUnmappedExpenses();
+    if (unmappedExpenses.length > 0) {
+      setSyncStatus({
+        status: 'error',
+        message: `Please map all expenses to a Sheet Client. ${unmappedExpenses.length} expense(s) are missing client mappings.`,
+      });
+      return;
+    }
+
+    // Check if tab exists
+    if (sheetTabInfo && !sheetTabInfo.exists) {
+      setSyncStatus({
+        status: 'error',
+        message: `Sheet tab "${sheetTabInfo.expectedTabName}" does not exist. Please create this tab in your Google Sheet before syncing.`,
+      });
+      return;
+    }
+
+    // Check if tab is protected/locked
+    if (sheetTabInfo?.exists && sheetTabInfo?.isProtected) {
+      setSyncStatus({
+        status: 'error',
+        message: `Cannot sync to protected sheet tab "${sheetTabInfo.tabName}". Please unlock the tab or contact the sheet owner.`,
       });
       return;
     }
@@ -811,11 +847,14 @@ const RampExpenseSync: React.FC = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           expenses: selectedExpenses,
           sheet_url: googleSheetUrl,
           sheet_name: sheetName,
+          client_mappings: Object.fromEntries(selectedClients),
+          expense_category_mappings: Object.fromEntries(selectedExpenseCategories),
         }),
       });
 
@@ -839,6 +878,10 @@ const RampExpenseSync: React.FC = () => {
   };
 
   const selectedUserName = users.find(u => u.id === selectedUser)?.name || '';
+
+  if (!token) {
+    return <UnauthorizedAccess />;
+  }
 
   if (authStatus.isLoading) {
     return (
@@ -1020,19 +1063,26 @@ const RampExpenseSync: React.FC = () => {
                       </Alert>
                     ) : sheetTabInfo ? (
                       sheetTabInfo.exists ? (
-                        <Alert severity="success">
+                        <Alert severity={sheetTabInfo.isProtected ? 'error' : 'success'}>
                           <strong>Tab found:</strong> &ldquo;{sheetTabInfo.tabName}&rdquo; matches
                           the expected format for{' '}
                           {(() => {
                             const { startDate } = getDateRangeFromMonth(selectedMonth);
                             return format(startDate, 'MMMM yyyy');
                           })()}
+                          {sheetTabInfo.isProtected && (
+                            <>
+                              <br />
+                              <strong>⚠️ This tab is protected/locked.</strong> You must unlock it
+                              before syncing.
+                            </>
+                          )}
                         </Alert>
                       ) : (
-                        <Alert severity="warning">
-                          <strong>Tab will be created:</strong> &ldquo;
-                          {sheetTabInfo.expectedTabName}&rdquo; doesn&apos;t exist and will be
-                          created during sync.
+                        <Alert severity="error">
+                          <strong>Tab not found:</strong> &ldquo;
+                          {sheetTabInfo.expectedTabName}&rdquo; doesn&apos;t exist. Please create
+                          this tab in your Google Sheet before syncing.
                           <br />
                           <small>
                             Existing tabs:{' '}
@@ -1048,7 +1098,7 @@ const RampExpenseSync: React.FC = () => {
                         color="text.secondary"
                         sx={{ p: 2, backgroundColor: 'grey.50', borderRadius: 1 }}
                       >
-                        <strong>Sheet tab:</strong> Will be auto-generated as &ldquo;Expenses -{' '}
+                        <strong>Sheet tab:</strong> Looking for tab named &ldquo;Expenses -{' '}
                         {(() => {
                           const { startDate } = getDateRangeFromMonth(selectedMonth);
                           return format(startDate, 'MMMM yyyy');
@@ -1066,13 +1116,22 @@ const RampExpenseSync: React.FC = () => {
                   disabled={
                     syncStatus.status === 'syncing' ||
                     selectedExpenseIds.size === 0 ||
-                    !googleSheetUrl
+                    !googleSheetUrl ||
+                    getUnmappedExpenses().length > 0 ||
+                    (sheetTabInfo && !sheetTabInfo.exists) ||
+                    (sheetTabInfo?.exists && sheetTabInfo?.isProtected)
                   }
                   fullWidth
                 >
                   {syncStatus.status === 'syncing'
                     ? 'Syncing...'
-                    : `Sync ${selectedExpenseIds.size} Selected Expenses`}
+                    : sheetTabInfo && !sheetTabInfo.exists
+                      ? 'Sheet Tab Does Not Exist'
+                      : sheetTabInfo?.exists && sheetTabInfo?.isProtected
+                        ? 'Sheet Tab is Protected'
+                        : getUnmappedExpenses().length > 0
+                          ? `Map ${getUnmappedExpenses().length} Missing Client(s)`
+                          : `Sync ${selectedExpenseIds.size} Selected Expenses`}
                 </Button>
               </Box>
             </CardContent>
@@ -1161,7 +1220,22 @@ const RampExpenseSync: React.FC = () => {
                   <Chip
                     label={`Month: ${selectedMonth ? format(new Date(selectedMonth + '-01'), 'MMMM yyyy') : 'Not selected'}`}
                   />
+                  {getUnmappedExpenses().length > 0 && (
+                    <Chip
+                      label={`${getUnmappedExpenses().length} unmapped`}
+                      color="error"
+                      variant="outlined"
+                    />
+                  )}
                 </Box>
+
+                {getUnmappedExpenses().length > 0 && (
+                  <Alert severity="warning" sx={{ mb: 2 }}>
+                    <strong>Missing Client Mappings:</strong> {getUnmappedExpenses().length}{' '}
+                    expense(s) highlighted in red need to have a Sheet Client selected before
+                    syncing.
+                  </Alert>
+                )}
 
                 <TableContainer component={Paper} variant="outlined">
                   <Table size="small">
@@ -1229,126 +1303,140 @@ const RampExpenseSync: React.FC = () => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {getSortedExpenses().map(expense => (
-                        <TableRow key={expense.id} hover>
-                          <TableCell padding="checkbox">
-                            <Checkbox
-                              checked={selectedExpenseIds.has(expense.id)}
-                              onChange={() => handleExpenseToggle(expense.id)}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            {(() => {
-                              try {
-                                const date = new Date(expense.date);
-                                return isNaN(date.getTime())
-                                  ? 'Invalid Date'
-                                  : format(date, 'MMM dd, yyyy');
-                              } catch (error) {
-                                console.error('Date formatting error:', expense.date, error);
-                                return 'Invalid Date';
-                              }
-                            })()}
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body2" fontWeight="medium">
-                              $
-                              {expense.amount.toLocaleString('en-US', {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
-                            </Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body2" sx={{ maxWidth: 250 }}>
-                              {expense.description}
-                            </Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body2">{expense.merchant}</Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body2" color="text.secondary">
-                              {expense.category}
-                            </Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body2" fontWeight="medium" color="primary.main">
-                              {expense.client}
-                            </Typography>
-                          </TableCell>
-                          <TableCell>
-                            <FormControl size="small" sx={{ minWidth: 120 }}>
-                              <Select
-                                value={selectedClients.get(expense.id) || ''}
-                                onChange={e => handleClientSelection(expense.id, e.target.value)}
-                                displayEmpty
-                                disabled={loadingClientOptions || clientOptions.length === 0}
-                              >
-                                <MenuItem value="">
-                                  <em>
-                                    {loadingClientOptions
-                                      ? 'Loading...'
-                                      : clientOptions.length === 0
-                                        ? 'No clients'
-                                        : 'Select client'}
-                                  </em>
-                                </MenuItem>
-                                {clientOptions.sort().map(client => (
-                                  <MenuItem key={client} value={client}>
-                                    {client}
-                                  </MenuItem>
-                                ))}
-                              </Select>
-                            </FormControl>
-                          </TableCell>
-                          <TableCell>
-                            <FormControl size="small" sx={{ minWidth: 150 }}>
-                              <Select
-                                value={selectedExpenseCategories.get(expense.id) || ''}
-                                onChange={e =>
-                                  handleExpenseCategorySelection(expense.id, e.target.value)
+                      {getSortedExpenses().map(expense => {
+                        const isUnmapped =
+                          selectedExpenseIds.has(expense.id) && !selectedClients.has(expense.id);
+                        return (
+                          <TableRow
+                            key={expense.id}
+                            hover
+                            sx={{
+                              backgroundColor: isUnmapped ? '#ffebee' : 'inherit',
+                              '&:hover': {
+                                backgroundColor: isUnmapped ? '#ffcdd2' : 'rgba(0, 0, 0, 0.04)',
+                              },
+                            }}
+                          >
+                            <TableCell padding="checkbox">
+                              <Checkbox
+                                checked={selectedExpenseIds.has(expense.id)}
+                                onChange={() => handleExpenseToggle(expense.id)}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              {(() => {
+                                try {
+                                  const date = new Date(expense.date);
+                                  return isNaN(date.getTime())
+                                    ? 'Invalid Date'
+                                    : format(date, 'MMM dd, yyyy');
+                                } catch (error) {
+                                  console.error('Date formatting error:', expense.date, error);
+                                  return 'Invalid Date';
                                 }
-                                displayEmpty
-                              >
-                                <MenuItem value="">
-                                  <em>Select category</em>
-                                </MenuItem>
-                                {expenseCategoryOptions.map(category => (
-                                  <MenuItem key={category} value={category}>
-                                    {category}
+                              })()}
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" fontWeight="medium">
+                                $
+                                {expense.amount.toLocaleString('en-US', {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" sx={{ maxWidth: 250 }}>
+                                {expense.description}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2">{expense.merchant}</Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" color="text.secondary">
+                                {expense.category}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2" fontWeight="medium" color="primary.main">
+                                {expense.client}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <FormControl size="small" sx={{ minWidth: 120 }}>
+                                <Select
+                                  value={selectedClients.get(expense.id) || ''}
+                                  onChange={e => handleClientSelection(expense.id, e.target.value)}
+                                  displayEmpty
+                                  disabled={loadingClientOptions || clientOptions.length === 0}
+                                >
+                                  <MenuItem value="">
+                                    <em>
+                                      {loadingClientOptions
+                                        ? 'Loading...'
+                                        : clientOptions.length === 0
+                                          ? 'No clients'
+                                          : 'Select client'}
+                                    </em>
                                   </MenuItem>
-                                ))}
-                              </Select>
-                            </FormControl>
-                          </TableCell>
-                          <TableCell>
-                            {expense.is_line_item &&
-                            expense.total_line_items &&
-                            expense.total_line_items > 1 ? (
-                              <Tooltip
-                                title={`Line item ${(expense.line_item_index || 0) + 1} of ${expense.total_line_items} (total: ${expense.total_amount ? `$${expense.total_amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'split expense'})`}
+                                  {clientOptions.sort().map(client => (
+                                    <MenuItem key={client} value={client}>
+                                      {client}
+                                    </MenuItem>
+                                  ))}
+                                </Select>
+                              </FormControl>
+                            </TableCell>
+                            <TableCell>
+                              <FormControl size="small" sx={{ minWidth: 150 }}>
+                                <Select
+                                  value={selectedExpenseCategories.get(expense.id) || ''}
+                                  onChange={e =>
+                                    handleExpenseCategorySelection(expense.id, e.target.value)
+                                  }
+                                  displayEmpty
+                                >
+                                  <MenuItem value="">
+                                    <em>Select category</em>
+                                  </MenuItem>
+                                  {expenseCategoryOptions.map(category => (
+                                    <MenuItem key={category} value={category}>
+                                      {category}
+                                    </MenuItem>
+                                  ))}
+                                </Select>
+                              </FormControl>
+                            </TableCell>
+                            <TableCell>
+                              {expense.is_line_item &&
+                              expense.total_line_items &&
+                              expense.total_line_items > 1 ? (
+                                <Tooltip
+                                  title={`Line item ${(expense.line_item_index || 0) + 1} of ${expense.total_line_items} (total: ${expense.total_amount ? `$${expense.total_amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'split expense'})`}
+                                >
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                    <CallSplit fontSize="small" color="info" />
+                                    <Typography variant="caption" color="text.secondary">
+                                      {(expense.line_item_index || 0) + 1}/
+                                      {expense.total_line_items}
+                                    </Typography>
+                                  </Box>
+                                </Tooltip>
+                              ) : null}
+                            </TableCell>
+                            <TableCell>
+                              <IconButton
+                                size="small"
+                                onClick={() => copyToClipboard(expense.raw_data)}
+                                title="Copy raw JSON data to clipboard"
                               >
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                  <CallSplit fontSize="small" color="info" />
-                                  <Typography variant="caption" color="text.secondary">
-                                    {(expense.line_item_index || 0) + 1}/{expense.total_line_items}
-                                  </Typography>
-                                </Box>
-                              </Tooltip>
-                            ) : null}
-                          </TableCell>
-                          <TableCell>
-                            <IconButton
-                              size="small"
-                              onClick={() => copyToClipboard(expense.raw_data)}
-                              title="Copy raw JSON data to clipboard"
-                            >
-                              <ContentCopy fontSize="small" />
-                            </IconButton>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                                <ContentCopy fontSize="small" />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </TableContainer>
