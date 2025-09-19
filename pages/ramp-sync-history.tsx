@@ -32,6 +32,7 @@ import {
   Schedule as PendingIcon,
   OpenInNew as OpenInNewIcon,
   Sync as SyncIcon,
+  Send as SlackIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { IntercomLayout } from '../components/layout/IntercomLayout';
@@ -141,6 +142,12 @@ const RampSyncHistory: React.FC = () => {
   const [totalCount, setTotalCount] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const pageSize = 25;
+
+  // Slack reminder state
+  const [sendingReminders, setSendingReminders] = useState<Set<string>>(new Set());
+  const [reminderMessages, setReminderMessages] = useState<
+    Record<string, { type: 'success' | 'error'; message: string } | undefined>
+  >({});
 
   useEffect(() => {
     if (token) {
@@ -253,6 +260,58 @@ const RampSyncHistory: React.FC = () => {
     setSyncMonth('');
     setStatus('');
     setPage(0);
+  };
+
+  const sendSlackReminder = async (user: UserMapping) => {
+    const userKey = user.ramp_user_id;
+    setSendingReminders(prev => new Set(prev).add(userKey));
+
+    // Clear any previous message
+    setReminderMessages(prev => {
+      const updated = { ...prev };
+      delete updated[userKey];
+      return updated;
+    });
+
+    try {
+      const response = await fetch('/api/ramp/slack-reminder', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ramp_user_email: user.ramp_user_email,
+          ramp_user_name: user.ramp_user_name,
+          sync_month: syncMonth,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setReminderMessages(prev => ({
+          ...prev,
+          [userKey]: { type: 'success', message: `Slack reminder sent to ${user.ramp_user_name}!` },
+        }));
+      } else {
+        setReminderMessages(prev => ({
+          ...prev,
+          [userKey]: { type: 'error', message: data.error || 'Failed to send reminder' },
+        }));
+      }
+    } catch (error) {
+      setReminderMessages(prev => ({
+        ...prev,
+        [userKey]: { type: 'error', message: 'Network error sending reminder' },
+      }));
+    } finally {
+      setSendingReminders(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(userKey);
+        return newSet;
+      });
+    }
   };
 
   // Helper to check if a sync is a re-sync (multiple successful syncs for same user/month)
@@ -375,42 +434,72 @@ const RampSyncHistory: React.FC = () => {
               </Box>
             ) : (
               <Grid container spacing={2}>
-                {getUsersWithoutSyncs(syncMonth).map(user => (
-                  <Grid item xs={12} sm={6} md={4} key={user.ramp_user_id}>
-                    <Card
-                      variant="outlined"
-                      sx={{ backgroundColor: 'warning.light', opacity: 0.8 }}
-                    >
-                      <CardContent sx={{ py: 2 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                          <ErrorIcon color="warning" fontSize="small" />
-                          <Typography variant="subtitle2" fontWeight="bold">
-                            {user.ramp_user_name}
+                {getUsersWithoutSyncs(syncMonth).map(user => {
+                  const userKey = user.ramp_user_id;
+                  const isLoading = sendingReminders.has(userKey);
+                  const reminderMessage = reminderMessages[userKey];
+
+                  return (
+                    <Grid item xs={12} sm={6} md={4} key={user.ramp_user_id}>
+                      <Card
+                        variant="outlined"
+                        sx={{ backgroundColor: 'warning.light', opacity: 0.8 }}
+                      >
+                        <CardContent sx={{ py: 2 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                            <ErrorIcon color="warning" fontSize="small" />
+                            <Typography variant="subtitle2" fontWeight="bold">
+                              {user.ramp_user_name}
+                            </Typography>
+                          </Box>
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            {user.ramp_user_email}
                           </Typography>
-                        </Box>
-                        <Typography variant="caption" color="text.secondary" display="block">
-                          {user.ramp_user_email}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" display="block">
-                          ID: {user.ramp_user_id}
-                        </Typography>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          color="warning"
-                          sx={{ mt: 1 }}
-                          onClick={() => {
-                            setTargetUserId(user.ramp_user_id);
-                            setSyncMonth('');
-                            setStatus('');
-                          }}
-                        >
-                          View User History
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            ID: {user.ramp_user_id}
+                          </Typography>
+
+                          {/* Reminder feedback */}
+                          {reminderMessage && (
+                            <Alert
+                              severity={reminderMessage.type}
+                              sx={{ mt: 1, py: 0, fontSize: '0.75rem' }}
+                            >
+                              {reminderMessage.message}
+                            </Alert>
+                          )}
+
+                          {/* Action buttons */}
+                          <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="warning"
+                              onClick={() => {
+                                setTargetUserId(user.ramp_user_id);
+                                setSyncMonth('');
+                                setStatus('');
+                              }}
+                            >
+                              View History
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="contained"
+                              color="primary"
+                              startIcon={isLoading ? undefined : <SlackIcon />}
+                              disabled={isLoading}
+                              onClick={() => sendSlackReminder(user)}
+                              sx={{ minWidth: '100px' }}
+                            >
+                              {isLoading ? 'Sending...' : 'Remind'}
+                            </Button>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  );
+                })}
               </Grid>
             )}
           </CardContent>
