@@ -103,6 +103,38 @@ const RampSyncHistory: React.FC = () => {
   const [syncMonth, setSyncMonth] = useState('');
   const [status, setStatus] = useState('');
 
+  // Generate last 12 months for dropdown
+  const getLast12Months = (): { value: string; label: string }[] => {
+    const months = [];
+    const currentDate = new Date();
+
+    for (let i = 0; i < 12; i++) {
+      const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
+      const value = format(date, 'yyyy-MM');
+      const label = format(date, 'MMMM yyyy');
+      months.push({ value, label });
+    }
+
+    return months;
+  };
+
+  // Get users who haven't synced for the selected month
+  const getUsersWithoutSyncs = (selectedMonth: string): UserMapping[] => {
+    if (!selectedMonth || !userMappings.length || !syncLogs.length) {
+      return [];
+    }
+
+    // Get all user IDs who have successfully synced for this month
+    const syncedUserIds = new Set(
+      syncLogs
+        .filter(log => log.sync_month === selectedMonth && log.status === 'success')
+        .map(log => log.target_user_id)
+    );
+
+    // Return users who don't have successful syncs for this month
+    return userMappings.filter(user => !syncedUserIds.has(user.ramp_user_id));
+  };
+
   // Pagination
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
@@ -320,6 +352,70 @@ const RampSyncHistory: React.FC = () => {
         </Grid>
       )}
 
+      {/* Missing Syncs Section */}
+      {syncMonth && (
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+            >
+              <ErrorIcon color="warning" />
+              Users Who Haven&apos;t Synced -{' '}
+              {getLast12Months().find(m => m.value === syncMonth)?.label}
+            </Typography>
+            {getUsersWithoutSyncs(syncMonth).length === 0 ? (
+              <Box sx={{ textAlign: 'center', py: 2 }}>
+                <SuccessIcon color="success" sx={{ fontSize: 40, mb: 1 }} />
+                <Typography variant="body1" color="success.main">
+                  All users have synced for this month! 🎉
+                </Typography>
+              </Box>
+            ) : (
+              <Grid container spacing={2}>
+                {getUsersWithoutSyncs(syncMonth).map(user => (
+                  <Grid item xs={12} sm={6} md={4} key={user.ramp_user_id}>
+                    <Card
+                      variant="outlined"
+                      sx={{ backgroundColor: 'warning.light', opacity: 0.8 }}
+                    >
+                      <CardContent sx={{ py: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                          <ErrorIcon color="warning" fontSize="small" />
+                          <Typography variant="subtitle2" fontWeight="bold">
+                            {user.ramp_user_name}
+                          </Typography>
+                        </Box>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          {user.ramp_user_email}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          ID: {user.ramp_user_id}
+                        </Typography>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="warning"
+                          sx={{ mt: 1 }}
+                          onClick={() => {
+                            setTargetUserId(user.ramp_user_id);
+                            setSyncMonth('');
+                            setStatus('');
+                          }}
+                        >
+                          View User History
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Filters */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
@@ -345,14 +441,21 @@ const RampSyncHistory: React.FC = () => {
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
-              <TextField
-                label="Sync Month (YYYY-MM)"
-                value={syncMonth}
-                onChange={e => setSyncMonth(e.target.value)}
-                placeholder="2025-01"
-                fullWidth
-                size="small"
-              />
+              <FormControl fullWidth size="small">
+                <InputLabel>Sync Month</InputLabel>
+                <Select
+                  value={syncMonth}
+                  label="Sync Month"
+                  onChange={e => setSyncMonth(e.target.value)}
+                >
+                  <MenuItem value="">All Months</MenuItem>
+                  {getLast12Months().map(month => (
+                    <MenuItem key={month.value} value={month.value}>
+                      {month.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
               <FormControl fullWidth size="small">
