@@ -42,6 +42,7 @@ import {
   IntercomCard,
   ToastProvider,
 } from 'components/ui';
+import AnimatedNumber from 'components/AnimatedNumber';
 import axios from 'axios';
 
 interface DashboardStats {
@@ -50,6 +51,8 @@ interface DashboardStats {
   activeClients: number;
   pbnSubmissions: number;
   superstarSites: number;
+  userPbnSubmissions: number;
+  userSuperstarSubmissions: number;
 }
 
 interface RecentActivity {
@@ -59,6 +62,7 @@ interface RecentActivity {
   description: string;
   timestamp: string;
   status?: string;
+  url?: string;
 }
 
 function DashboardContent() {
@@ -73,10 +77,14 @@ function DashboardContent() {
     activeClients: 0,
     pbnSubmissions: 0,
     superstarSites: 0,
+    userPbnSubmissions: 0,
+    userSuperstarSubmissions: 0,
   });
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [activityFading, setActivityFading] = useState(false);
 
   // Load dashboard data
   useEffect(() => {
@@ -85,6 +93,60 @@ function DashboardContent() {
     }
   }, [isValidUser, user]);
 
+  // Auto-rotate recent activity pages
+  useEffect(() => {
+    if (!isValidUser || loading) return;
+
+    const rotationInterval = setInterval(() => {
+      setCurrentPage(prevPage => {
+        const nextPage = prevPage === 1 ? 2 : 1;
+        fetchRecentActivity(nextPage, true); // Enable fade transition
+        return nextPage;
+      });
+    }, 15000); // Switch every 15 seconds
+
+    return () => clearInterval(rotationInterval);
+  }, [isValidUser, loading]);
+
+  const fetchRecentActivity = async (page: number = 1, withFade: boolean = false) => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('usertoken') : null;
+
+      if (!token) return;
+
+      // Start fade out if requested
+      if (withFade) {
+        setActivityFading(true);
+        // Wait for fade out animation
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+
+      const activityResponse = await axios.get('/api/dashboard/recent-activity', {
+        headers: {
+          'x-auth-token': token,
+        },
+        params: {
+          page,
+          limit: 5,
+        },
+      });
+
+      setRecentActivity(activityResponse.data);
+
+      // Start fade in if we faded out
+      if (withFade) {
+        setTimeout(() => {
+          setActivityFading(false);
+        }, 50);
+      }
+    } catch (error: any) {
+      console.error('Error fetching recent activity:', error);
+      if (withFade) {
+        setActivityFading(false);
+      }
+    }
+  };
+
   const fetchDashboardData = async () => {
     setLoading(true);
     setError(null);
@@ -92,59 +154,29 @@ function DashboardContent() {
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('usertoken') : null;
 
-      // For now, we'll use mock data. In production, this would be real API calls
-      // TODO: Replace with actual API endpoints
+      if (!token) {
+        setError('No authentication token found');
+        return;
+      }
 
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Mock stats data
-      setStats({
-        pendingApprovals: 12,
-        totalReports: 45,
-        activeClients: 8,
-        pbnSubmissions: 23,
-        superstarSites: 15,
+      // Fetch dashboard stats
+      const statsResponse = await axios.get('/api/dashboard/stats', {
+        headers: {
+          'x-auth-token': token,
+        },
       });
 
-      // Mock recent activity
-      setRecentActivity([
-        {
-          id: '1',
-          type: 'approval',
-          title: 'Content Review Required',
-          description: 'New approval request from TechCorp',
-          timestamp: '2 hours ago',
-          status: 'pending',
-        },
-        {
-          id: '2',
-          type: 'report',
-          title: 'Monthly Report Generated',
-          description: 'Performance analytics report completed',
-          timestamp: '4 hours ago',
-          status: 'completed',
-        },
-        {
-          id: '3',
-          type: 'pbn',
-          title: 'PBN Article Published',
-          description: 'Article submitted to wellness-blog.com',
-          timestamp: '1 day ago',
-          status: 'published',
-        },
-        {
-          id: '4',
-          type: 'superstar',
-          title: 'New Superstar Site Added',
-          description: 'premium-fitness.com added to network',
-          timestamp: '2 days ago',
-          status: 'active',
-        },
-      ]);
+      setStats(statsResponse.data);
+
+      // Fetch initial recent activity (page 1)
+      await fetchRecentActivity(1);
     } catch (error: any) {
       console.error('Error fetching dashboard data:', error);
-      setError('Failed to load dashboard data');
+      if (error.response?.status === 401) {
+        setError('Authentication failed. Please log in again.');
+      } else {
+        setError('Failed to load dashboard data');
+      }
     } finally {
       setLoading(false);
     }
@@ -235,38 +267,14 @@ function DashboardContent() {
         <Grid item xs={12} sm={6} md={2.4}>
           <IntercomCard>
             <CardContent sx={{ textAlign: 'center', py: 3 }}>
-              <PendingActionsIcon sx={{ fontSize: 48, color: 'warning.main', mb: 2 }} />
-              <Typography variant="h4" fontWeight="bold" gutterBottom>
-                {stats.pendingApprovals}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Pending Approvals
-              </Typography>
-            </CardContent>
-          </IntercomCard>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={2.4}>
-          <IntercomCard>
-            <CardContent sx={{ textAlign: 'center', py: 3 }}>
-              <AssessmentIcon sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
-              <Typography variant="h4" fontWeight="bold" gutterBottom>
-                {stats.totalReports}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Total Reports
-              </Typography>
-            </CardContent>
-          </IntercomCard>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={2.4}>
-          <IntercomCard>
-            <CardContent sx={{ textAlign: 'center', py: 3 }}>
               <PeopleIcon sx={{ fontSize: 48, color: 'secondary.main', mb: 2 }} />
-              <Typography variant="h4" fontWeight="bold" gutterBottom>
-                {stats.activeClients}
-              </Typography>
+              <AnimatedNumber
+                variant="h4"
+                fontWeight="bold"
+                gutterBottom
+                value={stats.activeClients}
+                delay={0}
+              />
               <Typography variant="body2" color="text.secondary">
                 Active Clients
               </Typography>
@@ -278,11 +286,15 @@ function DashboardContent() {
           <IntercomCard>
             <CardContent sx={{ textAlign: 'center', py: 3 }}>
               <ArticleIcon sx={{ fontSize: 48, color: 'success.main', mb: 2 }} />
-              <Typography variant="h4" fontWeight="bold" gutterBottom>
-                {stats.pbnSubmissions}
-              </Typography>
+              <AnimatedNumber
+                variant="h4"
+                fontWeight="bold"
+                gutterBottom
+                value={stats.pbnSubmissions}
+                delay={200}
+              />
               <Typography variant="body2" color="text.secondary">
-                PBN Submissions
+                Total PBN Posts
               </Typography>
             </CardContent>
           </IntercomCard>
@@ -292,11 +304,51 @@ function DashboardContent() {
           <IntercomCard>
             <CardContent sx={{ textAlign: 'center', py: 3 }}>
               <StarIcon sx={{ fontSize: 48, color: 'warning.main', mb: 2 }} />
-              <Typography variant="h4" fontWeight="bold" gutterBottom>
-                {stats.superstarSites}
-              </Typography>
+              <AnimatedNumber
+                variant="h4"
+                fontWeight="bold"
+                gutterBottom
+                value={stats.superstarSites}
+                delay={400}
+              />
               <Typography variant="body2" color="text.secondary">
                 Superstar Sites
+              </Typography>
+            </CardContent>
+          </IntercomCard>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={2.4}>
+          <IntercomCard>
+            <CardContent sx={{ textAlign: 'center', py: 3 }}>
+              <ArticleIcon sx={{ fontSize: 48, color: 'info.main', mb: 2 }} />
+              <AnimatedNumber
+                variant="h4"
+                fontWeight="bold"
+                gutterBottom
+                value={stats.userPbnSubmissions}
+                delay={600}
+              />
+              <Typography variant="body2" color="text.secondary">
+                Your PBN Posts
+              </Typography>
+            </CardContent>
+          </IntercomCard>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={2.4}>
+          <IntercomCard>
+            <CardContent sx={{ textAlign: 'center', py: 3 }}>
+              <StarIcon sx={{ fontSize: 48, color: 'secondary.main', mb: 2 }} />
+              <AnimatedNumber
+                variant="h4"
+                fontWeight="bold"
+                gutterBottom
+                value={stats.userSuperstarSubmissions}
+                delay={800}
+              />
+              <Typography variant="body2" color="text.secondary">
+                Your Superstar Posts
               </Typography>
             </CardContent>
           </IntercomCard>
@@ -372,23 +424,74 @@ function DashboardContent() {
               <Typography
                 variant="h6"
                 gutterBottom
-                sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  justifyContent: 'space-between',
+                }}
               >
-                <ScheduleIcon />
-                Recent Activity
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <ScheduleIcon />
+                  Recent Activity
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Box
+                    sx={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      backgroundColor: currentPage === 1 ? 'primary.main' : 'grey.300',
+                    }}
+                  />
+                  <Box
+                    sx={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      backgroundColor: currentPage === 2 ? 'primary.main' : 'grey.300',
+                    }}
+                  />
+                </Box>
               </Typography>
               <Divider sx={{ mb: 2 }} />
-              <List sx={{ py: 0 }}>
+              <List
+                sx={{
+                  py: 0,
+                  opacity: activityFading ? 0 : 1,
+                  transition: 'opacity 0.3s ease-in-out',
+                }}
+              >
                 {recentActivity.map((activity, index) => (
                   <React.Fragment key={activity.id}>
-                    <ListItem sx={{ px: 0, py: 1 }}>
+                    <ListItem
+                      sx={{
+                        px: 0,
+                        py: 1,
+                        cursor: activity.url ? 'pointer' : 'default',
+                        '&:hover': activity.url
+                          ? {
+                              backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                              borderRadius: 1,
+                            }
+                          : {},
+                        transition: 'background-color 0.2s ease',
+                      }}
+                      onClick={() =>
+                        activity.url && window.open(activity.url, '_blank', 'noopener,noreferrer')
+                      }
+                    >
                       <ListItemIcon sx={{ minWidth: 40 }}>
                         {getActivityIcon(activity.type)}
                       </ListItemIcon>
                       <ListItemText
                         primary={activity.title}
                         secondary={activity.description}
-                        primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 500 }}
+                        primaryTypographyProps={{
+                          fontSize: '0.875rem',
+                          fontWeight: 500,
+                          color: activity.url ? 'primary.main' : 'text.primary',
+                        }}
                         secondaryTypographyProps={{ fontSize: '0.75rem' }}
                       />
                       <Box textAlign="right">
@@ -399,7 +502,13 @@ function DashboardContent() {
                           <Chip
                             label={activity.status}
                             size="small"
-                            color={activity.status === 'pending' ? 'warning' : 'success'}
+                            color={
+                              activity.status === 'pending'
+                                ? 'warning'
+                                : activity.status === 'automated'
+                                  ? 'info'
+                                  : 'success'
+                            }
                             sx={{ mt: 0.5, ml: 1, fontSize: '0.6rem' }}
                           />
                         )}
