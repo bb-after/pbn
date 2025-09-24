@@ -58,6 +58,7 @@ import {
   History as HistoryIcon,
 } from '@mui/icons-material';
 import { tokens } from '../../theme/intercom-theme';
+import { keyframes } from '@mui/system';
 
 interface NavigationItem {
   id: string;
@@ -74,6 +75,13 @@ interface IntercomLayoutProps {
   breadcrumbs?: Array<{ label: string; href?: string }>;
   actions?: ReactNode;
 }
+
+// Subtle slide-and-pop-in animation for the "AI" label
+const aiPopIn = keyframes`
+  0% { opacity: 0; transform: translateX(-8px) scale(0.98); }
+  60% { opacity: 1; transform: translateX(0) scale(1.02); }
+  100% { opacity: 1; transform: translateX(0) scale(1); }
+`;
 
 const navigationItems: NavigationItem[] = [
   {
@@ -435,7 +443,20 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
             fontSize: '1.25rem',
           }}
         >
-          Status Approvals
+          Status{' '}
+          <Box
+            component="span"
+            sx={{
+              color: tokens.colors.primary[400],
+              display: 'inline-block',
+              opacity: 0,
+              animation: `${aiPopIn} 700ms cubic-bezier(0.22, 1, 0.36, 1) forwards`,
+              animationDelay: '1.8s',
+              willChange: 'transform, opacity',
+            }}
+          >
+            AI
+          </Box>
         </Typography>
       </Box>
 
