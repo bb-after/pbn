@@ -505,6 +505,21 @@ const RampExpenseSync: React.FC = () => {
 
     console.log('Extracting client from memo:', { memo, expenseClient });
 
+    // Handle Digital Status Limited with "Client: [ClientName]" pattern
+    if (expenseClient === 'Digital Status Limited') {
+      // Pattern: "Client: Summit Group" -> extract "Summit Group"
+      const clientMatch = memo.match(/Client:\s*([^,\n\r]+)/i);
+      if (clientMatch) {
+        const clientName = clientMatch[1].trim();
+        console.log('Extracted client from Digital Status Limited memo:', clientName);
+        return clientName;
+      }
+
+      // Fallback: if no "Client:" pattern found, return empty to avoid bad matches
+      console.log('No Client: pattern found in Digital Status Limited memo, returning empty');
+      return '';
+    }
+
     // Special patterns for Status Labs Deutschland
     if (expenseClient === 'Status Labs Deutschland') {
       // Pattern 1: "Jean-Claude Bastos" -> should map to "ORM Jean-Claude Bastos"
@@ -542,10 +557,14 @@ const RampExpenseSync: React.FC = () => {
           }
         }
       }
+
+      // If no patterns matched for Status Labs Deutschland, return empty
+      console.log('No patterns matched for Status Labs Deutschland, returning empty');
+      return '';
     }
 
-    // For other special cases, return the full memo for now
-    return memo;
+    // For other cases, return empty to be conservative
+    return '';
   };
 
   const findBestClientMatch = (expense: RampExpense, clientOptions: string[]): string => {
@@ -573,15 +592,24 @@ const RampExpenseSync: React.FC = () => {
 
     let searchTerm: string;
     if (memoBasedSpecialCases.includes(expense.client)) {
-      // For Status Labs Deutschland, extract client name from memo
+      // For memo-based special cases, extract client name from memo
       searchTerm = extractClientFromMemo(expense.description, expense.client);
+      console.log('Extracted search term from memo:', searchTerm);
+
+      // If extraction failed or returned the full memo, return empty to avoid bad matches
+      if (!searchTerm || searchTerm === expense.description || searchTerm.length < 3) {
+        console.log('Memo extraction failed, falling back to **Special Projects');
+        const specialProjectsMatch = clientOptions.find(option =>
+          option.includes('**Special Projects')
+        );
+        return specialProjectsMatch || '';
+      }
     } else {
       searchTerm = expense.client;
     }
 
     if (!searchTerm || searchTerm === 'No client') {
       console.log('No search term, checking for **Special Projects fallback');
-      // Fallback to **Special Projects if no client found
       const specialProjectsMatch = clientOptions.find(option =>
         option.includes('**Special Projects')
       );
@@ -597,28 +625,48 @@ const RampExpenseSync: React.FC = () => {
       return exactMatch;
     }
 
-    // For special cases (memo-based searches), be more conservative with fuzzy matching
-    // Only try contains matching if search term is reasonably specific (more than 5 chars)
-    if (!memoBasedSpecialCases.includes(expense.client) || searchTerm.length > 5) {
-      // Try fuzzy matching - find option that contains the search term
-      const containsMatch = clientOptions.find(
-        option =>
-          option.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          searchTerm.toLowerCase().includes(option.toLowerCase())
-      );
+    // For memo-based special cases, try a more targeted contains match
+    if (memoBasedSpecialCases.includes(expense.client)) {
+      // Look for options that contain the search term (case-insensitive)
+      const containsMatch = clientOptions.find(option => {
+        const optionLower = option.toLowerCase();
+        const searchLower = searchTerm.toLowerCase();
+        return (
+          optionLower.includes(searchLower) ||
+          // Also try matching if the search term contains words from the option
+          searchLower.split(' ').some(word => word.length > 2 && optionLower.includes(word))
+        );
+      });
+
       if (containsMatch) {
-        console.log('Found contains match:', containsMatch);
+        console.log('Found memo-based contains match:', containsMatch);
         return containsMatch;
       }
+
+      // If no contains match found for memo-based cases, leave unmapped (return empty)
+      // This prevents bad auto-mapping and lets user manually select
+      console.log('No contains match for memo-based case, leaving unmapped for manual selection');
+      return '';
     }
 
-    // Try word-based matching (split by spaces and find common words)
+    // For regular client names (not memo-based), try fuzzy matching
+    const containsMatch = clientOptions.find(
+      option =>
+        option.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        searchTerm.toLowerCase().includes(option.toLowerCase())
+    );
+    if (containsMatch) {
+      console.log('Found contains match:', containsMatch);
+      return containsMatch;
+    }
+
+    // Try word-based matching for regular clients only (not memo-based special cases)
     const searchWords = searchTerm
       .toLowerCase()
       .split(' ')
       .filter(
         word =>
-          word.length > 3 && // Increase minimum word length to avoid false matches
+          word.length > 3 &&
           ![
             'the',
             'and',
@@ -631,12 +679,15 @@ const RampExpenseSync: React.FC = () => {
             'will',
             'been',
             'were',
-          ].includes(word) // Filter out common words
+          ].includes(word)
       );
 
     if (searchWords.length === 0) {
-      console.log('No valid search words, returning empty');
-      return '';
+      console.log('No valid search words, using **Special Projects fallback');
+      const specialProjectsMatch = clientOptions.find(option =>
+        option.includes('**Special Projects')
+      );
+      return specialProjectsMatch || '';
     }
 
     let bestMatch = '';
@@ -645,34 +696,17 @@ const RampExpenseSync: React.FC = () => {
     for (const option of clientOptions) {
       const optionWords = option.toLowerCase().split(' ');
       let score = 0;
-      let significantMatches = 0;
 
-      // Count how many search words are found in the option
+      // Count exact word matches only
       for (const searchWord of searchWords) {
-        const foundMatch = optionWords.some(
-          optionWord => optionWord.includes(searchWord) || searchWord.includes(optionWord)
-        );
-
-        if (foundMatch) {
-          score++;
-          // Give extra weight to longer, more distinctive words
-          if (searchWord.length >= 5) {
-            score += 2; // Bonus for distinctive words like "armistice"
-            significantMatches++;
-          }
+        if (optionWords.some(optionWord => optionWord === searchWord)) {
+          score += 1;
         }
       }
 
       // Bonus points if the option starts with the search term
       if (option.toLowerCase().startsWith(searchTerm.toLowerCase())) {
-        score += 3;
-      }
-
-      // Special bonus for exact word matches (case-insensitive)
-      for (const searchWord of searchWords) {
-        if (optionWords.some(optionWord => optionWord === searchWord)) {
-          score += 1; // Exact word match bonus
-        }
+        score += 2;
       }
 
       if (score > bestScore) {
@@ -681,24 +715,13 @@ const RampExpenseSync: React.FC = () => {
       }
     }
 
-    // Dynamic minimum score based on search term quality
-    let minScore;
-    if (memoBasedSpecialCases.includes(expense.client)) {
-      // For special cases (memo-based), be more flexible if we have a significant word match
-      const hasSignificantWord = searchWords.some(word => word.length >= 5);
-      minScore = hasSignificantWord ? 3 : 2; // Lower threshold if we have a distinctive word like "armistice"
-    } else {
-      minScore = 1;
-    }
-
-    const result = bestScore >= minScore ? bestMatch : '';
+    // Require at least one exact word match to prevent weak matches
+    const result = bestScore >= 1 ? bestMatch : '';
 
     console.log('Word-based matching result:', {
       searchWords,
-      hasSignificantWords: searchWords.filter(w => w.length >= 5),
       bestMatch,
       bestScore,
-      minScore,
       result,
     });
 
@@ -723,14 +746,27 @@ const RampExpenseSync: React.FC = () => {
       // Only auto-map if not already mapped
       if (!newSelectedClients.has(expense.id)) {
         const bestMatch = findBestClientMatch(expense, clientOptions);
-        if (bestMatch) {
-          newSelectedClients.set(expense.id, bestMatch);
+        console.log(
+          `Auto-mapping expense ${expense.id}: "${expense.client}" with memo "${expense.description}" -> "${bestMatch}"`
+        );
+
+        // Only set the mapping if we found a valid match (not empty string)
+        if (bestMatch && bestMatch.trim()) {
+          // Verify the bestMatch actually exists in clientOptions to prevent invalid selections
+          if (clientOptions.includes(bestMatch)) {
+            newSelectedClients.set(expense.id, bestMatch);
+          } else {
+            console.warn(
+              `Best match "${bestMatch}" not found in client options. Available options:`,
+              clientOptions
+            );
+          }
         }
       }
     }
 
     setSelectedClients(newSelectedClients);
-    console.log('Auto-mapped clients:', Object.fromEntries(newSelectedClients));
+    console.log('Auto-mapped clients result:', Object.fromEntries(newSelectedClients));
   };
 
   const findBestCategoryMatch = (expense: RampExpense): string => {
