@@ -343,19 +343,24 @@ export default function GeoAnalysisForm({
           </Grid>
 
           <Grid item xs={12}>
-            <FormControl fullWidth margin="normal" required>
-              <InputLabel>AI Engines</InputLabel>
+            <FormControl
+              fullWidth
+              margin="normal"
+              required
+              error={data.selectedEngines.length === 0}
+            >
+              <InputLabel>AI Engines *</InputLabel>
               <Select
                 multiple
                 value={data.selectedEngines}
                 onChange={handleEngineChange}
-                input={<OutlinedInput label="AI Engines" />}
+                input={<OutlinedInput label="AI Engines *" />}
                 disabled={disabled}
                 renderValue={selected => (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                     {selected.length === dataSources.length ? (
                       <Chip key="all" label="ALL ENGINES" size="small" />
-                    ) : (
+                    ) : selected.length > 0 ? (
                       selected.map(value => {
                         const engine = dataSources.find(ds => ds.id === value);
                         return (
@@ -366,6 +371,10 @@ export default function GeoAnalysisForm({
                           />
                         );
                       })
+                    ) : (
+                      <Box sx={{ color: 'text.secondary', fontStyle: 'italic' }}>
+                        Select AI models to run your analysis
+                      </Box>
                     )}
                   </Box>
                 )}
@@ -389,6 +398,15 @@ export default function GeoAnalysisForm({
                   </MenuItem>
                 ))}
               </Select>
+              <Typography
+                variant="caption"
+                color={data.selectedEngines.length === 0 ? 'error' : 'text.secondary'}
+                sx={{ mt: 0.5, mx: 1.5 }}
+              >
+                {data.selectedEngines.length === 0
+                  ? '⚠️ You must select at least one AI engine to run your analysis'
+                  : `${data.selectedEngines.length} AI engine${data.selectedEngines.length === 1 ? '' : 's'} selected - Your analysis will run on all selected engines`}
+              </Typography>
             </FormControl>
           </Grid>
         </Grid>

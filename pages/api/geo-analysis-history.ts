@@ -9,18 +9,21 @@ const dbConfig = {
   database: process.env.DB_DATABASE,
 };
 
-// Get user ID from token
+// Get user ID and role from token
 const getUserFromToken = async (
   userToken: string
-): Promise<{ id: number; name: string } | null> => {
+): Promise<{ id: number; name: string; role: string } | null> => {
   const connection = await mysql.createConnection(dbConfig);
 
   try {
-    const [rows] = await connection.execute('SELECT id, name FROM users WHERE user_token = ?', [
-      userToken,
-    ]);
+    const [rows] = await connection.execute(
+      'SELECT id, name, role FROM users WHERE user_token = ?',
+      [userToken]
+    );
     const users = rows as any[];
-    return users.length > 0 ? { id: users[0].id, name: users[0].name } : null;
+    return users.length > 0
+      ? { id: users[0].id, name: users[0].name, role: users[0].role || 'staff' }
+      : null;
   } finally {
     await connection.end();
   }
@@ -54,17 +57,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: 'Invalid user token' });
     }
 
-    // Build dynamic query - filter by user_id first
+    // Build dynamic query - admins see all, regular users see only their own
     let query = `
       SELECT 
         id, client_name, keyword, analysis_type, intent_category, 
         custom_prompt, results, aggregated_insights, selected_engine_ids, 
-        timestamp, created_at
+        timestamp, created_at, user_id
       FROM geo_analysis_results
-      WHERE user_id = ?
     `;
-    const params: any[] = [userInfo.id];
-    let paramCount = 1;
+    const params: any[] = [];
+    let paramCount = 0;
+
+    // Non-admin users can only see their own analyses
+    if (userInfo.role !== 'admin') {
+      query += ` WHERE user_id = ?`;
+      params.push(userInfo.id);
+      paramCount = 1;
+    } else {
+      // Admin sees all analyses - no user filter
+      query += ` WHERE 1=1`;
+    }
 
     // Add filters
     if (client_name) {
@@ -117,10 +129,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const [result] = await connection.execute(query, params);
     console.log('Raw database result count:', (result as any[]).length);
 
-    // Get total count for pagination - filter by user_id first
-    let countQuery = `SELECT COUNT(*) as count FROM geo_analysis_results WHERE user_id = ?`;
-    const countParams: any[] = [userInfo.id];
-    let countParamCount = 1;
+    // Get total count for pagination - admins see all, regular users see only their own
+    let countQuery = `SELECT COUNT(*) as count FROM geo_analysis_results`;
+    const countParams: any[] = [];
+    let countParamCount = 0;
+
+    // Non-admin users can only see their own analyses
+    if (userInfo.role !== 'admin') {
+      countQuery += ` WHERE user_id = ?`;
+      countParams.push(userInfo.id);
+      countParamCount = 1;
+    } else {
+      // Admin sees all analyses - no user filter
+      countQuery += ` WHERE 1=1`;
+    }
 
     // Apply same filters to count query
     if (client_name) {

@@ -425,6 +425,29 @@ export default function GeoScheduler() {
         </Alert>
       )}
 
+      {/* Validation Alert */}
+      {(!formData.clientName.trim() ||
+        !formData.keyword.trim() ||
+        !formData.intentCategory ||
+        formData.selectedEngines.length === 0) && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          <Typography variant="body2" component="div">
+            <strong>Please complete the following required fields:</strong>
+            <Box component="ul" sx={{ mt: 1, mb: 0, pl: 3 }}>
+              {!formData.clientName.trim() && <li>Client Name is required</li>}
+              {!formData.keyword.trim() && <li>Keyword is required</li>}
+              {!formData.intentCategory && <li>Intent Category must be selected</li>}
+              {formData.selectedEngines.length === 0 && (
+                <li>
+                  <strong>AI Engines must be selected</strong> - Choose which AI models to use for
+                  analysis
+                </li>
+              )}
+            </Box>
+          </Typography>
+        </Alert>
+      )}
+
       <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2 }}>
         {editingId && (
           <Button

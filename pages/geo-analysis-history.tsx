@@ -47,6 +47,7 @@ interface AnalysisHistory {
   selected_engine_ids: number[];
   timestamp: string;
   created_at: string;
+  user_id?: number;
 }
 
 interface PaginationInfo {
@@ -175,6 +176,12 @@ export default function GeoAnalysisHistory() {
       breadcrumbs={[{ label: 'GEO' }, { label: 'GEO History' }]}
     >
       <Box sx={{ maxWidth: 1400, margin: '0 auto' }}>
+        {user?.role === 'admin' && (
+          <Alert severity="info" sx={{ mb: 3 }}>
+            <strong>Admin View:</strong> You can see all GEO analyses from all users. Regular users
+            only see their own analyses.
+          </Alert>
+        )}
         {/* Filters */}
         <Card sx={{ mb: 4 }}>
           <CardContent>
@@ -288,6 +295,7 @@ export default function GeoAnalysisHistory() {
                     <TableCell>Keyword</TableCell>
                     <TableCell>Type</TableCell>
                     <TableCell>Category</TableCell>
+                    {user?.role === 'admin' && <TableCell>User</TableCell>}
                     <TableCell>Engines</TableCell>
                     <TableCell>Created</TableCell>
                     <TableCell>Actions</TableCell>
@@ -323,6 +331,13 @@ export default function GeoAnalysisHistory() {
                             .join(' ')}
                         </Typography>
                       </TableCell>
+                      {user?.role === 'admin' && (
+                        <TableCell>
+                          <Typography variant="body2" color="text.secondary">
+                            User ID: {analysis.user_id}
+                          </Typography>
+                        </TableCell>
+                      )}
                       <TableCell>
                         <Typography variant="body2">
                           {analysis.selected_engine_ids.length} engines

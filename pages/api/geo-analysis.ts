@@ -90,6 +90,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
       const connection = await mysql.createConnection(dbConfig);
 
+      // Save to new geo_check_results table
+      await connection.execute(
+        `INSERT INTO geo_check_results (
+          user_id, keyword, analysis_type, intent_category, custom_prompt,
+          selected_engine_ids, results, aggregated_insights, timestamp
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          userInfo.id,
+          keyword,
+          analysisType,
+          intentCategory,
+          customPrompt,
+          JSON.stringify(selectedEngineIds),
+          JSON.stringify(result.results),
+          JSON.stringify(result.aggregatedInsights),
+          result.timestamp,
+        ]
+      );
+
+      // Also save to legacy geo_analysis_results table for backward compatibility
       await connection.execute(
         `INSERT INTO geo_analysis_results (
           user_id, client_name, keyword, analysis_type, intent_category, custom_prompt,

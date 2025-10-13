@@ -6,6 +6,24 @@ function cleanTitle(title: string): string {
 
   let cleaned = title;
 
+  // Pattern 0: Handle multiple title suggestions - extract first actual title
+  // Match patterns like "Here are X title options:" or "Primary SEO-friendly title:"
+  const multiTitlePatterns = [
+    /Here are \w+ SEO-friendly title options[^:]*:\s*\n*\s*(?:\d+[.)]\s*)?(.+?)(?:\n|$)/i,
+    /Here are \w+ title options[^:]*:\s*\n*\s*(?:\d+[.)]\s*)?(.+?)(?:\n|$)/i,
+    /Primary SEO-friendly title:\s*\n*\s*(.+?)(?:\n|$)/i,
+    /Recommendation:\s*\d+[.)]\s*(.+?)(?:\n|$)/i,
+    /(?:pick one|choose|select)[^:]*:\s*\n*\s*(?:\d+[.)]\s*)?(.+?)(?:\n|$)/i,
+  ];
+
+  for (const pattern of multiTitlePatterns) {
+    const match = cleaned.match(pattern);
+    if (match) {
+      cleaned = match[1].trim();
+      break;
+    }
+  }
+
   // Pattern 1: Remove numbered list format like "1. "Title""
   cleaned = cleaned.replace(/^\d+\.\s*"(.+)"$/, '$1');
 
