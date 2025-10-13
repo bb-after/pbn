@@ -342,10 +342,14 @@ export const callOpenAISuperstarVersion = async (inputData: any) => {
 
     // Second request to generate SEO-friendly blog title
     const seoTitleMessage = [
-      { role: 'system', content: 'You are an assistant that generates SEO-friendly blog titles.' },
+      {
+        role: 'system',
+        content:
+          'You are an assistant that generates SEO-friendly blog titles. Always return exactly one definitive title without any prefacing text, options, or explanations.',
+      },
       {
         role: 'user',
-        content: `Generate an SEO-friendly blog title for the following content: ${content}`,
+        content: `Generate a single SEO-friendly blog title for the following content. Return only the title itself with no additional text, formatting, or suggestions: ${content}`,
       },
     ];
 

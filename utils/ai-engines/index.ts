@@ -233,8 +233,8 @@ const engineFunctions = {
 
 export async function analyzeKeywordWithEngines(
   keyword: string,
-  clientName: string,
-  selectedEngineIds: number[],
+  clientName?: string,
+  selectedEngineIds?: number[],
   customPrompt?: string,
   analysisType?: 'brand' | 'individual',
   intentCategory?: string
@@ -242,7 +242,13 @@ export async function analyzeKeywordWithEngines(
   const results: AIEngineResult[] = [];
   const dataSources = getAllDataSources();
 
-  const enginePromises = selectedEngineIds.map(async engineId => {
+  // Default to all active engines if none specified
+  const engineIds =
+    selectedEngineIds && selectedEngineIds.length > 0
+      ? selectedEngineIds
+      : dataSources.filter(ds => ds.isActive).map(ds => ds.id);
+
+  const enginePromises = engineIds.map(async engineId => {
     try {
       const engineFunction = engineFunctions[engineId as keyof typeof engineFunctions];
       if (!engineFunction) {
@@ -285,7 +291,7 @@ export async function analyzeKeywordWithEngines(
 
   return {
     keyword,
-    clientName,
+    clientName: clientName || '',
     results,
     aggregatedInsights,
     timestamp: new Date(),

@@ -20,6 +20,8 @@
     "geo-scheduler": "NODE_ENV=production npx ts-node scripts/scheduledGeoAnalysis.ts",
     "geo-scheduler:dev": "NODE_ENV=development npx ts-node scripts/scheduledGeoAnalysis.ts",
     "fix-schedule-engine-ids": "NODE_ENV=development npx ts-node scripts/fixScheduleEngineIds.ts",
+    "fix-titles": "NODE_ENV=development npx ts-node scripts/fixSuperstarTitles.ts",
+    "fix-titles-auto": "NODE_ENV=development npx ts-node scripts/fixSuperstarTitlesAuto.ts",
     "test-scheduler": "NODE_ENV=development npx ts-node scripts/testScheduler.ts"
   },
   "dependencies": {

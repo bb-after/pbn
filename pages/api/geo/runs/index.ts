@@ -8,14 +8,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const limit = Math.min(parseInt(String(req.query.limit || '25'), 10) || 25, 100);
 
     const [rows] = await query<any[]>(
-      `SELECT r.run_id, r.run_date, r.triggered_by,
-              si.selection_item_id, s.selection_id, s.client_name, s.keyword,
+      `SELECT r.run_id, r.run_date, r.triggered_by, r.created_at,
+              si.selection_item_id, s.selection_id, s.client_name, s.keyword, s.created_at as selection_created_at,
               p.prompt_id, p.base_text,
               COUNT(rr.result_id) as engines_count,
               AVG(rr.visibility_score) as avg_visibility_score,
               AVG(rr.average_position) as avg_position,
               AVG(rr.citation_share) as avg_citation_share,
-              SUM(rr.mentions) as total_mentions
+              SUM(rr.mentions) as total_mentions,
+              CASE 
+                WHEN COUNT(rr.result_id) = 0 THEN
+                  CASE 
+                    WHEN r.run_date = CURDATE() THEN DATE_ADD(NOW(), INTERVAL 1 HOUR)
+                    ELSE DATE_ADD(CONCAT(r.run_date, ' 09:00:00'), INTERVAL 
+                      CASE DAYOFWEEK(r.run_date)
+                        WHEN 1 THEN 1 -- Sunday -> Monday
+                        WHEN 7 THEN 2 -- Saturday -> Monday  
+                        ELSE 1 -- Weekdays -> next day
+                      END DAY)
+                  END
+                ELSE NULL
+              END as estimated_next_run
        FROM geo_prompt_runs r
        JOIN geo_prompt_selection_items si ON si.selection_item_id = r.selection_item_id
        JOIN geo_prompt_selections s ON s.selection_id = si.selection_id

@@ -39,6 +39,7 @@ import { ContentCopy, CallSplit } from '@mui/icons-material';
 import { IconButton, Tooltip } from '@mui/material';
 import useValidateUserToken from '../hooks/useValidateUserToken';
 import UnauthorizedAccess from '../components/UnauthorizedAccess';
+import { findBestClientMatch, autoMapClients } from '../utils/rampClientMapping';
 
 interface User {
   id: string;
@@ -110,6 +111,10 @@ const RampExpenseSync: React.FC = () => {
   const [selectedClients, setSelectedClients] = useState<Map<string, string>>(new Map());
   const [loadingClientOptions, setLoadingClientOptions] = useState<boolean>(false);
   const [selectedExpenseCategories, setSelectedExpenseCategories] = useState<Map<string, string>>(
+    new Map()
+  );
+  const [profilesAmounts, setProfilesAmounts] = useState<Map<string, number>>(new Map());
+  const [prepaidPlacementsAmounts, setPrepaidPlacementsAmounts] = useState<Map<string, number>>(
     new Map()
   );
   const [sortBy, setSortBy] = useState<keyof RampExpense>('date');
@@ -189,6 +194,8 @@ const RampExpenseSync: React.FC = () => {
     } else {
       setExpenses([]);
       setSelectedExpenseIds(new Set());
+      setProfilesAmounts(new Map());
+      setPrepaidPlacementsAmounts(new Map());
     }
   }, [selectedUser, selectedMonth]);
 
@@ -203,7 +210,7 @@ const RampExpenseSync: React.FC = () => {
   useEffect(() => {
     // Auto-map clients when both client options and expenses are available
     if (clientOptions.length > 0 && expenses.length > 0) {
-      autoMapClients();
+      autoMapClientsHandler();
     }
   }, [clientOptions, expenses]);
 
@@ -500,271 +507,14 @@ const RampExpenseSync: React.FC = () => {
     setSelectedClients(newSelectedClients);
   };
 
-  const extractClientFromMemo = (memo: string, expenseClient: string): string => {
-    if (!memo) return '';
+  // extractClientFromMemo function is now imported from utils/rampClientMapping
 
-    console.log('Extracting client from memo:', { memo, expenseClient });
+  // findBestClientMatch is now imported from utils/rampClientMapping
 
-    // Handle Digital Status Limited with "Client: [ClientName]" pattern
-    if (expenseClient === 'Digital Status Limited') {
-      // Pattern: "Client: Summit Group" -> extract "Summit Group"
-      const clientMatch = memo.match(/Client:\s*([^,\n\r]+)/i);
-      if (clientMatch) {
-        const clientName = clientMatch[1].trim();
-        console.log('Extracted client from Digital Status Limited memo:', clientName);
-        return clientName;
-      }
-
-      // Fallback: if no "Client:" pattern found, return empty to avoid bad matches
-      console.log('No Client: pattern found in Digital Status Limited memo, returning empty');
-      return '';
-    }
-
-    // Special patterns for Status Labs Deutschland
-    if (expenseClient === 'Status Labs Deutschland') {
-      // Pattern 1: "Jean-Claude Bastos" -> should map to "ORM Jean-Claude Bastos"
-      if (memo.toLowerCase().includes('jean-claude bastos')) {
-        return 'ORM Jean-Claude Bastos';
-      }
-
-      // Pattern 2: "Läderach Content (German + Swiss)" -> should map to "ORM Läderach"
-      if (memo.toLowerCase().includes('läderach')) {
-        return 'ORM Läderach';
-      }
-
-      // Pattern 3: Extract ORM client names - look for common patterns
-      // "ORM [ClientName]" or "[ClientName] ORM" patterns
-      const ormMatch = memo.match(/ORM\s+([^-\(\)]+)|([^-\(\)]+)\s+ORM/i);
-      if (ormMatch) {
-        const clientName = (ormMatch[1] || ormMatch[2] || '').trim();
-        if (clientName && clientName.length > 2) {
-          return `ORM ${clientName}`;
-        }
-      }
-
-      // Pattern 4: Look for specific keywords that indicate client names
-      const clientKeywords = ['content', 'reputation', 'wiki', 'seo', 'pr'];
-      const words = memo.toLowerCase().split(/[\s\-\(\)]+/);
-
-      for (const word of words) {
-        // Skip common words and focus on potential client names
-        if (word.length > 3 && !clientKeywords.includes(word) && !word.match(/^\d+$/)) {
-          // Capitalize first letter and try as ORM client
-          const potentialClient = word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-          if (potentialClient !== 'German' && potentialClient !== 'Swiss') {
-            console.log('Potential ORM client extracted:', `ORM ${potentialClient}`);
-            return `ORM ${potentialClient}`;
-          }
-        }
-      }
-
-      // If no patterns matched for Status Labs Deutschland, return empty
-      console.log('No patterns matched for Status Labs Deutschland, returning empty');
-      return '';
-    }
-
-    // For other cases, return empty to be conservative
-    return '';
-  };
-
-  const findBestClientMatch = (expense: RampExpense, clientOptions: string[]): string => {
-    if (clientOptions.length === 0) return '';
-
-    console.log('Client mapping debug:', {
-      expenseId: expense.id,
-      originalClient: expense.client,
-      memo: expense.description,
-    });
-
-    // Special case: Status Labs always maps to **Special Projects
-    if (expense.client === 'Status Labs') {
-      const specialProjectsMatch = clientOptions.find(option =>
-        option.includes('**Special Projects')
-      );
-      if (specialProjectsMatch) {
-        console.log('Status Labs mapped to Special Projects:', specialProjectsMatch);
-        return specialProjectsMatch;
-      }
-    }
-
-    // Special cases for memo-based mapping (excluding Status Labs)
-    const memoBasedSpecialCases = ['Digital Status Limited', 'Status Labs Deutschland'];
-
-    let searchTerm: string;
-    if (memoBasedSpecialCases.includes(expense.client)) {
-      // For memo-based special cases, extract client name from memo
-      searchTerm = extractClientFromMemo(expense.description, expense.client);
-      console.log('Extracted search term from memo:', searchTerm);
-
-      // If extraction failed or returned the full memo, return empty to avoid bad matches
-      if (!searchTerm || searchTerm === expense.description || searchTerm.length < 3) {
-        console.log('Memo extraction failed, falling back to **Special Projects');
-        const specialProjectsMatch = clientOptions.find(option =>
-          option.includes('**Special Projects')
-        );
-        return specialProjectsMatch || '';
-      }
-    } else {
-      searchTerm = expense.client;
-    }
-
-    if (!searchTerm || searchTerm === 'No client') {
-      console.log('No search term, checking for **Special Projects fallback');
-      const specialProjectsMatch = clientOptions.find(option =>
-        option.includes('**Special Projects')
-      );
-      return specialProjectsMatch || '';
-    }
-
-    // Try exact match first
-    const exactMatch = clientOptions.find(
-      option => option.toLowerCase() === searchTerm.toLowerCase()
-    );
-    if (exactMatch) {
-      console.log('Found exact match:', exactMatch);
-      return exactMatch;
-    }
-
-    // For memo-based special cases, try a more targeted contains match
-    if (memoBasedSpecialCases.includes(expense.client)) {
-      // Look for options that contain the search term (case-insensitive)
-      const containsMatch = clientOptions.find(option => {
-        const optionLower = option.toLowerCase();
-        const searchLower = searchTerm.toLowerCase();
-        return (
-          optionLower.includes(searchLower) ||
-          // Also try matching if the search term contains words from the option
-          searchLower.split(' ').some(word => word.length > 2 && optionLower.includes(word))
-        );
-      });
-
-      if (containsMatch) {
-        console.log('Found memo-based contains match:', containsMatch);
-        return containsMatch;
-      }
-
-      // If no contains match found for memo-based cases, leave unmapped (return empty)
-      // This prevents bad auto-mapping and lets user manually select
-      console.log('No contains match for memo-based case, leaving unmapped for manual selection');
-      return '';
-    }
-
-    // For regular client names (not memo-based), try fuzzy matching
-    const containsMatch = clientOptions.find(
-      option =>
-        option.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        searchTerm.toLowerCase().includes(option.toLowerCase())
-    );
-    if (containsMatch) {
-      console.log('Found contains match:', containsMatch);
-      return containsMatch;
-    }
-
-    // Try word-based matching for regular clients only (not memo-based special cases)
-    const searchWords = searchTerm
-      .toLowerCase()
-      .split(' ')
-      .filter(
-        word =>
-          word.length > 3 &&
-          ![
-            'the',
-            'and',
-            'for',
-            'with',
-            'from',
-            'that',
-            'this',
-            'have',
-            'will',
-            'been',
-            'were',
-          ].includes(word)
-      );
-
-    if (searchWords.length === 0) {
-      console.log('No valid search words, using **Special Projects fallback');
-      const specialProjectsMatch = clientOptions.find(option =>
-        option.includes('**Special Projects')
-      );
-      return specialProjectsMatch || '';
-    }
-
-    let bestMatch = '';
-    let bestScore = 0;
-
-    for (const option of clientOptions) {
-      const optionWords = option.toLowerCase().split(' ');
-      let score = 0;
-
-      // Count exact word matches only
-      for (const searchWord of searchWords) {
-        if (optionWords.some(optionWord => optionWord === searchWord)) {
-          score += 1;
-        }
-      }
-
-      // Bonus points if the option starts with the search term
-      if (option.toLowerCase().startsWith(searchTerm.toLowerCase())) {
-        score += 2;
-      }
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestMatch = option;
-      }
-    }
-
-    // Require at least one exact word match to prevent weak matches
-    const result = bestScore >= 1 ? bestMatch : '';
-
-    console.log('Word-based matching result:', {
-      searchWords,
-      bestMatch,
-      bestScore,
-      result,
-    });
-
-    // If no match found, fallback to **Special Projects
-    if (!result) {
-      console.log('No match found, falling back to **Special Projects');
-      const specialProjectsMatch = clientOptions.find(option =>
-        option.includes('**Special Projects')
-      );
-      return specialProjectsMatch || '';
-    }
-
-    return result;
-  };
-
-  const autoMapClients = () => {
+  const autoMapClientsHandler = () => {
     if (clientOptions.length === 0 || expenses.length === 0) return;
 
-    const newSelectedClients = new Map(selectedClients);
-
-    for (const expense of expenses) {
-      // Only auto-map if not already mapped
-      if (!newSelectedClients.has(expense.id)) {
-        const bestMatch = findBestClientMatch(expense, clientOptions);
-        console.log(
-          `Auto-mapping expense ${expense.id}: "${expense.client}" with memo "${expense.description}" -> "${bestMatch}"`
-        );
-
-        // Only set the mapping if we found a valid match (not empty string)
-        if (bestMatch && bestMatch.trim()) {
-          // Verify the bestMatch actually exists in clientOptions to prevent invalid selections
-          if (clientOptions.includes(bestMatch)) {
-            newSelectedClients.set(expense.id, bestMatch);
-          } else {
-            console.warn(
-              `Best match "${bestMatch}" not found in client options. Available options:`,
-              clientOptions
-            );
-          }
-        }
-      }
-    }
-
+    const newSelectedClients = autoMapClients(expenses, clientOptions, selectedClients);
     setSelectedClients(newSelectedClients);
     console.log('Auto-mapped clients result:', Object.fromEntries(newSelectedClients));
   };
@@ -835,6 +585,30 @@ const RampExpenseSync: React.FC = () => {
 
     setSelectedExpenseCategories(newSelectedCategories);
     console.log('Auto-mapped expense categories:', Object.fromEntries(newSelectedCategories));
+  };
+
+  const handleProfilesAmountChange = (expenseId: string, amount: string) => {
+    const newProfilesAmounts = new Map(profilesAmounts);
+    const numericAmount = parseFloat(amount);
+
+    if (amount === '' || isNaN(numericAmount)) {
+      newProfilesAmounts.delete(expenseId);
+    } else {
+      newProfilesAmounts.set(expenseId, numericAmount);
+    }
+    setProfilesAmounts(newProfilesAmounts);
+  };
+
+  const handlePrepaidPlacementsAmountChange = (expenseId: string, amount: string) => {
+    const newPrepaidPlacementsAmounts = new Map(prepaidPlacementsAmounts);
+    const numericAmount = parseFloat(amount);
+
+    if (amount === '' || isNaN(numericAmount)) {
+      newPrepaidPlacementsAmounts.delete(expenseId);
+    } else {
+      newPrepaidPlacementsAmounts.set(expenseId, numericAmount);
+    }
+    setPrepaidPlacementsAmounts(newPrepaidPlacementsAmounts);
   };
 
   const handleSort = (column: keyof RampExpense) => {
@@ -960,6 +734,8 @@ const RampExpenseSync: React.FC = () => {
           sheet_name: sheetName,
           client_mappings: Object.fromEntries(selectedClients),
           expense_category_mappings: Object.fromEntries(selectedExpenseCategories),
+          profiles_amounts: Object.fromEntries(profilesAmounts),
+          prepaid_placements_amounts: Object.fromEntries(prepaidPlacementsAmounts),
         }),
       });
 
@@ -1421,6 +1197,8 @@ const RampExpenseSync: React.FC = () => {
                         </TableCell>
                         <TableCell>Sheet Client</TableCell>
                         <TableCell>Sheet Expense Category</TableCell>
+                        <TableCell>Profiles</TableCell>
+                        <TableCell>Prepaid Placements</TableCell>
                         <TableCell>Split</TableCell>
                         <TableCell>Debug</TableCell>
                       </TableRow>
@@ -1532,6 +1310,46 @@ const RampExpenseSync: React.FC = () => {
                                   ))}
                                 </Select>
                               </FormControl>
+                            </TableCell>
+                            <TableCell>
+                              <TextField
+                                size="small"
+                                type="number"
+                                placeholder="$0.00"
+                                value={profilesAmounts.get(expense.id) || ''}
+                                onChange={e =>
+                                  handleProfilesAmountChange(expense.id, e.target.value)
+                                }
+                                sx={{ minWidth: 100 }}
+                                InputProps={{
+                                  startAdornment: '$',
+                                  inputProps: {
+                                    min: 0,
+                                    step: 0.01,
+                                    style: { textAlign: 'right' },
+                                  },
+                                }}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <TextField
+                                size="small"
+                                type="number"
+                                placeholder="$0.00"
+                                value={prepaidPlacementsAmounts.get(expense.id) || ''}
+                                onChange={e =>
+                                  handlePrepaidPlacementsAmountChange(expense.id, e.target.value)
+                                }
+                                sx={{ minWidth: 100 }}
+                                InputProps={{
+                                  startAdornment: '$',
+                                  inputProps: {
+                                    min: 0,
+                                    step: 0.01,
+                                    style: { textAlign: 'right' },
+                                  },
+                                }}
+                              />
                             </TableCell>
                             <TableCell>
                               {expense.is_line_item &&
