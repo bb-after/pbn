@@ -44,11 +44,10 @@ export async function getDataSourceById(dataSourceId: number): Promise<DataSourc
     4: {
       id: 4,
       name: 'Perplexity',
-      // model: 'llama-3.1-sonar-large-128k-online',
-      model: 'sonar-pro',
+      model: 'llama-3.1-sonar-small-128k-online', // Try free tier model
       prompt:
         'Research and analyze "{keyword}" with focus on geographic and local search patterns. Provide insights on: 1) Current local search trends, 2) Geographic market sentiment, 3) Regional competition analysis, 4) Local SEO opportunities, 5) Geographic targeting recommendations. Include recent data and market intelligence.',
-      isActive: true,
+      isActive: true, // Re-enabled with better error handling
     },
     5: {
       id: 5,
