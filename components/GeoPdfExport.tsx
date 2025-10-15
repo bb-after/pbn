@@ -1,7 +1,7 @@
 import React from 'react';
 import { GeoAnalysisResult } from '../utils/ai-engines';
 import { formatSuperstarContent } from '../utils/formatSuperstarContent';
-import Image from 'next/image';
+// Using a plain <img> for predictable rendering in PDFs
 interface GeoPdfExportProps {
   result: GeoAnalysisResult;
 }
@@ -47,21 +47,24 @@ const GeoPdfExport = React.forwardRef<HTMLDivElement, GeoPdfExportProps>(({ resu
     >
       {/* Header with Logo */}
       <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-        <Image
-          priority
-          src="/images/sl-logo.png"
-          alt="Status Labs Logo"
-          width={300}
-          height={'100'}
+        <div
           style={{
-            marginBottom: '20px',
-            display: 'block',
             margin: '0 auto 20px auto',
             backgroundColor: '#000',
             padding: '15px',
             borderRadius: '3px',
           }}
-        />
+        >
+          <img
+            src="/images/sl-logo.png"
+            alt="Status Labs Logo"
+            style={{
+              display: 'block',
+              width: '100%',
+              height: 'auto',
+            }}
+          />
+        </div>
         <h1
           style={{
             color: 'black',
