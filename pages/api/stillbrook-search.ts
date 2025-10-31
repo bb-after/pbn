@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import Sentiment from 'sentiment';
 import puppeteer from 'puppeteer';
+import { query } from '../../lib/db';
 
 interface SearchRequestBody {
   keyword: string;
@@ -30,6 +31,142 @@ interface SearchResponse {
   totalResults?: number;
 }
 
+interface User {
+  id: number;
+  username: string;
+  email: string;
+}
+
+interface StillbrookSubmission {
+  user_id: number | null;
+  username?: string;
+  email?: string;
+  search_query: string;
+  search_type: string;
+  urls?: string[];
+  keywords?: string[];
+  location?: string;
+  language?: string;
+  country?: string;
+  matched_results_count: number;
+  status: 'success' | 'error' | 'no_results';
+  error_message?: string;
+  serpapi_search_id?: string;
+  raw_html_url?: string;
+  has_highlighted_content: boolean;
+  processing_time_ms: number;
+}
+
+// Helper function to extract user from database using token
+async function getUserFromRequest(req: NextApiRequest): Promise<User | null> {
+  try {
+    const token = req.headers['x-auth-token'] as string ||
+                  req.cookies?.auth_token ||
+                  req.headers.authorization?.replace('Bearer ', '');
+    
+    if (!token) {
+      console.log('No token found in request');
+      return null;
+    }
+
+    // Query database to get user info from token
+    const [rows] = await query('SELECT id, name, email FROM users WHERE user_token = ?', [token]);
+    const users = rows as any[];
+    
+    if (users.length === 0) {
+      console.log('No user found for token');
+      return null;
+    }
+
+    return {
+      id: users[0].id, // Keep as numeric ID
+      username: users[0].name || 'unknown',
+      email: users[0].email || 'unknown@example.com'
+    };
+  } catch (error) {
+    console.error('Error extracting user from token:', error);
+    return null;
+  }
+}
+
+// Helper function to create submission object
+function createSubmission(
+  user: User | null,
+  keyword: string,
+  screenshotType: string,
+  urls?: string[],
+  keywords?: string[],
+  location?: string,
+  language?: string,
+  country?: string,
+  matchedResultsCount: number = 0,
+  status: 'success' | 'error' | 'no_results' = 'success',
+  errorMessage?: string,
+  serpApiSearchId?: string,
+  rawHtmlUrl?: string,
+  hasHighlightedContent: boolean = false,
+  processingTimeMs: number = 0
+): StillbrookSubmission {
+  return {
+    user_id: user?.id || null,
+    username: user?.username,
+    email: user?.email,
+    search_query: keyword,
+    search_type: screenshotType,
+    urls: urls,
+    keywords: keywords,
+    location: location || 'New York',
+    language: language || 'en',
+    country: country || 'us',
+    matched_results_count: matchedResultsCount,
+    status: status,
+    error_message: errorMessage,
+    serpapi_search_id: serpApiSearchId,
+    raw_html_url: rawHtmlUrl,
+    has_highlighted_content: hasHighlightedContent,
+    processing_time_ms: processingTimeMs
+  };
+}
+
+// Helper function to log submission to database
+async function logStillbrookSubmission(submission: StillbrookSubmission): Promise<void> {
+  try {
+    const sql = `
+      INSERT INTO stillbrook_submissions (
+        user_id, username, email, search_query, search_type, urls, keywords,
+        location, language, country, matched_results_count, status, error_message,
+        serpapi_search_id, raw_html_url, has_highlighted_content, processing_time_ms
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const params = [
+      submission.user_id,
+      submission.username,
+      submission.email,
+      submission.search_query,
+      submission.search_type,
+      submission.urls ? JSON.stringify(submission.urls) : null,
+      submission.keywords ? JSON.stringify(submission.keywords) : null,
+      submission.location,
+      submission.language,
+      submission.country,
+      submission.matched_results_count,
+      submission.status,
+      submission.error_message,
+      submission.serpapi_search_id,
+      submission.raw_html_url,
+      submission.has_highlighted_content,
+      submission.processing_time_ms
+    ];
+
+    await query(sql, params);
+    console.log(`Logged Stillbrook submission for user ${submission.user_id}`);
+  } catch (error) {
+    console.error('Failed to log Stillbrook submission:', error);
+    // Don't throw - we don't want logging failures to break the main functionality
+  }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse<SearchResponse>) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
@@ -46,6 +183,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     searchType,
     screenshotType,
   } = req.body as SearchRequestBody;
+  
+  // Extract country from googleDomain or use default
+  const country = googleDomain?.split('.').pop() || 'us';
 
   // Basic input validation
   if (!keyword || !screenshotType) {
@@ -58,6 +198,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     return res.status(400).json({ error: 'URL or URLs are required for Exact URL Match.' });
   }
 
+  // Extract user information and start timing
+  const startTime = Date.now();
+  const user = await getUserFromRequest(req);
+  
   // Check if SERPAPI_KEY is configured
   if (!process.env.SERP_API_KEY) {
     return res.status(500).json({
@@ -108,7 +252,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     const data = await response.json();
     console.log('lets see some results', data);
 
+    // Extract search metadata for logging
+    const serpApiSearchId = data.search_metadata?.id;
+    const rawHtmlUrl = data.search_metadata?.raw_html_file;
+
     if (data.error) {
+      const processingTime = Date.now() - startTime;
+      const submission = createSubmission(
+        user, keyword, screenshotType, urls, keywords, location, language, country,
+        0, 'error', `SerpAPI error: ${data.error}`, serpApiSearchId, rawHtmlUrl, false, processingTime
+      );
+      await logStillbrookSubmission(submission);
       throw new Error(`SerpAPI error: ${data.error}`);
     }
 
@@ -142,6 +296,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     }
 
     if (organicResults.length === 0) {
+      const processingTime = Date.now() - startTime;
+      const submission = createSubmission(
+        user, keyword, screenshotType, urls, keywords, location, language, country,
+        0, 'no_results', 'No search results found', serpApiSearchId, rawHtmlUrl, false, processingTime
+      );
+      await logStillbrookSubmission(submission);
       return res.status(404).json({ error: 'No search results found.' });
     }
 
@@ -243,39 +403,59 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
 
           // Use headless browser to render HTML with JavaScript execution for proper image loading
           const renderedHtml = await renderHtmlWithBrowser(data.search_metadata.raw_html_file);
-          htmlPreview = addCleanHighlighting(renderedHtml, matchedResults, screenshotType);
+          const isImageSearch = searchType === 'isch';
+          htmlPreview = addCleanHighlighting(renderedHtml, matchedResults, screenshotType, isImageSearch);
         } else {
           console.error('Failed to fetch raw HTML:', htmlResponse.status);
           // Fallback to custom generated preview
           const matchedIds = new Set(matchedResults.map(result => result.position));
+          const isImageSearch = searchType === 'isch';
           htmlPreview = generateFullPagePreview(
             organicResults,
             matchedIds,
             screenshotType,
-            keyword
+            keyword,
+            isImageSearch
           );
         }
       } catch (error) {
         console.error('Error fetching raw HTML:', error);
         // Fallback to custom generated preview
         const matchedIds = new Set(matchedResults.map(result => result.position));
-        htmlPreview = generateFullPagePreview(organicResults, matchedIds, screenshotType, keyword);
+        const isImageSearch = searchType === 'isch';
+        htmlPreview = generateFullPagePreview(organicResults, matchedIds, screenshotType, keyword, isImageSearch);
       }
     } else {
       console.log('No raw HTML file available, using custom preview');
       // Fallback to custom generated preview
       const matchedIds = new Set(matchedResults.map(result => result.position));
-      htmlPreview = generateFullPagePreview(organicResults, matchedIds, screenshotType, keyword);
+      const isImageSearch = searchType === 'isch';
+      htmlPreview = generateFullPagePreview(organicResults, matchedIds, screenshotType, keyword, isImageSearch);
     }
 
     if (matchedResults.length === 0) {
+      const processingTime = Date.now() - startTime;
+      const submission = createSubmission(
+        user, keyword, screenshotType, urls, keywords, location, language, country,
+        0, 'no_results', `No matching results found for ${screenshotType}`, serpApiSearchId, rawHtmlUrl, true, processingTime
+      );
+      await logStillbrookSubmission(submission);
+      
       return res.status(404).json({
         error: `No matching results found for ${screenshotType}`,
         results: organicResults, // Return all results for debugging
         totalResults: organicResults.length,
-        htmlPreview: generateFullPagePreview(organicResults, new Set(), 'no_matches', keyword),
+        htmlPreview: generateFullPagePreview(organicResults, new Set(), 'no_matches', keyword, searchType === 'isch'),
       });
     }
+
+    // Log successful submission
+    const processingTime = Date.now() - startTime;
+    const submission = createSubmission(
+      user, keyword, screenshotType, urls, keywords, location, language, country,
+      matchedResults.length, 'success', undefined, serpApiSearchId, rawHtmlUrl, true, processingTime
+    );
+    await logStillbrookSubmission(submission);
 
     return res.status(200).json({
       matchedResults,
@@ -285,6 +465,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     });
   } catch (error) {
     console.error('Error while searching:', error);
+    
+    // Log error submission
+    const processingTime = Date.now() - startTime;
+    const submission = createSubmission(
+      user, keyword, screenshotType, urls, keywords, location, language, country,
+      0, 'error', error instanceof Error ? error.message : 'Internal Server Error', undefined, undefined, false, processingTime
+    );
+    await logStillbrookSubmission(submission);
+    
     return res.status(500).json({
       error: error instanceof Error ? error.message : 'Internal Server Error',
     });
@@ -384,7 +573,8 @@ async function renderHtmlWithBrowser(rawHtmlUrl: string): Promise<string> {
 function addCleanHighlighting(
   rawHtml: string,
   matchedResults: SerpApiResult[],
-  searchType: string
+  searchType: string,
+  isImageSearch: boolean = false
 ): string {
   const getHighlightColor = (searchType: string) => {
     switch (searchType) {
@@ -461,39 +651,86 @@ function addCleanHighlighting(
       highlightedHtml.slice(0, insertAfter) + matchIndicator + highlightedHtml.slice(insertAfter);
   }
 
-  // Simple approach: find each matched URL and inject highlighting CSS directly
-  matchedResults.forEach((result, index) => {
-    try {
-      console.log(`Adding border highlight for result ${index + 1}: ${result.link}`);
-
-      // Find all links that match this result's URL
-      const escapedLink = result.link.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const linkPattern = new RegExp(`(<a[^>]*href="[^"]*${escapedLink}[^"]*"[^>]*>)`, 'gi');
-
-      let highlightAdded = false;
-      highlightedHtml = highlightedHtml.replace(linkPattern, match => {
+  // Handle image search highlighting differently
+  if (isImageSearch) {
+    matchedResults.forEach((result, index) => {
+      try {
+        console.log(`Adding image highlight for result ${index + 1}: ${result.link}`);
+        
+        // For Google Images, we need to find image containers and data attributes
+        // Google Images uses data-src attributes and specific container patterns
+        const imageUrl = result.link;
+        const escapedImageUrl = imageUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        
+        // Look for various patterns that Google Images might use:
+        // 1. Direct image src
+        // 2. Data attributes like data-src, data-iurl
+        // 3. Container divs that might wrap images
+        const patterns = [
+          // Image tags with src matching
+          new RegExp(`(<img[^>]*src="[^"]*${escapedImageUrl}[^"]*"[^>]*>)`, 'gi'),
+          // Image tags with data-src matching  
+          new RegExp(`(<img[^>]*data-src="[^"]*${escapedImageUrl}[^"]*"[^>]*>)`, 'gi'),
+          // Divs or containers that might contain this image URL in data attributes
+          new RegExp(`(<div[^>]*data-[^>]*"[^"]*${escapedImageUrl}[^"]*"[^>]*>)`, 'gi'),
+          // Generic containers with the image URL in any attribute
+          new RegExp(`(<[^>]*[^>]*"[^"]*${escapedImageUrl}[^"]*"[^>]*>)`, 'gi')
+        ];
+        
+        let highlightAdded = false;
+        patterns.forEach(pattern => {
+          if (!highlightAdded) {
+            highlightedHtml = highlightedHtml.replace(pattern, (match) => {
+              // Add a wrapper div with highlighting around the matched element
+              highlightAdded = true;
+              console.log(`Added image highlight style to result ${index + 1}`);
+              return `<div class="match-result-highlight" style="border: 3px solid ${color} !important; border-radius: 8px !important; padding: 8px !important; margin: 8px !important; background: rgba(255, 235, 59, 0.05) !important; display: inline-block !important;">${match}</div>`;
+            });
+          }
+        });
+        
         if (!highlightAdded) {
-          // Add highlighting to the link element itself for now
-          const highlightedLink = match.replace(
-            '<a ',
-            '<a style="display: block; border: 3px solid ' +
-              color +
-              ' !important; border-radius: 8px !important; padding: 8px !important; margin: 8px 0 !important; background: rgba(255, 235, 59, 0.05) !important;" '
-          );
-          highlightAdded = true;
-          console.log(`Added highlight style to result ${index + 1}`);
-          return highlightedLink;
+          console.log(`Could not find image element to highlight for result ${index + 1}: ${imageUrl}`);
         }
-        return match;
-      });
-
-      if (!highlightAdded) {
-        console.log(`Could not find link to highlight for result ${index + 1}`);
+      } catch (error) {
+        console.error(`Error highlighting image result ${index + 1}:`, error);
       }
-    } catch (e) {
-      console.error('Error processing result URL:', e);
-    }
-  });
+    });
+  } else {
+    // Original logic for regular search results
+    matchedResults.forEach((result, index) => {
+      try {
+        console.log(`Adding border highlight for result ${index + 1}: ${result.link}`);
+
+        // Find all links that match this result's URL
+        const escapedLink = result.link.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const linkPattern = new RegExp(`(<a[^>]*href="[^"]*${escapedLink}[^"]*"[^>]*>)`, 'gi');
+
+        let highlightAdded = false;
+        highlightedHtml = highlightedHtml.replace(linkPattern, match => {
+          if (!highlightAdded) {
+            // Add highlighting to the link element itself for now
+            const highlightedLink = match.replace(
+              '<a ',
+              '<a style="display: block; border: 3px solid ' +
+                color +
+                ' !important; border-radius: 8px !important; padding: 8px !important; margin: 8px 0 !important; background: rgba(255, 235, 59, 0.05) !important;" '
+            );
+            highlightAdded = true;
+            console.log(`Added highlight style to result ${index + 1}`);
+            return highlightedLink;
+          }
+          return match;
+        });
+
+        if (!highlightAdded) {
+          console.log(`Could not find link to highlight for result ${index + 1}`);
+        }
+      } catch (e) {
+        console.error('Error processing result URL:', e);
+      }
+    });
+  }
 
   return highlightedHtml;
 }
@@ -502,7 +739,8 @@ function generateFullPagePreview(
   allResults: SerpApiResult[],
   matchedPositions: Set<number>,
   searchType: string,
-  keyword: string
+  keyword: string,
+  isImageSearch: boolean = false
 ): string {
   const highlightKeyword = (text: string, keyword: string) => {
     if (!text) return '';
@@ -552,6 +790,49 @@ function generateFullPagePreview(
       margin: 16px 0;
     `;
 
+      // Image search layout
+      if (isImageSearch) {
+        return `
+        <div style="${highlightStyle} display: inline-block; width: 200px; margin: 8px;">
+          <a href="${result.link}" target="_blank" style="text-decoration: none;">
+            <img src="${result.link}" 
+                 alt="${result.title || 'Image'}"
+                 style="
+                   width: 100%; 
+                   height: 200px; 
+                   object-fit: cover; 
+                   border-radius: 4px;
+                   ${isMatched ? 'border: 3px solid ' + color + ' !important;' : ''}
+                 "
+                 onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+            <div style="
+              display: none; 
+              width: 100%; 
+              height: 200px; 
+              background: #f0f0f0; 
+              display: flex; 
+              align-items: center; 
+              justify-content: center;
+              color: #666;
+              border-radius: 4px;
+              ${isMatched ? 'border: 3px solid ' + color + ' !important;' : ''}
+            ">
+              Image unavailable
+            </div>
+          </a>
+          <div style="padding: 8px 0;">
+            <div style="color: #1a0dab; font-size: 13px; font-weight: 500; margin-bottom: 2px;">
+              ${result.title || 'Image'}
+            </div>
+            <div style="color: #006621; font-size: 12px;">
+              ${result.displayed_link || (result.link ? new URL(result.link).hostname : '')}
+            </div>
+          </div>
+        </div>
+        `;
+      }
+
+      // Regular search result layout
       return `
       <div style="${highlightStyle}">
         <h3 style="
@@ -579,12 +860,14 @@ function generateFullPagePreview(
     .join('');
 
   return `
-    <div style="font-family: arial, sans-serif; padding: 15px; max-width: 600px; margin: 0 auto; background: white;">
+    <div style="font-family: arial, sans-serif; padding: 15px; ${isImageSearch ? 'max-width: 1200px;' : 'max-width: 600px;'} margin: 0 auto; background: white;">
       <div style="margin-bottom: 25px;">
         <div style="color: #70757a; font-size: 13px; margin-bottom: 25px;">
           About ${allResults.length.toLocaleString()} results
         </div>
-        ${resultsHtml}
+        <div style="${isImageSearch ? 'display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-start;' : ''}">
+          ${resultsHtml}
+        </div>
       </div>
     </div>
   `;

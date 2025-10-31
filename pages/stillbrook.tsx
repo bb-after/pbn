@@ -132,6 +132,8 @@ function StillbrookContent() {
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [showLogoOverlay, setShowLogoOverlay] = useState(true);
   const [animateToHeader, setAnimateToHeader] = useState(false);
+  const [currentStep, setCurrentStep] = useState<'form' | 'generating' | 'results'>('form');
+  const [lastFormData, setLastFormData] = useState<any>(null);
 
   // Sort Google domains alphabetically by country name, with google.com first
   const sortedGoogleDomains = googleDomainsData.sort((a: GoogleDomain, b: GoogleDomain) => {
@@ -175,12 +177,31 @@ function StillbrookContent() {
     setLoading(true);
     setError(null);
 
+    // Reset previous results and move to generating step
+    setResult(null);
+    setCurrentStep('generating');
+
+    // Store form data for potential resubmission
+    const formData = {
+      keyword,
+      url,
+      urls: urls.filter(u => u.trim() !== ''),
+      keywords: keywords.filter(k => k.trim() !== ''),
+      location,
+      googleDomain,
+      language,
+      searchType,
+      screenshotType,
+    };
+    setLastFormData(formData);
+
     // Validate URLs/keywords if needed
     if (screenshotType === 'exact_url_match') {
       const validUrls = urls.filter(u => u.trim() !== '');
       if (validUrls.length === 0 && !url.trim()) {
         setError('At least one URL is required for Exact URL Match.');
         setLoading(false);
+        setCurrentStep('form');
         return;
       }
     } else if (screenshotType === 'keyword_match') {
@@ -188,38 +209,45 @@ function StillbrookContent() {
       if (validKeywords.length === 0) {
         setError('At least one keyword is required for Keyword Match.');
         setLoading(false);
+        setCurrentStep('form');
         return;
       }
     }
 
     try {
+      // Add a small delay to avoid rapid successive requests
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+
       const res = await fetch('/api/stillbrook-search', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { 'x-auth-token': token } : {}),
         },
-        body: JSON.stringify({
-          keyword,
-          url,
-          urls: urls.filter(u => u.trim() !== ''),
-          keywords: keywords.filter(k => k.trim() !== ''),
-          location,
-          googleDomain,
-          language,
-          searchType,
-          screenshotType,
-        }),
+        body: JSON.stringify(formData),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data?.error || data?.message || 'Request failed');
       }
       setResult(data);
+      setCurrentStep('results');
     } catch (err: any) {
-      setError(err.message || 'Something went wrong');
-      setResult({ error: err.message || 'Something went wrong' });
+      console.error('Search request failed:', err);
+      const errorMessage =
+        err.name === 'AbortError'
+          ? 'Request timed out. Please try again.'
+          : err.message || 'Something went wrong';
+      setError(errorMessage);
+      setResult({ error: errorMessage });
+      setCurrentStep('results'); // Show results even with error
     } finally {
       setLoading(false);
     }
@@ -340,10 +368,6 @@ function StillbrookContent() {
 
       const imagePromises = Array.from(images).map(async (img, index) => {
         if (img.src) {
-          console.log(
-            `Processing image ${index + 1}/${images.length}: ${img.src.substring(0, 100)}...`
-          );
-
           // Skip if it's already a data URL or placeholder
           if (img.src.startsWith('data:')) {
             if (img.src.includes('R0lGODlhAQABAIAAAP///////yH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==')) {
@@ -356,11 +380,9 @@ function StillbrookContent() {
                 console.log(`Found better src in data attribute: ${betterSrc}`);
                 img.src = betterSrc;
               } else {
-                console.log('Keeping placeholder image');
                 return;
               }
             } else {
-              console.log('Already a data URL, skipping');
               return;
             }
           }
@@ -369,8 +391,6 @@ function StillbrookContent() {
           if (dataURL && dataURL !== img.src) {
             img.src = dataURL;
             console.log(`Successfully converted image ${index + 1}`);
-          } else {
-            console.log(`Failed to convert image ${index + 1}, keeping original`);
           }
         }
       });
@@ -378,43 +398,21 @@ function StillbrookContent() {
       await Promise.all(imagePromises);
       console.log('Finished converting all images');
 
-      // Wait a bit more for DOM to update
+      // Wait for DOM to update
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Configure html2canvas options - simplified since we now have data URLs
+      // Generate screenshot
       const canvas = await html2canvas(previewElement, {
-        allowTaint: false, // Can be false now since we use data URLs
-        useCORS: false, // Can be false now
+        allowTaint: false,
+        useCORS: false,
         scale: 2,
         width: previewElement.scrollWidth,
         height: previewElement.scrollHeight,
         backgroundColor: '#ffffff',
-        logging: true, // Enable for debugging
-        onclone: clonedDoc => {
-          // Fix any styling issues in the cloned document
-          const clonedElement = clonedDoc.getElementById('html-preview');
-          if (clonedElement) {
-            clonedElement.style.maxHeight = 'none';
-            clonedElement.style.overflow = 'visible';
-            clonedElement.style.position = 'static';
-            clonedElement.style.transform = 'none';
-          }
-
-          // Remove any problematic elements
-          const problematicElements = clonedDoc.querySelectorAll('iframe, embed, object, script');
-          problematicElements.forEach(el => el.remove());
-
-          // Ensure all images in the clone have data URLs
-          const clonedImages = clonedDoc.querySelectorAll('img');
-          clonedImages.forEach(img => {
-            if (!img.src.startsWith('data:')) {
-              img.style.display = 'none';
-            }
-          });
-        },
+        logging: false,
       });
 
-      // Convert canvas to blob and download
+      // Download the image
       canvas.toBlob(
         blob => {
           if (blob) {
@@ -448,6 +446,82 @@ function StillbrookContent() {
       link.click();
       document.body.removeChild(link);
     }
+  };
+
+  const handleRunAnotherSearch = () => {
+    // Go back to form step with previous data intact
+    setCurrentStep('form');
+    setError(null);
+    setResult(null);
+    setLoading(false);
+    setIsGeneratingImage(false);
+    // Form data is already populated from previous submission
+  };
+
+  const renderStepIndicator = () => {
+    const steps = [
+      { key: 'form', label: 'Search Form', number: 1 },
+      { key: 'generating', label: 'Generating', number: 2 },
+      { key: 'results', label: 'Results', number: 3 },
+    ];
+
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
+        {steps.map((step, index) => {
+          const isActive = currentStep === step.key;
+          const isCompleted =
+            (step.key === 'form' && ['generating', 'results'].includes(currentStep)) ||
+            (step.key === 'generating' && currentStep === 'results');
+
+          return (
+            <Box key={step.key} sx={{ display: 'flex', alignItems: 'center' }}>
+              <Box
+                sx={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  backgroundColor: isActive
+                    ? 'primary.main'
+                    : isCompleted
+                      ? 'success.main'
+                      : 'grey.300',
+                  color: isActive || isCompleted ? 'white' : 'grey.600',
+                  transition: 'all 0.3s ease',
+                }}
+              >
+                {isCompleted ? '✓' : step.number}
+              </Box>
+              <Typography
+                variant="caption"
+                sx={{
+                  ml: 1,
+                  color: isActive ? 'primary.main' : isCompleted ? 'success.main' : 'grey.600',
+                  fontWeight: isActive ? 600 : 400,
+                }}
+              >
+                {step.label}
+              </Typography>
+              {index < steps.length - 1 && (
+                <Box
+                  sx={{
+                    width: 40,
+                    height: 2,
+                    mx: 2,
+                    backgroundColor: isCompleted ? 'success.main' : 'grey.300',
+                    transition: 'background-color 0.3s ease',
+                  }}
+                />
+              )}
+            </Box>
+          );
+        })}
+      </Box>
+    );
   };
 
   const addUrlField = () => {
@@ -636,241 +710,316 @@ function StillbrookContent() {
               </Box>
             </Box>
 
-            {error && <Alert severity="error">{error}</Alert>}
+            {renderStepIndicator()}
 
-            <Box component="form" onSubmit={handleSubmit}>
-              <Stack spacing={3}>
-                <TextField
-                  fullWidth
-                  label="Search Term"
-                  type="text"
-                  value={keyword}
-                  onChange={e => setKeyword(e.target.value)}
-                  required
-                />
+            {error && currentStep === 'form' && <Alert severity="error">{error}</Alert>}
 
-                <FormControl fullWidth>
-                  <InputLabel>Google Domain</InputLabel>
-                  <Select
-                    value={googleDomain}
-                    label="Google Domain"
-                    onChange={e => setGoogleDomain(e.target.value)}
-                  >
-                    {sortedGoogleDomains.map((domain: GoogleDomain) => (
-                      <MenuItem key={domain.domain} value={domain.domain}>
-                        {domain.domain} - {domain.country_name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+            {currentStep === 'form' && (
+              <Box component="form" onSubmit={handleSubmit}>
+                <Stack spacing={3}>
+                  <TextField
+                    fullWidth
+                    label="Search Term"
+                    type="text"
+                    value={keyword}
+                    onChange={e => setKeyword(e.target.value)}
+                    required
+                  />
 
-                <FormControl fullWidth>
-                  <InputLabel>Search Language</InputLabel>
-                  <Select
-                    value={language}
-                    label="Search Language"
-                    onChange={e => setLanguage(e.target.value)}
-                  >
-                    {GOOGLE_LANGUAGES.map((lang: GoogleLanguage) => (
-                      <MenuItem key={lang.code} value={lang.code}>
-                        {lang.name} ({lang.code})
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                  <FormControl fullWidth>
+                    <InputLabel>Google Domain</InputLabel>
+                    <Select
+                      value={googleDomain}
+                      label="Google Domain"
+                      onChange={e => setGoogleDomain(e.target.value)}
+                    >
+                      {sortedGoogleDomains.map((domain: GoogleDomain) => (
+                        <MenuItem key={domain.domain} value={domain.domain}>
+                          {domain.domain} - {domain.country_name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
 
-                <FormControl fullWidth>
-                  <InputLabel shrink>Search Type</InputLabel>
-                  <Select
-                    value={searchType}
-                    label="Search Type"
-                    onChange={e => setSearchType(e.target.value)}
-                    displayEmpty
-                    renderValue={selected => {
-                      const type = SEARCH_TYPES.find((t: SearchType) => t.value === selected);
-                      return type
-                        ? `${type.name} - ${type.description}`
-                        : 'Web Search - Regular Google Search';
-                    }}
-                  >
-                    {SEARCH_TYPES.map((type: SearchType) => (
-                      <MenuItem key={type.value} value={type.value}>
-                        {type.name} - {type.description}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                  <FormControl fullWidth>
+                    <InputLabel>Search Language</InputLabel>
+                    <Select
+                      value={language}
+                      label="Search Language"
+                      onChange={e => setLanguage(e.target.value)}
+                    >
+                      {GOOGLE_LANGUAGES.map((lang: GoogleLanguage) => (
+                        <MenuItem key={lang.code} value={lang.code}>
+                          {lang.name} ({lang.code})
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
 
-                <FormControl component="fieldset">
-                  <FormLabel component="legend">Screenshot Type</FormLabel>
-                  <RadioGroup
-                    aria-label="screenshot-type"
-                    name="screenshotType"
-                    value={screenshotType}
-                    onChange={e => setScreenshotType(e.target.value)}
-                  >
-                    <FormControlLabel
-                      value="exact_url_match"
-                      control={<Radio />}
-                      label="Exact URL Match"
-                    />
-                    <FormControlLabel
-                      value="negative_sentiment"
-                      control={<Radio />}
-                      label="Negative Sentiment"
-                    />
-                    <FormControlLabel
-                      value="keyword_match"
-                      control={<Radio />}
-                      label="Specific Keyword Match"
-                    />
-                  </RadioGroup>
-                </FormControl>
+                  <FormControl fullWidth>
+                    <InputLabel shrink>Search Type</InputLabel>
+                    <Select
+                      value={searchType}
+                      label="Search Type"
+                      onChange={e => setSearchType(e.target.value)}
+                      displayEmpty
+                      renderValue={selected => {
+                        const type = SEARCH_TYPES.find((t: SearchType) => t.value === selected);
+                        return type
+                          ? `${type.name} - ${type.description}`
+                          : 'Web Search - Regular Google Search';
+                      }}
+                    >
+                      {SEARCH_TYPES.map((type: SearchType) => (
+                        <MenuItem key={type.value} value={type.value}>
+                          {type.name} - {type.description}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
 
-                {screenshotType === 'exact_url_match' && (
-                  <Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                      <Typography variant="h6" component="h3">
-                        URLs to Match
-                      </Typography>
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        startIcon={<AddIcon />}
-                        onClick={addUrlField}
-                        sx={{ ml: 2 }}
-                      >
-                        Add URL
-                      </Button>
-                    </Box>
+                  <FormControl component="fieldset">
+                    <FormLabel component="legend">Screenshot Type</FormLabel>
+                    <RadioGroup
+                      aria-label="screenshot-type"
+                      name="screenshotType"
+                      value={screenshotType}
+                      onChange={e => setScreenshotType(e.target.value)}
+                    >
+                      <FormControlLabel
+                        value="exact_url_match"
+                        control={<Radio />}
+                        label="Exact URL Match"
+                      />
+                      <FormControlLabel
+                        value="negative_sentiment"
+                        control={<Radio />}
+                        label="Negative Sentiment"
+                      />
+                      <FormControlLabel
+                        value="keyword_match"
+                        control={<Radio />}
+                        label="Specific Keyword Match"
+                      />
+                    </RadioGroup>
+                  </FormControl>
 
-                    {urls.map((urlValue, index) => (
-                      <Box
-                        key={index}
-                        sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}
-                      >
-                        <TextField
-                          fullWidth
-                          label={`URL ${index + 1}`}
-                          type="url"
-                          value={urlValue}
-                          onChange={e => updateUrl(index, e.target.value)}
-                          required={index === 0}
+                  {screenshotType === 'exact_url_match' && (
+                    <Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                        <Typography variant="h6" component="h3">
+                          URLs to Match
+                        </Typography>
+                        <Button
                           variant="outlined"
-                          placeholder="https://example.com"
-                        />
-                        {urls.length > 1 && (
-                          <IconButton
-                            color="error"
-                            onClick={() => removeUrlField(index)}
-                            aria-label="Remove URL"
-                          >
-                            <RemoveIcon />
-                          </IconButton>
-                        )}
+                          size="small"
+                          startIcon={<AddIcon />}
+                          onClick={addUrlField}
+                          sx={{ ml: 2 }}
+                        >
+                          Add URL
+                        </Button>
                       </Box>
-                    ))}
 
-                    <Typography variant="caption" color="text.secondary">
-                      Add multiple URLs to highlight any search results that match these domains.
-                    </Typography>
-                  </Box>
-                )}
+                      {urls.map((urlValue, index) => (
+                        <Box
+                          key={index}
+                          sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}
+                        >
+                          <TextField
+                            fullWidth
+                            label={`URL ${index + 1}`}
+                            type="url"
+                            value={urlValue}
+                            onChange={e => updateUrl(index, e.target.value)}
+                            required={index === 0}
+                            variant="outlined"
+                            placeholder="https://example.com"
+                          />
+                          {urls.length > 1 && (
+                            <IconButton
+                              color="error"
+                              onClick={() => removeUrlField(index)}
+                              aria-label="Remove URL"
+                            >
+                              <RemoveIcon />
+                            </IconButton>
+                          )}
+                        </Box>
+                      ))}
 
-                {screenshotType === 'keyword_match' && (
-                  <Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                      <Typography variant="h6" component="h3">
-                        Keywords to Match
+                      <Typography variant="caption" color="text.secondary">
+                        Add multiple URLs to highlight any search results that match these domains.
                       </Typography>
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        startIcon={<AddIcon />}
-                        onClick={addKeywordField}
-                        sx={{ ml: 2 }}
-                      >
-                        Add Keyword
-                      </Button>
                     </Box>
+                  )}
 
-                    {keywords.map((keywordValue, index) => (
-                      <Box
-                        key={index}
-                        sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}
-                      >
-                        <TextField
-                          fullWidth
-                          label={`Keyword ${index + 1}`}
-                          type="text"
-                          value={keywordValue}
-                          onChange={e => updateKeyword(index, e.target.value)}
-                          required={index === 0}
+                  {screenshotType === 'keyword_match' && (
+                    <Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                        <Typography variant="h6" component="h3">
+                          Keywords to Match
+                        </Typography>
+                        <Button
                           variant="outlined"
-                          placeholder="e.g. corruption, investigation, scandal"
-                        />
-                        {keywords.length > 1 && (
-                          <IconButton
-                            color="error"
-                            onClick={() => removeKeywordField(index)}
-                            aria-label="Remove Keyword"
-                          >
-                            <RemoveIcon />
-                          </IconButton>
-                        )}
+                          size="small"
+                          startIcon={<AddIcon />}
+                          onClick={addKeywordField}
+                          sx={{ ml: 2 }}
+                        >
+                          Add Keyword
+                        </Button>
                       </Box>
-                    ))}
 
-                    <Typography variant="caption" color="text.secondary">
-                      Add multiple keywords to highlight search results containing these specific
-                      terms.
-                    </Typography>
-                  </Box>
-                )}
+                      {keywords.map((keywordValue, index) => (
+                        <Box
+                          key={index}
+                          sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}
+                        >
+                          <TextField
+                            fullWidth
+                            label={`Keyword ${index + 1}`}
+                            type="text"
+                            value={keywordValue}
+                            onChange={e => updateKeyword(index, e.target.value)}
+                            required={index === 0}
+                            variant="outlined"
+                            placeholder="e.g. corruption, investigation, scandal"
+                          />
+                          {keywords.length > 1 && (
+                            <IconButton
+                              color="error"
+                              onClick={() => removeKeywordField(index)}
+                              aria-label="Remove Keyword"
+                            >
+                              <RemoveIcon />
+                            </IconButton>
+                          )}
+                        </Box>
+                      ))}
 
-                <TextField
-                  fullWidth
-                  label="Geographic Location (Optional)"
-                  type="text"
-                  value={location}
-                  onChange={e => setLocation(e.target.value)}
-                  variant="outlined"
-                  placeholder="e.g., New York, NY"
-                  helperText={
-                    <Box component="span">
-                      Examples: &quot;New York, NY&quot;, &quot;London, UK&quot;, &quot;Los Angeles,
-                      California&quot;, &quot;Toronto, Canada&quot;, &quot;Sydney, Australia&quot;
-                      <br />
-                      <strong>Popular formats:</strong> &quot;City, State&quot;, &quot;City,
-                      Country&quot;, &quot;State, Country&quot;
+                      <Typography variant="caption" color="text.secondary">
+                        Add multiple keywords to highlight search results containing these specific
+                        terms.
+                      </Typography>
                     </Box>
-                  }
-                />
+                  )}
 
-                <Box>
-                  <IntercomButton variant="primary" type="submit" disabled={loading}>
-                    {loading ? 'Processing...' : 'Submit'}
-                  </IntercomButton>
+                  <TextField
+                    fullWidth
+                    label="Geographic Location (Optional)"
+                    type="text"
+                    value={location}
+                    onChange={e => setLocation(e.target.value)}
+                    variant="outlined"
+                    placeholder="e.g., New York, NY"
+                    helperText={
+                      <Box component="span">
+                        Examples: &quot;New York, NY&quot;, &quot;London, UK&quot;, &quot;Los
+                        Angeles, California&quot;, &quot;Toronto, Canada&quot;, &quot;Sydney,
+                        Australia&quot;
+                        <br />
+                        <strong>Popular formats:</strong> &quot;City, State&quot;, &quot;City,
+                        Country&quot;, &quot;State, Country&quot;
+                      </Box>
+                    }
+                  />
+
+                  <Box>
+                    <IntercomButton variant="primary" type="submit" disabled={loading}>
+                      {loading ? 'Processing...' : 'Submit'}
+                    </IntercomButton>
+                  </Box>
+                </Stack>
+              </Box>
+            )}
+
+            {currentStep === 'generating' && (
+              <Box sx={{ textAlign: 'center', py: 6 }}>
+                <CircularProgress size={60} sx={{ mb: 3 }} />
+                <Typography variant="h6" gutterBottom>
+                  Generating Your Screenshot...
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Searching Google and processing results for: <strong>{keyword}</strong>
+                </Typography>
+                <Box sx={{ mt: 2, px: 3 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    This may take a few moments as we fetch and render the search results.
+                  </Typography>
                 </Box>
-              </Stack>
-            </Box>
+              </Box>
+            )}
 
-            {result && (
+            {currentStep === 'results' && result && (
               <Box mt={2}>
                 {result.error ? (
                   <Alert severity="error">{result.error}</Alert>
                 ) : result.htmlPreview ? (
-                  <Stack spacing={2}>
+                  <Stack spacing={3}>
                     {/* Results Summary */}
-                    <Alert severity="success">
-                      Found {result.matchedResults?.length || 0} matching results
+                    <Alert severity={result.matchedResults?.length ? 'success' : 'warning'}>
+                      {result.matchedResults?.length
+                        ? `Found ${result.matchedResults.length} matching results`
+                        : 'No matching results found, but generated screenshot of all results'}
                       {result.totalResults ? ` out of ${result.totalResults} total results` : ''}
                     </Alert>
 
-                    {/* HTML Preview */}
+                    {/* Download CTA Section - Above the fold */}
+                    <IntercomCard>
+                      <Stack spacing={2}>
+                        <Typography variant="h6" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                          📸 Your Screenshot is Ready!
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Download your screenshot or HTML version below. The preview is read-only
+                          to ensure clean screenshots.
+                        </Typography>
+
+                        {/* Primary Download Buttons */}
+                        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 2 }}>
+                          <IntercomButton
+                            variant="primary"
+                            leftIcon={
+                              isGeneratingImage ? (
+                                <CircularProgress size={20} color="inherit" />
+                              ) : (
+                                <SaveAltIcon />
+                              )
+                            }
+                            onClick={handleDownloadImage}
+                            disabled={isGeneratingImage}
+                            sx={{ minWidth: '160px' }}
+                          >
+                            {isGeneratingImage ? 'Generating...' : 'Download PNG'}
+                          </IntercomButton>
+                          <IntercomButton
+                            variant="secondary"
+                            leftIcon={<SaveAltIcon />}
+                            onClick={handleDownloadHTML}
+                            sx={{ minWidth: '160px' }}
+                          >
+                            Download HTML
+                          </IntercomButton>
+                        </Box>
+
+                        {/* Run Another Search Button */}
+                        <Box sx={{ borderTop: '1px solid #eee', pt: 2 }}>
+                          <IntercomButton
+                            variant="secondary"
+                            onClick={handleRunAnotherSearch}
+                            sx={{ width: '100%' }}
+                          >
+                            🔄 Run Another Search
+                          </IntercomButton>
+                        </Box>
+                      </Stack>
+                    </IntercomCard>
+
+                    {/* HTML Preview with Read-Only Overlay */}
                     <Box
-                      id="html-preview"
                       sx={{
+                        position: 'relative',
                         border: '1px solid #ddd',
                         borderRadius: 2,
                         overflow: 'hidden',
@@ -878,32 +1027,23 @@ function StillbrookContent() {
                         overflowY: 'auto',
                       }}
                     >
-                      <div dangerouslySetInnerHTML={{ __html: result.htmlPreview }} />
-                    </Box>
-
-                    {/* Download Buttons */}
-                    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                      <IntercomButton
-                        variant="secondary"
-                        leftIcon={<SaveAltIcon />}
-                        onClick={handleDownloadHTML}
-                      >
-                        Download HTML
-                      </IntercomButton>
-                      <IntercomButton
-                        variant="primary"
-                        leftIcon={
-                          isGeneratingImage ? (
-                            <CircularProgress size={20} color="inherit" />
-                          ) : (
-                            <SaveAltIcon />
-                          )
-                        }
-                        onClick={handleDownloadImage}
-                        disabled={isGeneratingImage}
-                      >
-                        {isGeneratingImage ? 'Generating Image...' : 'Download as PNG'}
-                      </IntercomButton>
+                      {/* Transparent overlay to make it read-only */}
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          backgroundColor: 'transparent',
+                          zIndex: 10,
+                          cursor: 'default',
+                        }}
+                        title="Preview only - links are disabled for cleaner screenshots"
+                      />
+                      <Box id="html-preview">
+                        <div dangerouslySetInnerHTML={{ __html: result.htmlPreview }} />
+                      </Box>
                     </Box>
 
                     {/* Debug Info (if needed) */}
@@ -950,6 +1090,17 @@ function StillbrookContent() {
                     </Box>
                   </Stack>
                 ) : null}
+              </Box>
+            )}
+
+            {currentStep === 'results' && result && result.error && (
+              <Box sx={{ textAlign: 'center', py: 4 }}>
+                <Alert severity="error" sx={{ mb: 3 }}>
+                  {result.error}
+                </Alert>
+                <IntercomButton variant="primary" onClick={handleRunAnotherSearch}>
+                  🔄 Try Another Search
+                </IntercomButton>
               </Box>
             )}
           </Stack>
