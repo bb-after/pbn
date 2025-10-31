@@ -232,6 +232,205 @@ const GeoPdfExport = React.forwardRef<HTMLDivElement, GeoPdfExportProps>(({ resu
         </div>
       )}
 
+      {/* URL Sources */}
+      {result.aggregatedInsights.urlSources && result.aggregatedInsights.urlSources.length > 0 && (
+        <div
+          style={{
+            padding: '24px',
+            marginBottom: '32px',
+            backgroundColor: '#f8f9fa',
+            border: '1px solid #e0e0e0',
+            borderRadius: '8px',
+          }}
+        >
+          <h2
+            style={{
+              color: 'black',
+              marginBottom: '24px',
+              fontWeight: 'bold',
+              fontSize: '28px',
+              margin: '0 0 24px 0',
+            }}
+          >
+            🔗 URLs Referenced by AI Engines
+          </h2>
+          {result.aggregatedInsights.urlSources.slice(0, 10).map((urlSource, index) => (
+            <div
+              key={index}
+              style={{
+                marginBottom: '16px',
+                padding: '12px',
+                backgroundColor: 'white',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+              }}
+            >
+              <p
+                style={{
+                  color: '#1976d2',
+                  marginBottom: '4px',
+                  fontSize: '16px',
+                  fontWeight: 'bold',
+                  margin: '0 0 4px 0',
+                  wordBreak: 'break-all',
+                }}
+              >
+                {urlSource.source}
+              </p>
+              <p
+                style={{
+                  color: '#666',
+                  fontSize: '14px',
+                  margin: '0',
+                }}
+              >
+                Referenced by {urlSource.engines.join(', ')} ({urlSource.count} times)
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Ahrefs Brand Radar Data */}
+      {result.aggregatedInsights.ahrefsData &&
+        result.aggregatedInsights.ahrefsData.totalAIMentions > 0 && (
+          <div
+            style={{
+              padding: '24px',
+              marginBottom: '32px',
+              backgroundColor: '#f8f9fa',
+              border: '1px solid #e0e0e0',
+              borderRadius: '8px',
+            }}
+          >
+            <h2
+              style={{
+                color: 'black',
+                marginBottom: '24px',
+                fontWeight: 'bold',
+                fontSize: '28px',
+                margin: '0 0 24px 0',
+              }}
+            >
+              🤖 AI Platform Mentions (Ahrefs Brand Radar)
+            </h2>
+
+            <p
+              style={{ color: 'black', fontSize: '20px', fontWeight: 'bold', margin: '0 0 16px 0' }}
+            >
+              Total AI Mentions: {result.aggregatedInsights.ahrefsData.totalAIMentions}
+            </p>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
+              {result.aggregatedInsights.ahrefsData.aiMentions.map((mention, index) => (
+                <div
+                  key={index}
+                  style={{
+                    backgroundColor: '#1976d2',
+                    color: 'white',
+                    padding: '16px',
+                    borderRadius: '8px',
+                    textAlign: 'center',
+                    minWidth: '150px',
+                  }}
+                >
+                  <div style={{ fontSize: '24px', fontWeight: 'bold', margin: '0 0 8px 0' }}>
+                    {mention.mentions}
+                  </div>
+                  <div style={{ fontSize: '16px', margin: '0' }}>{mention.source} mentions</div>
+                </div>
+              ))}
+            </div>
+
+            <h3
+              style={{
+                color: 'black',
+                marginBottom: '16px',
+                fontWeight: 'bold',
+                fontSize: '22px',
+                margin: '0 0 16px 0',
+              }}
+            >
+              AI Visibility Insights:
+            </h3>
+            {result.aggregatedInsights.ahrefsData.aiVisibilityInsights.map((insight, index) => (
+              <p
+                key={index}
+                style={{
+                  color: 'black',
+                  marginBottom: '8px',
+                  fontSize: '18px',
+                  margin: '0 0 8px 0',
+                }}
+              >
+                • {insight}
+              </p>
+            ))}
+
+            {/* Sample AI Responses */}
+            {result.aggregatedInsights.ahrefsData.aiMentions.some(
+              m => m.sample_responses.length > 0
+            ) && (
+              <div style={{ marginTop: '24px' }}>
+                <h3
+                  style={{
+                    color: 'black',
+                    marginBottom: '16px',
+                    fontWeight: 'bold',
+                    fontSize: '22px',
+                    margin: '0 0 16px 0',
+                  }}
+                >
+                  Sample AI Responses:
+                </h3>
+                {result.aggregatedInsights.ahrefsData.aiMentions
+                  .filter(m => m.sample_responses.length > 0)
+                  .slice(0, 3)
+                  .map((mention, index) => (
+                    <div key={index} style={{ marginBottom: '20px' }}>
+                      <p
+                        style={{
+                          color: '#1976d2',
+                          fontWeight: 'bold',
+                          fontSize: '18px',
+                          margin: '0 0 8px 0',
+                        }}
+                      >
+                        {mention.source}:
+                      </p>
+                      {mention.sample_responses.slice(0, 1).map((response, resIndex) => (
+                        <div
+                          key={resIndex}
+                          style={{
+                            backgroundColor: 'white',
+                            border: '1px solid #ddd',
+                            padding: '12px',
+                            borderRadius: '4px',
+                            marginBottom: '8px',
+                          }}
+                        >
+                          <p
+                            style={{
+                              color: 'black',
+                              fontStyle: 'italic',
+                              fontSize: '16px',
+                              margin: '0',
+                              lineHeight: '1.5',
+                            }}
+                          >
+                            &quot;
+                            {response.length > 300 ? response.substring(0, 300) + '...' : response}
+                            &quot;
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+        )}
+
       {/* Sentiment Highlights */}
       {(result.aggregatedInsights.mainSentimentHighlights.positive.length > 0 ||
         result.aggregatedInsights.mainSentimentHighlights.negative.length > 0) && (

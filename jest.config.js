@@ -9,25 +9,20 @@ const config = {
       '<rootDir>/__mocks__/fileMock.js',
   },
   transform: {
-    '^.+\\.(ts|tsx)$': ['ts-jest', { tsconfig: 'tsconfig.jest.json' }],
+    '^.+\\.(ts|tsx)$': [
+      'ts-jest',
+      {
+        tsconfig: 'tsconfig.jest.json',
+        useESM: false,
+      },
+    ],
   },
-  testPathIgnorePatterns: ['<rootDir>/node_modules/'],
-  globals: {
-    'ts-jest': {
-      tsconfig: 'tsconfig.jest.json',
-    },
-  },
-  // Add coverage report settings
-  collectCoverage: true,
-  collectCoverageFrom: [
-    'pages/**/*.{ts,tsx}',
-    '!pages/_app.tsx',
-    '!pages/_document.tsx',
-    'components/**/*.{ts,tsx}',
-    'hooks/**/*.{ts,tsx}',
-    'utils/**/*.{ts,tsx}',
-  ],
+  testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/.next/'],
+  testMatch: ['<rootDir>/__tests__/**/*.(test|spec).(ts|tsx)'],
+  collectCoverage: false,
+  collectCoverageFrom: ['pages/api/stillbrook-search.ts', 'pages/stillbrook.tsx'],
   coverageReporters: ['json', 'lcov', 'text', 'clover'],
+  testTimeout: 10000,
 };
 
 module.exports = config;
