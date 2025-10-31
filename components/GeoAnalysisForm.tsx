@@ -51,7 +51,7 @@ const BRAND_INTENT_CATEGORIES = [
   {
     value: 'reputation',
     label: 'Reputation',
-    prompt: 'Is [Brand Name] trustworthy? What do people think of [Brand Name]?',
+    prompt: 'Does [Brand Name] have a good reputation? What do people think of [Brand Name]?',
   },
   {
     value: 'product_service',
@@ -101,7 +101,7 @@ const INDIVIDUAL_INTENT_CATEGORIES = [
   {
     value: 'reputation',
     label: 'Reputation',
-    prompt: 'Is [Full Name] trustworthy? What do people say about [Full Name]?',
+    prompt: 'Does [Full Name] have a good reputation? What do people say about [Full Name]?',
   },
   {
     value: 'employment_leadership',

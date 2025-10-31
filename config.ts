@@ -16,3 +16,6 @@ export const perplexityApiKey: string = process.env.PERPLEXITY_API_KEY || '';
 
 // Grok/XAI Configuration
 export const grokApiKey: string = process.env.XAI_API_KEY || process.env.GROK_API_KEY || '';
+
+// Ahrefs Configuration
+export const ahrefsApiKey: string = process.env.AHREFS_API_KEY || '';

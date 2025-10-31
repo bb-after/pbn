@@ -56,6 +56,7 @@ import {
   AccountBalance as AccountBalanceIcon,
   Sync as SyncIcon,
   History as HistoryIcon,
+  CameraAlt as CameraAltIcon,
 } from '@mui/icons-material';
 import { tokens } from '../../theme/intercom-theme';
 import { keyframes } from '@mui/system';
@@ -260,6 +261,12 @@ const navigationItems: NavigationItem[] = [
         label: 'Zoom Backdrop',
         icon: <WallpaperIcon />,
         href: '/zoom',
+      },
+      {
+        id: 'stillbrook',
+        label: 'Stillbrook',
+        icon: <CameraAltIcon />,
+        href: '/stillbrook',
       },
     ],
   },

@@ -5,6 +5,8 @@ const dbConfig = {
   database: process.env.DB_DATABASE,
 };
 
+import mysql from 'mysql2/promise';
+
 async function fixScheduleEngineIds() {
   const connection = await mysql.createConnection(dbConfig);
 
