@@ -1016,31 +1016,29 @@ function StillbrookContent() {
                       </Stack>
                     </IntercomCard>
 
-                    {/* HTML Preview with Read-Only Overlay */}
+                    {/* HTML Preview with Read-Only Styling */}
                     <Box
                       sx={{
-                        position: 'relative',
                         border: '1px solid #ddd',
                         borderRadius: 2,
                         overflow: 'hidden',
                         maxHeight: '600px',
                         overflowY: 'auto',
+                        position: 'relative',
+                        '& *': {
+                          pointerEvents: 'none !important',
+                          userSelect: 'none !important',
+                        },
+                        '& a': {
+                          cursor: 'default !important',
+                          textDecoration: 'none !important',
+                        },
+                        '& button, & input, & select, & textarea': {
+                          cursor: 'default !important',
+                        },
                       }}
+                      title="Preview only - links and interactions are disabled for cleaner screenshots"
                     >
-                      {/* Transparent overlay to make it read-only */}
-                      <Box
-                        sx={{
-                          position: 'absolute',
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                          backgroundColor: 'transparent',
-                          zIndex: 10,
-                          cursor: 'default',
-                        }}
-                        title="Preview only - links are disabled for cleaner screenshots"
-                      />
                       <Box id="html-preview">
                         <div dangerouslySetInnerHTML={{ __html: result.htmlPreview }} />
                       </Box>
