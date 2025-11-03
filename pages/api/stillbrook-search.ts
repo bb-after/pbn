@@ -15,6 +15,7 @@ interface SearchRequestBody {
   language?: string;
   searchType?: string;
   screenshotType: string;
+  savedSearchId?: string; // Optional saved search ID for analytics
   // New highlight options
   enableNegativeUrls?: boolean;
   enableNegativeSentiment?: boolean;
@@ -54,8 +55,11 @@ interface StillbrookSubmission {
   email?: string;
   search_query: string;
   search_type: string;
+  saved_stillbrook_search_id?: number | null;
   urls?: string[];
   keywords?: string[];
+  positive_urls?: string[];
+  positive_keywords?: string[];
   location?: string;
   language?: string;
   country?: string;
@@ -105,8 +109,11 @@ function createSubmission(
   user: User | null,
   keyword: string,
   screenshotType: string,
+  savedSearchId?: string,
   urls?: string[],
   keywords?: string[],
+  positiveUrls?: string[],
+  positiveKeywords?: string[],
   location?: string,
   language?: string,
   country?: string,
@@ -124,8 +131,11 @@ function createSubmission(
     email: user?.email,
     search_query: keyword,
     search_type: screenshotType,
+    saved_stillbrook_search_id: savedSearchId ? parseInt(savedSearchId) : null,
     urls: urls,
     keywords: keywords,
+    positive_urls: positiveUrls,
+    positive_keywords: positiveKeywords,
     location: location || 'New York',
     language: language || 'en',
     country: country || 'us',
@@ -144,10 +154,11 @@ async function logStillbrookSubmission(submission: StillbrookSubmission): Promis
   try {
     const sql = `
       INSERT INTO stillbrook_submissions (
-        user_id, username, email, search_query, search_type, urls, keywords,
-        location, language, country, matched_results_count, status, error_message,
-        serpapi_search_id, raw_html_url, has_highlighted_content, processing_time_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        user_id, username, email, search_query, search_type, saved_stillbrook_search_id,
+        urls, keywords, positive_urls, positive_keywords, location, language, country, 
+        matched_results_count, status, error_message, serpapi_search_id, 
+        raw_html_url, has_highlighted_content, processing_time_ms
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const params = [
@@ -156,8 +167,11 @@ async function logStillbrookSubmission(submission: StillbrookSubmission): Promis
       submission.email,
       submission.search_query,
       submission.search_type,
+      submission.saved_stillbrook_search_id,
       submission.urls ? JSON.stringify(submission.urls) : null,
       submission.keywords ? JSON.stringify(submission.keywords) : null,
+      submission.positive_urls ? JSON.stringify(submission.positive_urls) : null,
+      submission.positive_keywords ? JSON.stringify(submission.positive_keywords) : null,
       submission.location,
       submission.language,
       submission.country,
@@ -195,6 +209,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     language,
     searchType,
     screenshotType,
+    savedSearchId,
     enableNegativeUrls,
     enableNegativeSentiment,
     enableNegativeKeywords,
@@ -294,8 +309,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     if (data.error) {
       const processingTime = Date.now() - startTime;
       const submission = createSubmission(
-        user, keyword, screenshotType, urls, keywords, location, language, country,
-        0, 'error', `SerpAPI error: ${data.error}`, serpApiSearchId, rawHtmlUrl, false, processingTime
+        user, keyword, screenshotType, savedSearchId, urls, keywords, positiveUrls, positiveKeywords,
+        location, language, country, 0, 'error', `SerpAPI error: ${data.error}`, 
+        serpApiSearchId, rawHtmlUrl, false, processingTime
       );
       await logStillbrookSubmission(submission);
       throw new Error(`SerpAPI error: ${data.error}`);
@@ -353,8 +369,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     if (organicResults.length === 0) {
       const processingTime = Date.now() - startTime;
       const submission = createSubmission(
-        user, keyword, screenshotType, urls, keywords, location, language, country,
-        0, 'no_results', 'No search results found', serpApiSearchId, rawHtmlUrl, false, processingTime
+        user, keyword, screenshotType, savedSearchId, urls, keywords, positiveUrls, positiveKeywords,
+        location, language, country, 0, 'no_results', 'No search results found', 
+        serpApiSearchId, rawHtmlUrl, false, processingTime
       );
       await logStillbrookSubmission(submission);
       return res.status(404).json({
@@ -618,8 +635,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     if (allMatches.length === 0) {
       const processingTime = Date.now() - startTime;
       const submission = createSubmission(
-        user, keyword, screenshotType, urls, keywords, location, language, country,
-        0, 'no_results', 'No matching results found', serpApiSearchId, rawHtmlUrl, true, processingTime
+        user, keyword, screenshotType, savedSearchId, urls, keywords, positiveUrls, positiveKeywords,
+        location, language, country, 0, 'no_results', 'No matching results found', 
+        serpApiSearchId, rawHtmlUrl, true, processingTime
       );
       await logStillbrookSubmission(submission);
       
@@ -637,8 +655,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     // Log successful submission
     const processingTime = Date.now() - startTime;
     const submission = createSubmission(
-      user, keyword, screenshotType, urls, keywords, location, language, country,
-      allMatches.length, 'success', undefined, serpApiSearchId, rawHtmlUrl, true, processingTime
+      user, keyword, screenshotType, savedSearchId, urls, keywords, positiveUrls, positiveKeywords,
+      location, language, country, allMatches.length, 'success', undefined, 
+      serpApiSearchId, rawHtmlUrl, true, processingTime
     );
     await logStillbrookSubmission(submission);
 
@@ -656,8 +675,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     // Log error submission
     const processingTime = Date.now() - startTime;
     const submission = createSubmission(
-      user, keyword, screenshotType, urls, keywords, location, language, country,
-      0, 'error', error instanceof Error ? error.message : 'Internal Server Error', undefined, undefined, false, processingTime
+      user, keyword, screenshotType, savedSearchId, urls, keywords, positiveUrls, positiveKeywords,
+      location, language, country, 0, 'error', error instanceof Error ? error.message : 'Internal Server Error', 
+      undefined, undefined, false, processingTime
     );
     await logStillbrookSubmission(submission);
     
