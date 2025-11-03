@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/router';
 import {
   TextField,
   RadioGroup,
@@ -17,13 +18,19 @@ import {
   IconButton,
   CircularProgress,
   Checkbox,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import SaveAltIcon from '@mui/icons-material/SaveAlt';
 import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
+import BookmarkAddIcon from '@mui/icons-material/BookmarkAdd';
 import { IntercomLayout, ToastProvider, IntercomCard, IntercomButton } from '../components/ui';
 import UnauthorizedAccess from '../components/UnauthorizedAccess';
 import useValidateUserToken from '../hooks/useValidateUserToken';
+import ClientDropdown from '../components/ClientDropdown';
 import Image from 'next/image';
 import googleDomainsData from '../google-domains.json';
 import html2canvas from 'html2canvas';
@@ -333,6 +340,7 @@ function KeywordInputSection({
 
 function StillbrookContent() {
   const { isValidUser, token } = useValidateUserToken();
+  const router = useRouter();
   const [keyword, setKeyword] = useState('');
   const [url, setUrl] = useState('');
   const [urls, setUrls] = useState<string[]>(['']);
@@ -363,6 +371,22 @@ function StillbrookContent() {
   // Positive highlight state variables
   const [positiveUrls, setPositiveUrls] = useState<string[]>(['']);
   const [positiveKeywords, setPositiveKeywords] = useState<string[]>(['']);
+
+  // Save search modal state
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [searchName, setSearchName] = useState('');
+  const [selectedClient, setSelectedClient] = useState('');
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+  const [isSavingSearch, setIsSavingSearch] = useState(false);
+
+  // Loaded search state (when coming from saved searches page)
+  const [isLoadedSearch, setIsLoadedSearch] = useState(false);
+  const [loadedSearchName, setLoadedSearchName] = useState('');
+  const [loadedSearchId, setLoadedSearchId] = useState<string | null>(null);
+  const [originalSearchData, setOriginalSearchData] = useState<any>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isUpdatingSearch, setIsUpdatingSearch] = useState(false);
+  const [showUpdateOptions, setShowUpdateOptions] = useState(false);
 
   // Sort Google domains alphabetically by country name, with google.com first
   const sortedGoogleDomains = googleDomainsData.sort((a: GoogleDomain, b: GoogleDomain) => {
@@ -413,6 +437,149 @@ function StillbrookContent() {
     };
   }, []);
 
+  // Load saved search effect
+  useEffect(() => {
+    const loadSearchId = router.query.loadSearch as string;
+
+    if (loadSearchId && token && !isLoadedSearch) {
+      loadSavedSearch(loadSearchId);
+    }
+  }, [router.query, token, isLoadedSearch]);
+
+  const loadSavedSearch = async (searchId: string) => {
+    try {
+      const response = await fetch('/api/saved-searches', {
+        headers: {
+          ...(token ? { 'x-auth-token': token } : {}),
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to load saved searches');
+      }
+
+      const searches = await response.json();
+      const targetSearch = searches.find((s: any) => s.id.toString() === searchId);
+
+      if (!targetSearch) {
+        setError('Saved search not found');
+        return;
+      }
+
+      // Populate form with saved search data
+      setKeyword(targetSearch.search_query || '');
+      setSearchType(targetSearch.search_type || '');
+      setLocation(targetSearch.location || '');
+      setLanguage(targetSearch.language || 'en');
+      setGoogleDomain(targetSearch.google_domain || 'google.com');
+
+      // Set URLs and keywords
+      setUrls(targetSearch.urls && targetSearch.urls.length > 0 ? targetSearch.urls : ['']);
+      setKeywords(
+        targetSearch.keywords && targetSearch.keywords.length > 0 ? targetSearch.keywords : ['']
+      );
+      setPositiveUrls(
+        targetSearch.positive_urls && targetSearch.positive_urls.length > 0
+          ? targetSearch.positive_urls
+          : ['']
+      );
+      setPositiveKeywords(
+        targetSearch.positive_keywords && targetSearch.positive_keywords.length > 0
+          ? targetSearch.positive_keywords
+          : ['']
+      );
+
+      // Set highlight options
+      setEnableNegativeUrls(targetSearch.enable_negative_urls || false);
+      setEnableNegativeSentiment(targetSearch.enable_negative_sentiment || false);
+      setEnableNegativeKeywords(targetSearch.enable_negative_keywords || false);
+      setEnablePositiveUrls(targetSearch.enable_positive_urls || false);
+      setEnablePositiveSentiment(targetSearch.enable_positive_sentiment || false);
+      setEnablePositiveKeywords(targetSearch.enable_positive_keywords || false);
+
+      // Set loaded search info
+      setIsLoadedSearch(true);
+      setLoadedSearchName(targetSearch.search_name || '');
+      setLoadedSearchId(searchId);
+      setOriginalSearchData(targetSearch);
+      setHasUnsavedChanges(false);
+
+      console.log('Loaded saved search:', targetSearch.search_name);
+    } catch (err: any) {
+      console.error('Failed to load saved search:', err);
+      setError('Failed to load saved search: ' + (err.message || 'Unknown error'));
+    }
+  };
+
+  // Function to detect if current form state differs from original loaded search
+  const detectChanges = () => {
+    if (!originalSearchData) return false;
+
+    const currentData = {
+      search_query: keyword,
+      search_type: searchType,
+      location,
+      language,
+      google_domain: googleDomain,
+      urls: urls.filter(u => u.trim() !== ''),
+      keywords: keywords.filter(k => k.trim() !== ''),
+      positive_urls: positiveUrls.filter(u => u.trim() !== ''),
+      positive_keywords: positiveKeywords.filter(k => k.trim() !== ''),
+      enable_negative_urls: enableNegativeUrls,
+      enable_negative_sentiment: enableNegativeSentiment,
+      enable_negative_keywords: enableNegativeKeywords,
+      enable_positive_urls: enablePositiveUrls,
+      enable_positive_sentiment: enablePositiveSentiment,
+      enable_positive_keywords: enablePositiveKeywords,
+    };
+
+    const originalData = {
+      search_query: originalSearchData.search_query,
+      search_type: originalSearchData.search_type || '',
+      location: originalSearchData.location || '',
+      language: originalSearchData.language || 'en',
+      google_domain: originalSearchData.google_domain || 'google.com',
+      urls: originalSearchData.urls || [],
+      keywords: originalSearchData.keywords || [],
+      positive_urls: originalSearchData.positive_urls || [],
+      positive_keywords: originalSearchData.positive_keywords || [],
+      enable_negative_urls: originalSearchData.enable_negative_urls || false,
+      enable_negative_sentiment: originalSearchData.enable_negative_sentiment || false,
+      enable_negative_keywords: originalSearchData.enable_negative_keywords || false,
+      enable_positive_urls: originalSearchData.enable_positive_urls || false,
+      enable_positive_sentiment: originalSearchData.enable_positive_sentiment || false,
+      enable_positive_keywords: originalSearchData.enable_positive_keywords || false,
+    };
+
+    return JSON.stringify(currentData) !== JSON.stringify(originalData);
+  };
+
+  // Effect to detect changes
+  useEffect(() => {
+    if (isLoadedSearch && originalSearchData) {
+      const hasChanges = detectChanges();
+      setHasUnsavedChanges(hasChanges);
+    }
+  }, [
+    keyword,
+    searchType,
+    location,
+    language,
+    googleDomain,
+    urls,
+    keywords,
+    positiveUrls,
+    positiveKeywords,
+    enableNegativeUrls,
+    enableNegativeSentiment,
+    enableNegativeKeywords,
+    enablePositiveUrls,
+    enablePositiveSentiment,
+    enablePositiveKeywords,
+    isLoadedSearch,
+    originalSearchData,
+  ]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -435,6 +602,7 @@ function StillbrookContent() {
       language,
       searchType,
       screenshotType: 'combined', // New combined approach
+      savedSearchId: loadedSearchId, // Include saved search ID for analytics
       // Include highlight options
       enableNegativeUrls,
       enableNegativeSentiment,
@@ -648,14 +816,21 @@ function StillbrookContent() {
 
     setIsGeneratingImage(true);
     try {
-      // Get the HTML preview element
-      const previewElement = document.getElementById('html-preview');
-      if (!previewElement) {
-        throw new Error('Preview element not found');
+      // Get the iframe element
+      const iframe = document.querySelector('#html-preview iframe') as HTMLIFrameElement;
+      if (!iframe || !iframe.contentDocument) {
+        throw new Error('Preview iframe not found or not accessible');
       }
 
-      // Pre-process all images to data URLs
-      const images = previewElement.querySelectorAll('img');
+      const iframeDocument = iframe.contentDocument;
+      const iframeBody = iframeDocument.body;
+
+      if (!iframeBody) {
+        throw new Error('Iframe content not loaded');
+      }
+
+      // Pre-process all images to data URLs within the iframe
+      const images = iframeDocument.querySelectorAll('img');
       console.log(`Found ${images.length} images to convert to data URLs...`);
 
       const imagePromises = Array.from(images).map(async (img, index) => {
@@ -693,13 +868,13 @@ function StillbrookContent() {
       // Wait for DOM to update
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Generate screenshot
-      const canvas = await html2canvas(previewElement, {
+      // Generate screenshot of the iframe content
+      const canvas = await html2canvas(iframeBody, {
         allowTaint: false,
         useCORS: false,
         scale: 2,
-        width: previewElement.scrollWidth,
-        height: previewElement.scrollHeight,
+        width: iframeBody.scrollWidth,
+        height: iframeBody.scrollHeight,
         backgroundColor: '#ffffff',
         logging: false,
       });
@@ -873,6 +1048,176 @@ function StillbrookContent() {
     setKeywords(newKeywords);
   };
 
+  const handleSaveSearch = async () => {
+    if (!searchName.trim() || !selectedClientId) {
+      setError('Please provide a search name and select a client.');
+      return;
+    }
+
+    setIsSavingSearch(true);
+    try {
+      const searchData = {
+        searchName: searchName.trim(),
+        clientId: selectedClientId,
+        searchQuery: keyword,
+        searchType,
+        urls: urls.filter(u => u.trim() !== ''),
+        keywords: keywords.filter(k => k.trim() !== ''),
+        positiveUrls: positiveUrls.filter(u => u.trim() !== ''),
+        positiveKeywords: positiveKeywords.filter(k => k.trim() !== ''),
+        location,
+        language,
+        country: googleDomain?.split('.').pop() || 'us',
+        googleDomain,
+        enableNegativeUrls,
+        enableNegativeSentiment,
+        enableNegativeKeywords,
+        enablePositiveUrls,
+        enablePositiveSentiment,
+        enablePositiveKeywords,
+      };
+
+      const response = await fetch('/api/saved-searches', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'x-auth-token': token } : {}),
+        },
+        body: JSON.stringify(searchData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to save search');
+      }
+
+      // Reset modal state
+      setShowSaveModal(false);
+      setSearchName('');
+      setSelectedClient('');
+      setSelectedClientId(null);
+      setError(null);
+
+      // Show success message (you could use a toast notification here)
+      alert('Search saved successfully!');
+    } catch (err: any) {
+      console.error('Failed to save search:', err);
+      setError(err.message || 'Failed to save search');
+    } finally {
+      setIsSavingSearch(false);
+    }
+  };
+
+  const handleOpenSaveModal = () => {
+    // Validate that the form has the minimum required data
+    if (!keyword.trim()) {
+      setError('Please enter a search term before saving.');
+      return;
+    }
+
+    const hasAnyHighlight =
+      enableNegativeUrls ||
+      enableNegativeSentiment ||
+      enableNegativeKeywords ||
+      enablePositiveUrls ||
+      enablePositiveSentiment ||
+      enablePositiveKeywords;
+
+    if (!hasAnyHighlight) {
+      setError('Please select at least one highlight option before saving.');
+      return;
+    }
+
+    setError(null);
+    setShowSaveModal(true);
+  };
+
+  const handleUpdateSearch = async () => {
+    if (!loadedSearchId || !originalSearchData) {
+      setError('No search to update');
+      return;
+    }
+
+    setIsUpdatingSearch(true);
+    try {
+      const searchData = {
+        searchName: loadedSearchName,
+        clientId: originalSearchData.client_id,
+        searchQuery: keyword,
+        searchType,
+        urls: urls.filter(u => u.trim() !== ''),
+        keywords: keywords.filter(k => k.trim() !== ''),
+        positiveUrls: positiveUrls.filter(u => u.trim() !== ''),
+        positiveKeywords: positiveKeywords.filter(k => k.trim() !== ''),
+        location,
+        language,
+        country: googleDomain?.split('.').pop() || 'us',
+        googleDomain,
+        enableNegativeUrls,
+        enableNegativeSentiment,
+        enableNegativeKeywords,
+        enablePositiveUrls,
+        enablePositiveSentiment,
+        enablePositiveKeywords,
+      };
+
+      const response = await fetch(`/api/saved-searches?id=${loadedSearchId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'x-auth-token': token } : {}),
+        },
+        body: JSON.stringify(searchData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update search');
+      }
+
+      // Update the original search data to reflect the new state
+      setOriginalSearchData({
+        ...originalSearchData,
+        search_query: keyword,
+        search_type: searchType,
+        urls: urls.filter(u => u.trim() !== ''),
+        keywords: keywords.filter(k => k.trim() !== ''),
+        positive_urls: positiveUrls.filter(u => u.trim() !== ''),
+        positive_keywords: positiveKeywords.filter(k => k.trim() !== ''),
+        location,
+        language,
+        country: googleDomain?.split('.').pop() || 'us',
+        google_domain: googleDomain,
+        enable_negative_urls: enableNegativeUrls,
+        enable_negative_sentiment: enableNegativeSentiment,
+        enable_negative_keywords: enableNegativeKeywords,
+        enable_positive_urls: enablePositiveUrls,
+        enable_positive_sentiment: enablePositiveSentiment,
+        enable_positive_keywords: enablePositiveKeywords,
+      });
+
+      setHasUnsavedChanges(false);
+      setShowUpdateOptions(false);
+      setError(null);
+
+      alert('Search updated successfully!');
+    } catch (err: any) {
+      console.error('Failed to update search:', err);
+      setError(err.message || 'Failed to update search');
+    } finally {
+      setIsUpdatingSearch(false);
+    }
+  };
+
+  const handleSaveAsNew = () => {
+    // Reset loaded search state and show save modal
+    setIsLoadedSearch(false);
+    setLoadedSearchId(null);
+    setOriginalSearchData(null);
+    setHasUnsavedChanges(false);
+    handleOpenSaveModal();
+  };
+
   if (!isValidUser) {
     return <UnauthorizedAccess />;
   }
@@ -1032,6 +1377,25 @@ function StillbrookContent() {
             {currentStep === 'form' && (
               <Box component="form" onSubmit={handleSubmit}>
                 <Stack spacing={3}>
+                  {isLoadedSearch && (
+                    <Alert severity={hasUnsavedChanges ? 'warning' : 'info'}>
+                      {hasUnsavedChanges ? (
+                        <>
+                          <strong>Modified search:</strong> &quot;{loadedSearchName}&quot;
+                          <br />
+                          <small>You have unsaved changes to this search.</small>
+                        </>
+                      ) : (
+                        <>
+                          Running saved search: <strong>&quot;{loadedSearchName}&quot;</strong>
+                          <br />
+                          <small>
+                            You can modify the parameters below before running the search.
+                          </small>
+                        </>
+                      )}
+                    </Alert>
+                  )}
                   <TextField
                     fullWidth
                     label="Search Term"
@@ -1255,10 +1619,69 @@ function StillbrookContent() {
                     helperText="Examples: 'New York, NY', 'London, UK', 'Los Angeles, California'"
                   />
 
-                  <Box>
+                  <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                     <IntercomButton variant="primary" type="submit" disabled={loading}>
                       {loading ? 'Processing...' : 'Submit'}
                     </IntercomButton>
+
+                    {/* Show different buttons based on loaded search state and changes */}
+                    {!isLoadedSearch && (
+                      <IntercomButton
+                        variant="secondary"
+                        leftIcon={<BookmarkAddIcon />}
+                        onClick={handleOpenSaveModal}
+                        disabled={loading}
+                      >
+                        Save Stillbrook Search
+                      </IntercomButton>
+                    )}
+
+                    {isLoadedSearch && !hasUnsavedChanges && (
+                      <IntercomButton
+                        variant="ghost"
+                        onClick={() => router.push('/my-saved-searches')}
+                        disabled={loading}
+                      >
+                        ← Back to Saved Stillbrook Searches
+                      </IntercomButton>
+                    )}
+
+                    {isLoadedSearch && hasUnsavedChanges && !showUpdateOptions && (
+                      <IntercomButton
+                        variant="secondary"
+                        onClick={() => setShowUpdateOptions(true)}
+                        disabled={loading}
+                      >
+                        Save Changes
+                      </IntercomButton>
+                    )}
+
+                    {isLoadedSearch && hasUnsavedChanges && showUpdateOptions && (
+                      <>
+                        <IntercomButton
+                          variant="primary"
+                          onClick={handleUpdateSearch}
+                          disabled={loading || isUpdatingSearch}
+                        >
+                          {isUpdatingSearch ? 'Updating...' : 'Update Search'}
+                        </IntercomButton>
+                        <IntercomButton
+                          variant="secondary"
+                          leftIcon={<BookmarkAddIcon />}
+                          onClick={handleSaveAsNew}
+                          disabled={loading || isUpdatingSearch}
+                        >
+                          Save as New Search
+                        </IntercomButton>
+                        <IntercomButton
+                          variant="ghost"
+                          onClick={() => setShowUpdateOptions(false)}
+                          disabled={loading || isUpdatingSearch}
+                        >
+                          Cancel
+                        </IntercomButton>
+                      </>
+                    )}
                   </Box>
                 </Stack>
               </Box>
@@ -1372,6 +1795,9 @@ function StillbrookContent() {
                           pointerEvents: 'none !important',
                           userSelect: 'none !important',
                         },
+                        '& iframe': {
+                          pointerEvents: 'auto !important', // Allow iframe interactions
+                        },
                         '& a': {
                           cursor: 'default !important',
                           textDecoration: 'none !important',
@@ -1385,28 +1811,32 @@ function StillbrookContent() {
                       <Box
                         id="html-preview"
                         sx={{
-                          // Isolate Google HTML from parent dark mode styles
-                          color: '#202124 !important',
-                          backgroundColor: '#ffffff !important',
-                          fontFamily: 'arial, sans-serif !important',
-                          fontSize: '14px !important',
-                          lineHeight: 'normal !important',
-                          // Reset all inherited styles to ensure clean Google appearance
-                          '& *': {
-                            boxSizing: 'content-box',
-                          },
-                          // Ensure Google's default styles take precedence over dark mode
-                          '& body, & html': {
-                            backgroundColor: '#ffffff !important',
-                            color: '#202124 !important',
-                          },
-                          // Reset dark mode overrides
-                          '& div, & span, & p, & h1, & h2, & h3, & h4, & h5, & h6': {
-                            color: 'inherit',
-                          },
+                          border: '1px solid #ddd',
+                          borderRadius: 2,
+                          overflow: 'hidden',
+                          maxHeight: '600px',
+                          overflowY: 'auto',
+                          position: 'relative',
+                          backgroundColor: '#fff',
+                          pointerEvents: 'auto', // Explicitly enable pointer events
                         }}
                       >
-                        <div dangerouslySetInnerHTML={{ __html: result.htmlPreview }} />
+                        <iframe
+                          srcDoc={result.htmlPreview}
+                          style={{
+                            width: '100%',
+                            height: '600px',
+                            border: 'none',
+                            borderRadius: '4px',
+                            pointerEvents: 'auto',
+                            display: 'block',
+                            overflow: 'auto', // Enable scrolling within iframe
+                          }}
+                          sandbox="allow-same-origin allow-scripts"
+                          title="Search Results Preview"
+                          loading="lazy"
+                          scrolling="auto"
+                        />
                       </Box>
                     </Box>
                   </Stack>
@@ -1447,6 +1877,80 @@ function StillbrookContent() {
           </Stack>
         </Box>
       </IntercomCard>
+
+      {/* Save Search Modal */}
+      <Dialog open={showSaveModal} onClose={() => setShowSaveModal(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Save Stillbrook Search</DialogTitle>
+        <DialogContent>
+          <Stack spacing={3} sx={{ mt: 2 }}>
+            <TextField
+              fullWidth
+              label="Search Name"
+              value={searchName}
+              onChange={e => setSearchName(e.target.value)}
+              placeholder="Enter a name for this Stillbrook search"
+              required
+            />
+            <ClientDropdown
+              value={selectedClient}
+              onChange={setSelectedClient}
+              onClientIdChange={setSelectedClientId}
+              fullWidth
+              required
+              label="Select Client"
+            />
+            <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Search Parameters Summary:
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                • Search Term: {keyword || 'Not specified'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                • Domain: {googleDomain || 'google.com'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                • Language: {language || 'en'}
+              </Typography>
+              {location && (
+                <Typography variant="body2" color="text.secondary">
+                  • Location: {location}
+                </Typography>
+              )}
+              <Typography variant="body2" color="text.secondary">
+                • Negative Highlights:{' '}
+                {[
+                  enableNegativeUrls && 'URLs',
+                  enableNegativeSentiment && 'Sentiment',
+                  enableNegativeKeywords && 'Keywords',
+                ]
+                  .filter(Boolean)
+                  .join(', ') || 'None'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                • Positive Highlights:{' '}
+                {[
+                  enablePositiveUrls && 'URLs',
+                  enablePositiveSentiment && 'Sentiment',
+                  enablePositiveKeywords && 'Keywords',
+                ]
+                  .filter(Boolean)
+                  .join(', ') || 'None'}
+              </Typography>
+            </Box>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowSaveModal(false)}>Cancel</Button>
+          <Button
+            onClick={handleSaveSearch}
+            disabled={isSavingSearch || !searchName.trim() || !selectedClientId}
+            variant="contained"
+          >
+            {isSavingSearch ? 'Saving...' : 'Save Stillbrook Search'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </IntercomLayout>
   );
 }
