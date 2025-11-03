@@ -24,6 +24,8 @@ interface SerpApiResult {
 }
 
 interface SearchResponse {
+  searchType: any;
+  noMatches: any;
   results?: SerpApiResult[];
   matchedResults?: SerpApiResult[];
   htmlPreview?: string;
@@ -169,7 +171,7 @@ async function logStillbrookSubmission(submission: StillbrookSubmission): Promis
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse<SearchResponse>) {
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
+    return res.status(405).json({ error: 'Method Not Allowed', searchType: undefined, noMatches: undefined });
   }
 
   const {
@@ -191,11 +193,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   if (!keyword || !screenshotType) {
     return res.status(400).json({
       error: 'Invalid input: keyword and screenshotType are required.',
+      searchType: undefined,
+      noMatches: undefined
     });
   }
 
   if (screenshotType === 'exact_url_match' && !url && (!urls || urls.length === 0)) {
-    return res.status(400).json({ error: 'URL or URLs are required for Exact URL Match.' });
+    return res.status(400).json({ error: 'URL or URLs are required for Exact URL Match.', searchType: undefined, noMatches: undefined });
   }
 
   // Extract user information and start timing
@@ -206,6 +210,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   if (!process.env.SERP_API_KEY) {
     return res.status(500).json({
       error: 'SerpAPI key not configured. Please set SERPAPI_KEY environment variable.',
+      searchType: undefined,
+      noMatches: undefined
     });
   }
 
@@ -289,6 +295,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
         displayed_link: imageResult.source || '',
       }));
       console.log(`Found ${organicResults.length} image search results`);
+    } else if (searchType === 'vid' && data.video_results) {
+      // For video search, convert video_results to our format
+      organicResults = data.video_results.map((videoResult: any, index: number) => ({
+        position: videoResult.position || index + 1,
+        title: videoResult.title || '',
+        link: videoResult.link || '',
+        snippet: videoResult.snippet || '',
+        displayed_link: videoResult.displayed_link || '',
+      }));
+      console.log(`Found ${organicResults.length} video search results`);
+    } else if (searchType === 'shop' && data.shopping_results) {
+      // For shopping search, convert shopping_results to our format
+      organicResults = data.shopping_results.map((shopResult: any, index: number) => ({
+        position: shopResult.position || index + 1,
+        title: shopResult.title || '',
+        link: shopResult.link || '',
+        snippet: shopResult.snippet || shopResult.price || '',
+        displayed_link: shopResult.source || '',
+      }));
+      console.log(`Found ${organicResults.length} shopping search results`);
     } else {
       // For regular search, use organic_results
       organicResults = data.organic_results || [];
@@ -302,7 +328,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
         0, 'no_results', 'No search results found', serpApiSearchId, rawHtmlUrl, false, processingTime
       );
       await logStillbrookSubmission(submission);
-      return res.status(404).json({ error: 'No search results found.' });
+      return res.status(404).json({
+        error: 'No search results found.',
+        searchType: undefined,
+        noMatches: undefined
+      });
     }
 
     // Process results based on search type
@@ -319,7 +349,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
           const domain = new URL(urlToMatch).hostname.replace(/^www\./, '');
           userDomains.push(domain);
         } catch (error) {
-          return res.status(400).json({ error: `Invalid URL provided: ${urlToMatch}` });
+          return res.status(400).json({
+            error: `Invalid URL provided: ${urlToMatch}`,
+            searchType: undefined,
+            noMatches: undefined
+          });
         }
       }
 
@@ -341,18 +375,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
         }
       });
     } else if (screenshotType === 'negative_sentiment') {
-      // Analyze sentiment of snippets
+      // Analyze sentiment of snippets (or titles for image search)
       const sentiment = new Sentiment();
 
       matchedResults = organicResults.filter((result, index) => {
-        if (result.snippet) {
-          const resultSentiment = sentiment.analyze(result.snippet);
+        // For Google Images, snippet is often empty, so use title instead
+        const textToAnalyze = result.snippet || result.title;
+        if (textToAnalyze) {
+          const resultSentiment = sentiment.analyze(textToAnalyze);
           const isNegative = resultSentiment.score < 0;
           console.log(
-            `Result ${index + 1}: "${result.title}" - Sentiment: ${resultSentiment.score} (${isNegative ? 'NEGATIVE' : 'positive/neutral'})`
+            `Result ${index + 1}: "${result.title}" - Sentiment: ${resultSentiment.score} (${isNegative ? 'NEGATIVE' : 'positive/neutral'}) - Analyzed: ${result.snippet ? 'snippet' : 'title'}`
           );
           if (isNegative) {
-            console.log(`  Snippet: ${result.snippet.substring(0, 150)}...`);
+            console.log(`  Text: ${textToAnalyze.substring(0, 150)}...`);
           }
           return isNegative;
         }
@@ -404,7 +440,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
           // Use headless browser to render HTML with JavaScript execution for proper image loading
           const renderedHtml = await renderHtmlWithBrowser(data.search_metadata.raw_html_file);
           const isImageSearch = searchType === 'isch';
-          htmlPreview = addCleanHighlighting(renderedHtml, matchedResults, screenshotType, isImageSearch);
+          htmlPreview = addCleanHighlighting(renderedHtml, matchedResults, screenshotType, isImageSearch, searchType);
         } else {
           console.error('Failed to fetch raw HTML:', htmlResponse.status);
           // Fallback to custom generated preview
@@ -441,11 +477,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       );
       await logStillbrookSubmission(submission);
       
-      return res.status(404).json({
-        error: `No matching results found for ${screenshotType}`,
-        results: organicResults, // Return all results for debugging
+      // Return 200 with results but indicate no matches found
+      return res.status(200).json({
+        matchedResults: [], // Empty matched results
+        results: organicResults, // Return all results for reference
         totalResults: organicResults.length,
         htmlPreview: generateFullPagePreview(organicResults, new Set(), 'no_matches', keyword, searchType === 'isch'),
+        noMatches: true, // Flag to indicate no matches were found
+        searchType: screenshotType, // Include search type for frontend messaging
       });
     }
 
@@ -462,6 +501,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       results: organicResults, // Include all results for reference
       totalResults: organicResults.length,
       htmlPreview,
+      searchType: undefined,
+      noMatches: undefined
     });
   } catch (error) {
     console.error('Error while searching:', error);
@@ -476,6 +517,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     
     return res.status(500).json({
       error: error instanceof Error ? error.message : 'Internal Server Error',
+      searchType: undefined,
+      noMatches: undefined
     });
   }
 }
@@ -485,7 +528,7 @@ async function renderHtmlWithBrowser(rawHtmlUrl: string): Promise<string> {
 
   let browser;
   try {
-    // Launch headless browser
+    // Launch headless browser with settings optimized for image loading
     browser = await puppeteer.launch({
       headless: true,
       args: [
@@ -493,6 +536,10 @@ async function renderHtmlWithBrowser(rawHtmlUrl: string): Promise<string> {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-web-security',
+        '--disable-features=VizDisplayCompositor',
+        '--allow-running-insecure-content',
+        '--disable-web-security',
+        '--allow-running-insecure-content',
         '--disable-features=VizDisplayCompositor',
       ],
     });
@@ -518,8 +565,30 @@ async function renderHtmlWithBrowser(rawHtmlUrl: string): Promise<string> {
       timeout: 30000, // 30 second timeout
     });
 
-    // Wait a bit more for any lazy loading to complete
-    await new Promise<void>(resolve => setTimeout(resolve, 3000));
+    // Wait a bit more for any lazy loading to complete, especially for images
+    await new Promise<void>(resolve => setTimeout(resolve, 5000));
+    
+    // For Google Images, try to trigger any lazy loading by scrolling
+    if (rawHtmlUrl.includes('tbm=isch') || rawHtmlUrl.includes('google') && rawHtmlUrl.includes('images')) {
+      console.log('Detected Google Images search, scrolling to load images...');
+      await page.evaluate(() => {
+        return new Promise<void>((resolve) => {
+          let totalHeight = 0;
+          const distance = 100;
+          const timer = setInterval(() => {
+            const scrollHeight = document.body.scrollHeight;
+            window.scrollBy(0, distance);
+            totalHeight += distance;
+            if(totalHeight >= scrollHeight){
+              clearInterval(timer);
+              resolve();
+            }
+          }, 100);
+        });
+      });
+      // Wait a bit more after scrolling
+      await new Promise<void>(resolve => setTimeout(resolve, 2000));
+    }
 
     // Get the fully rendered HTML after JavaScript execution
     const renderedHtml = await page.content();
@@ -574,7 +643,8 @@ function addCleanHighlighting(
   rawHtml: string,
   matchedResults: SerpApiResult[],
   searchType: string,
-  isImageSearch: boolean = false
+  isImageSearch: boolean = false,
+  searchTypeParam?: string
 ): string {
   const getHighlightColor = (searchType: string) => {
     switch (searchType) {
@@ -651,29 +721,20 @@ function addCleanHighlighting(
       highlightedHtml.slice(0, insertAfter) + matchIndicator + highlightedHtml.slice(insertAfter);
   }
 
-  // Handle image search highlighting differently
+  // Handle different search types for highlighting
   if (isImageSearch) {
     matchedResults.forEach((result, index) => {
       try {
         console.log(`Adding image highlight for result ${index + 1}: ${result.link}`);
         
         // For Google Images, we need to find image containers and data attributes
-        // Google Images uses data-src attributes and specific container patterns
         const imageUrl = result.link;
         const escapedImageUrl = imageUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         
-        // Look for various patterns that Google Images might use:
-        // 1. Direct image src
-        // 2. Data attributes like data-src, data-iurl
-        // 3. Container divs that might wrap images
         const patterns = [
-          // Image tags with src matching
           new RegExp(`(<img[^>]*src="[^"]*${escapedImageUrl}[^"]*"[^>]*>)`, 'gi'),
-          // Image tags with data-src matching  
           new RegExp(`(<img[^>]*data-src="[^"]*${escapedImageUrl}[^"]*"[^>]*>)`, 'gi'),
-          // Divs or containers that might contain this image URL in data attributes
           new RegExp(`(<div[^>]*data-[^>]*"[^"]*${escapedImageUrl}[^"]*"[^>]*>)`, 'gi'),
-          // Generic containers with the image URL in any attribute
           new RegExp(`(<[^>]*[^>]*"[^"]*${escapedImageUrl}[^"]*"[^>]*>)`, 'gi')
         ];
         
@@ -681,7 +742,6 @@ function addCleanHighlighting(
         patterns.forEach(pattern => {
           if (!highlightAdded) {
             highlightedHtml = highlightedHtml.replace(pattern, (match) => {
-              // Add a wrapper div with highlighting around the matched element
               highlightAdded = true;
               console.log(`Added image highlight style to result ${index + 1}`);
               return `<div class="match-result-highlight" style="border: 3px solid ${color} !important; border-radius: 8px !important; padding: 8px !important; margin: 8px !important; background: rgba(255, 235, 59, 0.05) !important; display: inline-block !important;">${match}</div>`;
@@ -694,6 +754,83 @@ function addCleanHighlighting(
         }
       } catch (error) {
         console.error(`Error highlighting image result ${index + 1}:`, error);
+      }
+    });
+  } else if (searchTypeParam === 'shop') {
+    // Handle Google Shopping highlighting
+    matchedResults.forEach((result, index) => {
+      try {
+        console.log(`Adding shopping highlight for result ${index + 1}: "${result.title}"`);
+        
+        // For Google Shopping, target the specific container structure
+        const titleText = result.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        
+        // Debug: Check if the title text appears anywhere in the HTML
+        const titleExists = highlightedHtml.includes(result.title);
+        console.log(`Title "${result.title}" exists in HTML: ${titleExists}`);
+        
+        if (!titleExists) {
+          // Try to find similar text or partial matches
+          const titleWords = result.title.split(' ').filter(word => word.length > 3);
+          const foundWords = titleWords.filter(word => highlightedHtml.toLowerCase().includes(word.toLowerCase()));
+          console.log(`Found ${foundWords.length}/${titleWords.length} words from title in HTML:`, foundWords);
+        }
+        
+        const patterns = [
+          // Target the main shopping item container (li with class containing I8iMf)
+          new RegExp(`(<li[^>]*class="[^"]*I8iMf[^"]*"[^>]*>[\s\S]*?${titleText}[\s\S]*?</li>)`, 'gi'),
+          // Target any div with classes containing shopping-related patterns and the title
+          new RegExp(`(<div[^>]*class="[^"]*(?:MtXiu|gkQHve|SsM98d|RmEs5b)[^"]*"[^>]*>[\s\S]*?${titleText}[\s\S]*?</div>)`, 'gi'),
+          // Target title divs with flexible class matching
+          new RegExp(`(<div[^>]*class="[^"]*gkQHve[^"]*"[^>]*>[\s\S]*?${titleText}[\s\S]*?</div>)`, 'gi'),
+          // Target any shopping result container div (broader pattern)
+          new RegExp(`(<div[^>]*data-[^>]*>[\s\S]*?${titleText}[\s\S]*?</div>)`, 'gi'),
+          // Fallback: any element containing the exact title text
+          new RegExp(`(<[^>]*>[^<]*${titleText}[^<]*<\/[^>]*>)`, 'gi')
+        ];
+        
+        let highlightAdded = false;
+        patterns.forEach(pattern => {
+          if (!highlightAdded) {
+            highlightedHtml = highlightedHtml.replace(pattern, (match) => {
+              highlightAdded = true;
+              console.log(`Added shopping highlight style to result ${index + 1} with pattern`);
+              // For shopping results, wrap the entire container
+              return `<div class="match-result-highlight" style="border: 3px solid ${color} !important; border-radius: 8px !important; padding: 8px !important; margin: 8px !important; background: rgba(255, 235, 59, 0.05) !important; display: block !important;">${match}</div>`;
+            });
+          }
+        });
+        
+        if (!highlightAdded) {
+          console.log(`Could not find shopping element to highlight for result ${index + 1}: "${result.title}"`);
+          console.log(`Trying fallback patterns for title: "${titleText}"`);
+          
+          // More aggressive fallback: target any text node containing the title
+          const fallbackPatterns = [
+            // Target text content within any tag
+            new RegExp(`(>[^<]*${titleText}[^<]*<)`, 'gi'),
+            // Target partial title matches (useful for truncated titles)
+            new RegExp(`(>[^<]*${titleText.substring(0, Math.min(20, titleText.length))}[^<]*<)`, 'gi'),
+            // Target the title with word boundaries (more flexible)
+            new RegExp(`(>[^<]*\\b${titleText}\\b[^<]*<)`, 'gi')
+          ];
+          
+          for (const fallbackPattern of fallbackPatterns) {
+            if (!highlightAdded) {
+              highlightedHtml = highlightedHtml.replace(fallbackPattern, (match) => {
+                highlightAdded = true;
+                console.log(`Added fallback shopping highlight for result ${index + 1} using pattern`);
+                return match.replace('>', ' style="background: rgba(255, 235, 59, 0.3) !important; border: 2px solid ' + color + ' !important; padding: 4px !important; border-radius: 4px !important;">'); 
+              });
+            }
+          }
+          
+          if (!highlightAdded) {
+            console.log(`All fallback patterns failed for result ${index + 1}. Title: "${result.title}"`);
+          }
+        }
+      } catch (error) {
+        console.error(`Error highlighting shopping result ${index + 1}:`, error);
       }
     });
   } else {
@@ -792,40 +929,48 @@ function generateFullPagePreview(
 
       // Image search layout
       if (isImageSearch) {
+        // Use a proxy or fallback approach for images
+        const imageUrl = result.link;
+        const fallbackImageUrl = `data:image/svg+xml;charset=UTF-8,%3csvg width='200' height='200' xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100%25' height='100%25' fill='%23f0f0f0'/%3e%3ctext x='50%25' y='50%25' font-family='Arial, sans-serif' font-size='14' fill='%23666' text-anchor='middle' dominant-baseline='middle'%3eImage%3c/text%3e%3c/svg%3e`;
+        
         return `
-        <div style="${highlightStyle} display: inline-block; width: 200px; margin: 8px;">
-          <a href="${result.link}" target="_blank" style="text-decoration: none;">
-            <img src="${result.link}" 
+        <div style="${highlightStyle} display: inline-block; width: 200px; margin: 8px; vertical-align: top;">
+          <div style="position: relative; width: 100%; height: 200px; background: #f0f0f0; border-radius: 4px; overflow: hidden; ${isMatched ? 'border: 3px solid ' + color + ' !important;' : 'border: 1px solid #e0e0e0;'}">
+            <img src="${imageUrl}" 
                  alt="${result.title || 'Image'}"
                  style="
                    width: 100%; 
-                   height: 200px; 
-                   object-fit: cover; 
-                   border-radius: 4px;
-                   ${isMatched ? 'border: 3px solid ' + color + ' !important;' : ''}
+                   height: 100%; 
+                   object-fit: cover;
+                   display: block;
                  "
-                 onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                 onload="this.style.opacity='1';"
+                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+                 crossorigin="anonymous">
             <div style="
               display: none; 
               width: 100%; 
-              height: 200px; 
-              background: #f0f0f0; 
-              display: flex; 
+              height: 100%; 
+              background: #f5f5f5; 
               align-items: center; 
               justify-content: center;
-              color: #666;
-              border-radius: 4px;
-              ${isMatched ? 'border: 3px solid ' + color + ' !important;' : ''}
+              color: #999;
+              font-family: Arial, sans-serif;
+              font-size: 12px;
+              text-align: center;
+              flex-direction: column;
             ">
-              Image unavailable
+              <div style="margin-bottom: 8px; font-size: 24px;">🖼️</div>
+              <div>Image</div>
+              <div>unavailable</div>
             </div>
-          </a>
-          <div style="padding: 8px 0;">
-            <div style="color: #1a0dab; font-size: 13px; font-weight: 500; margin-bottom: 2px;">
+          </div>
+          <div style="padding: 8px 4px 0 4px;">
+            <div style="color: #1a0dab; font-size: 12px; font-weight: 500; margin-bottom: 4px; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
               ${result.title || 'Image'}
             </div>
-            <div style="color: #006621; font-size: 12px;">
-              ${result.displayed_link || (result.link ? new URL(result.link).hostname : '')}
+            <div style="color: #006621; font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">
+              ${result.displayed_link || (result.link ? (() => { try { return new URL(result.link).hostname; } catch(e) { return 'Unknown source'; } })() : 'Unknown source')}
             </div>
           </div>
         </div>
