@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   TextField,
   RadioGroup,
@@ -16,6 +16,7 @@ import {
   Button,
   IconButton,
   CircularProgress,
+  Checkbox,
 } from '@mui/material';
 import SaveAltIcon from '@mui/icons-material/SaveAlt';
 import AddIcon from '@mui/icons-material/Add';
@@ -117,6 +118,219 @@ const GOOGLE_LANGUAGES: GoogleLanguage[] = [
   { code: 'el', name: 'Greek' },
 ];
 
+// Reusable URL input component
+interface URLInputSectionProps {
+  title: string;
+  urls: string[];
+  setUrls: (urls: string[]) => void;
+  addUrlField: () => void;
+  removeUrlField: (index: number) => void;
+  color?: 'error' | 'success';
+}
+
+function URLInputSection({
+  title,
+  urls,
+  setUrls,
+  addUrlField,
+  removeUrlField,
+  color = 'error',
+}: URLInputSectionProps) {
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  const handleAdd = () => {
+    addUrlField();
+    // Focus the newly added input after it mounts
+    setTimeout(() => {
+      const newIndex = urls.length; // new input will be at current length
+      const el = inputRefs.current[newIndex];
+      if (el) {
+        el.focus();
+        try {
+          el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } catch {}
+      }
+    }, 0);
+  };
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+        <Typography
+          variant="h6"
+          component="h3"
+          sx={{ color: color === 'error' ? 'error.main' : 'success.main' }}
+        >
+          {title}
+        </Typography>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<AddIcon />}
+          onClick={handleAdd}
+          sx={{
+            ml: 2,
+            borderColor: color === 'error' ? 'error.main' : 'success.main',
+            color: color === 'error' ? 'error.main' : 'success.main',
+          }}
+        >
+          Add URL
+        </Button>
+      </Box>
+
+      {urls.map((urlValue, index) => (
+        <Box key={index} sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+          <TextField
+            label={`URL ${index + 1}`}
+            value={urlValue}
+            onChange={e => {
+              const newUrls = [...urls];
+              newUrls[index] = e.target.value;
+              setUrls(newUrls);
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleAdd();
+              }
+            }}
+            inputRef={el => {
+              inputRefs.current[index] = el;
+            }}
+            fullWidth
+            variant="outlined"
+            placeholder="https://example.com"
+            sx={{
+              '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                borderColor: color === 'error' ? 'error.main' : 'success.main',
+              },
+              '& .MuiInputLabel-root.Mui-focused': {
+                color: color === 'error' ? 'error.main' : 'success.main',
+              },
+            }}
+          />
+          {urls.length > 1 && (
+            <IconButton onClick={() => removeUrlField(index)} sx={{ ml: 1, color: 'error.main' }}>
+              <RemoveIcon />
+            </IconButton>
+          )}
+        </Box>
+      ))}
+
+      <Typography variant="body2" color="text.secondary">
+        Add multiple URLs to highlight any search results that match these domains.
+      </Typography>
+    </Box>
+  );
+}
+
+// Reusable keyword input component
+interface KeywordInputSectionProps {
+  title: string;
+  keywords: string[];
+  setKeywords: (keywords: string[]) => void;
+  addKeywordField: () => void;
+  removeKeywordField: (index: number) => void;
+  color?: 'error' | 'success';
+}
+
+function KeywordInputSection({
+  title,
+  keywords,
+  setKeywords,
+  addKeywordField,
+  removeKeywordField,
+  color = 'error',
+}: KeywordInputSectionProps) {
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  const handleAdd = () => {
+    addKeywordField();
+    // Focus the newly added input after it mounts
+    setTimeout(() => {
+      const newIndex = keywords.length; // new input will be at current length
+      const el = inputRefs.current[newIndex];
+      if (el) {
+        el.focus();
+        try {
+          el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } catch {}
+      }
+    }, 0);
+  };
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+        <Typography
+          variant="h6"
+          component="h3"
+          sx={{ color: color === 'error' ? 'error.main' : 'success.main' }}
+        >
+          {title}
+        </Typography>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<AddIcon />}
+          onClick={handleAdd}
+          sx={{
+            ml: 2,
+            borderColor: color === 'error' ? 'error.main' : 'success.main',
+            color: color === 'error' ? 'error.main' : 'success.main',
+          }}
+        >
+          Add Keyword
+        </Button>
+      </Box>
+
+      {keywords.map((keywordValue, index) => (
+        <Box key={index} sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+          <TextField
+            label={`Keyword ${index + 1}`}
+            value={keywordValue}
+            onChange={e => {
+              const newKeywords = [...keywords];
+              newKeywords[index] = e.target.value;
+              setKeywords(newKeywords);
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleAdd();
+              }
+            }}
+            inputRef={el => {
+              inputRefs.current[index] = el;
+            }}
+            fullWidth
+            variant="outlined"
+            placeholder="Enter keyword or phrase"
+            sx={{
+              '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                borderColor: color === 'error' ? 'error.main' : 'success.main',
+              },
+              '& .MuiInputLabel-root.Mui-focused': {
+                color: color === 'error' ? 'error.main' : 'success.main',
+              },
+            }}
+          />
+          {keywords.length > 1 && (
+            <IconButton
+              onClick={() => removeKeywordField(index)}
+              sx={{ ml: 1, color: 'error.main' }}
+            >
+              <RemoveIcon />
+            </IconButton>
+          )}
+        </Box>
+      ))}
+
+      <Typography variant="body2" color="text.secondary">
+        Add keywords to search for in titles and snippets. Separate multiple keywords.
+      </Typography>
+    </Box>
+  );
+}
+
 function StillbrookContent() {
   const { isValidUser, token } = useValidateUserToken();
   const [keyword, setKeyword] = useState('');
@@ -127,7 +341,15 @@ function StillbrookContent() {
   const [googleDomain, setGoogleDomain] = useState('google.com');
   const [language, setLanguage] = useState('en');
   const [searchType, setSearchType] = useState('');
-  const [screenshotType, setScreenshotType] = useState('exact_url_match');
+  const [screenshotType, setScreenshotType] = useState('exact_url_match'); // Keep for backwards compatibility
+
+  // Individual highlight type states
+  const [enableNegativeUrls, setEnableNegativeUrls] = useState(false);
+  const [enableNegativeSentiment, setEnableNegativeSentiment] = useState(false);
+  const [enableNegativeKeywords, setEnableNegativeKeywords] = useState(false);
+  const [enablePositiveUrls, setEnablePositiveUrls] = useState(false);
+  const [enablePositiveSentiment, setEnablePositiveSentiment] = useState(false);
+  const [enablePositiveKeywords, setEnablePositiveKeywords] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SearchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -138,6 +360,10 @@ function StillbrookContent() {
   const [lastFormData, setLastFormData] = useState<any>(null);
   const [showLocationInput, setShowLocationInput] = useState(false);
 
+  // Positive highlight state variables
+  const [positiveUrls, setPositiveUrls] = useState<string[]>(['']);
+  const [positiveKeywords, setPositiveKeywords] = useState<string[]>(['']);
+
   // Sort Google domains alphabetically by country name, with google.com first
   const sortedGoogleDomains = googleDomainsData.sort((a: GoogleDomain, b: GoogleDomain) => {
     if (a.domain === 'google.com') return -1;
@@ -145,19 +371,31 @@ function StillbrookContent() {
     return a.country_name.localeCompare(b.country_name);
   });
 
-  // Clear URL and keyword fields when they're not needed
+  // Clear fields when highlight options are disabled
   useEffect(() => {
-    if (screenshotType === 'exact_url_match') {
-      setKeywords(['']);
-    } else if (screenshotType === 'keyword_match') {
+    if (!enableNegativeUrls) {
       setUrl('');
       setUrls(['']);
-    } else {
-      setUrl('');
-      setUrls(['']);
+    }
+  }, [enableNegativeUrls]);
+
+  useEffect(() => {
+    if (!enableNegativeKeywords) {
       setKeywords(['']);
     }
-  }, [screenshotType]);
+  }, [enableNegativeKeywords]);
+
+  useEffect(() => {
+    if (!enablePositiveUrls) {
+      setPositiveUrls(['']);
+    }
+  }, [enablePositiveUrls]);
+
+  useEffect(() => {
+    if (!enablePositiveKeywords) {
+      setPositiveKeywords(['']);
+    }
+  }, [enablePositiveKeywords]);
 
   // Logo animation effect
   useEffect(() => {
@@ -190,27 +428,78 @@ function StillbrookContent() {
       url,
       urls: urls.filter(u => u.trim() !== ''),
       keywords: keywords.filter(k => k.trim() !== ''),
+      positiveUrls: positiveUrls.filter(u => u.trim() !== ''),
+      positiveKeywords: positiveKeywords.filter(k => k.trim() !== ''),
       location,
       googleDomain,
       language,
       searchType,
-      screenshotType,
+      screenshotType: 'combined', // New combined approach
+      // Include highlight options
+      enableNegativeUrls,
+      enableNegativeSentiment,
+      enableNegativeKeywords,
+      enablePositiveUrls,
+      enablePositiveSentiment,
+      enablePositiveKeywords,
     };
     setLastFormData(formData);
 
-    // Validate URLs/keywords if needed
-    if (screenshotType === 'exact_url_match') {
+    // Validate that at least one highlight option is selected
+    const hasAnyHighlight =
+      enableNegativeUrls ||
+      enableNegativeSentiment ||
+      enableNegativeKeywords ||
+      enablePositiveUrls ||
+      enablePositiveSentiment ||
+      enablePositiveKeywords;
+
+    if (!hasAnyHighlight) {
+      setError('Please select at least one highlight option.');
+      setLoading(false);
+      setCurrentStep('form');
+      return;
+    }
+
+    // Validate required inputs for enabled options
+    if (enableNegativeUrls) {
       const validUrls = urls.filter(u => u.trim() !== '');
       if (validUrls.length === 0 && !url.trim()) {
-        setError('At least one URL is required for Exact URL Match.');
+        setError('At least one URL is required when "Highlight Specific URLs (Red)" is enabled.');
         setLoading(false);
         setCurrentStep('form');
         return;
       }
-    } else if (screenshotType === 'keyword_match') {
+    }
+
+    if (enableNegativeKeywords) {
       const validKeywords = keywords.filter(k => k.trim() !== '');
       if (validKeywords.length === 0) {
-        setError('At least one keyword is required for Keyword Match.');
+        setError(
+          'At least one keyword is required when "Highlight Specific Keywords (Red)" is enabled.'
+        );
+        setLoading(false);
+        setCurrentStep('form');
+        return;
+      }
+    }
+
+    if (enablePositiveUrls) {
+      const validPositiveUrls = positiveUrls.filter(u => u.trim() !== '');
+      if (validPositiveUrls.length === 0) {
+        setError('At least one URL is required when "Highlight Specific URLs (Green)" is enabled.');
+        setLoading(false);
+        setCurrentStep('form');
+        return;
+      }
+    }
+
+    if (enablePositiveKeywords) {
+      const validPositiveKeywords = positiveKeywords.filter(k => k.trim() !== '');
+      if (validPositiveKeywords.length === 0) {
+        setError(
+          'At least one keyword is required when "Highlight Specific Keywords (Green)" is enabled.'
+        );
         setLoading(false);
         setCurrentStep('form');
         return;
@@ -555,6 +844,29 @@ function StillbrookContent() {
     }
   };
 
+  // Positive highlight helper functions
+  const addPositiveUrlField = () => {
+    setPositiveUrls([...positiveUrls, '']);
+  };
+
+  const removePositiveUrlField = (index: number) => {
+    if (positiveUrls.length > 1) {
+      const newUrls = positiveUrls.filter((_, i) => i !== index);
+      setPositiveUrls(newUrls);
+    }
+  };
+
+  const addPositiveKeywordField = () => {
+    setPositiveKeywords([...positiveKeywords, '']);
+  };
+
+  const removePositiveKeywordField = (index: number) => {
+    if (positiveKeywords.length > 1) {
+      const newKeywords = positiveKeywords.filter((_, i) => i !== index);
+      setPositiveKeywords(newKeywords);
+    }
+  };
+
   const updateKeyword = (index: number, value: string) => {
     const newKeywords = [...keywords];
     newKeywords[index] = value;
@@ -781,192 +1093,167 @@ function StillbrookContent() {
                     </Select>
                   </FormControl>
 
-                  <FormControl component="fieldset">
-                    <FormLabel component="legend">Screenshot Type</FormLabel>
-                    <RadioGroup
-                      aria-label="screenshot-type"
-                      name="screenshotType"
-                      value={screenshotType}
-                      onChange={e => setScreenshotType(e.target.value)}
-                    >
-                      <FormControlLabel
-                        value="exact_url_match"
-                        control={<Radio />}
-                        label="Exact URL Match"
-                      />
-                      <FormControlLabel
-                        value="negative_sentiment"
-                        control={<Radio />}
-                        label="Negative Sentiment"
-                      />
-                      <FormControlLabel
-                        value="keyword_match"
-                        control={<Radio />}
-                        label="Specific Keyword Match"
-                      />
-                    </RadioGroup>
-                  </FormControl>
+                  <Typography variant="h6" component="h3" sx={{ mb: 2 }}>
+                    Highlight Options
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    Choose which types of results to highlight. You can select both positive and
+                    negative options for comprehensive analysis.
+                  </Typography>
 
-                  {screenshotType === 'exact_url_match' && (
-                    <Box>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                        <Typography variant="h6" component="h3">
-                          URLs to Match
-                        </Typography>
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          startIcon={<AddIcon />}
-                          onClick={addUrlField}
-                          sx={{ ml: 2 }}
-                        >
-                          Add URL
-                        </Button>
-                      </Box>
+                  {/* Negative Highlights Section */}
+                  <Box
+                    sx={{
+                      mb: 4,
+                      p: 2,
+                      border: '1px solid',
+                      borderColor: 'error.light',
+                      borderRadius: 2,
+                    }}
+                  >
+                    <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
+                      🔴 Negative Highlights (Red)
+                    </Typography>
 
-                      {urls.map((urlValue, index) => (
-                        <Box
-                          key={index}
-                          sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}
-                        >
-                          <TextField
-                            fullWidth
-                            label={`URL ${index + 1}`}
-                            type="url"
-                            value={urlValue}
-                            onChange={e => updateUrl(index, e.target.value)}
-                            required={index === 0}
-                            variant="outlined"
-                            placeholder="https://example.com"
-                          />
-                          {urls.length > 1 && (
-                            <IconButton
-                              color="error"
-                              onClick={() => removeUrlField(index)}
-                              aria-label="Remove URL"
-                            >
-                              <RemoveIcon />
-                            </IconButton>
-                          )}
-                        </Box>
-                      ))}
-
-                      <Typography variant="caption" color="text.secondary">
-                        Add multiple URLs to highlight any search results that match these domains.
-                      </Typography>
-                    </Box>
-                  )}
-
-                  {screenshotType === 'keyword_match' && (
-                    <Box>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                        <Typography variant="h6" component="h3">
-                          Keywords to Match
-                        </Typography>
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          startIcon={<AddIcon />}
-                          onClick={addKeywordField}
-                          sx={{ ml: 2 }}
-                        >
-                          Add Keyword
-                        </Button>
-                      </Box>
-
-                      {keywords.map((keywordValue, index) => (
-                        <Box
-                          key={index}
-                          sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}
-                        >
-                          <TextField
-                            fullWidth
-                            label={`Keyword ${index + 1}`}
-                            type="text"
-                            value={keywordValue}
-                            onChange={e => updateKeyword(index, e.target.value)}
-                            required={index === 0}
-                            variant="outlined"
-                            placeholder="e.g. corruption, investigation, scandal"
-                          />
-                          {keywords.length > 1 && (
-                            <IconButton
-                              color="error"
-                              onClick={() => removeKeywordField(index)}
-                              aria-label="Remove Keyword"
-                            >
-                              <RemoveIcon />
-                            </IconButton>
-                          )}
-                        </Box>
-                      ))}
-
-                      <Typography variant="caption" color="text.secondary">
-                        Add multiple keywords to highlight search results containing these specific
-                        terms.
-                      </Typography>
-                    </Box>
-                  )}
-
-                  {/* Geographic Location - Collapsed by default */}
-                  <Box>
-                    {!showLocationInput ? (
-                      <Box sx={{ textAlign: 'left' }}>
-                        <Button
-                          variant="text"
-                          onClick={() => setShowLocationInput(true)}
-                          sx={{
-                            p: 0,
-                            minWidth: 'auto',
-                            fontSize: '14px',
-                            textDecoration: 'underline',
-                            '&:hover': {
-                              textDecoration: 'underline',
-                              backgroundColor: 'transparent',
-                            },
-                          }}
-                        >
-                          + Add geographic location
-                        </Button>
-                        <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                          (will default to your current location)
-                        </Typography>
-                      </Box>
-                    ) : (
-                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-                        <TextField
-                          fullWidth
-                          label="Geographic Location"
-                          type="text"
-                          value={location}
-                          onChange={e => setLocation(e.target.value)}
-                          variant="outlined"
-                          size="small"
-                          placeholder="Leave blank for your current location"
-                          helperText={
-                            <Box component="span">
-                              Examples: &quot;New York, NY&quot;, &quot;London, UK&quot;, &quot;Los
-                              Angeles, California&quot;, &quot;Toronto, Canada&quot;, &quot;Sydney,
-                              Australia&quot;
-                              <br />
-                              <strong>Popular formats:</strong> &quot;City, State&quot;, &quot;City,
-                              Country&quot;, &quot;State, Country&quot;
-                            </Box>
-                          }
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={enableNegativeUrls}
+                          onChange={e => setEnableNegativeUrls(e.target.checked)}
                         />
-                        <IconButton
-                          onClick={() => {
-                            setShowLocationInput(false);
-                            setLocation('');
-                          }}
-                          size="small"
-                          sx={{ mt: 0.5 }}
-                        >
-                          <RemoveIcon />
-                        </IconButton>
-                      </Box>
-                    )}
+                      }
+                      label="Highlight Specific URLs (Red)"
+                      sx={{ mb: 1 }}
+                    />
+                    <br />
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={enableNegativeSentiment}
+                          onChange={e => setEnableNegativeSentiment(e.target.checked)}
+                        />
+                      }
+                      label="Highlight Negative Sentiment (Red)"
+                      sx={{ mb: 1 }}
+                    />
+                    <br />
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={enableNegativeKeywords}
+                          onChange={e => setEnableNegativeKeywords(e.target.checked)}
+                        />
+                      }
+                      label="Highlight Specific Keywords (Red)"
+                    />
                   </Box>
+
+                  {/* Negative URL Input */}
+                  {enableNegativeUrls && (
+                    <URLInputSection
+                      title="URLs to Highlight (Red)"
+                      urls={urls}
+                      setUrls={setUrls}
+                      addUrlField={addUrlField}
+                      removeUrlField={removeUrlField}
+                      color="error"
+                    />
+                  )}
+
+                  {/* Negative Keyword Input */}
+                  {enableNegativeKeywords && (
+                    <KeywordInputSection
+                      title="Keywords to Highlight (Red)"
+                      keywords={keywords}
+                      setKeywords={setKeywords}
+                      addKeywordField={addKeywordField}
+                      removeKeywordField={removeKeywordField}
+                      color="error"
+                    />
+                  )}
+
+                  {/* Positive Highlights Section */}
+                  <Box
+                    sx={{
+                      mb: 4,
+                      p: 2,
+                      border: '1px solid',
+                      borderColor: 'success.light',
+                      borderRadius: 2,
+                    }}
+                  >
+                    <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
+                      🟢 Positive Highlights (Green)
+                    </Typography>
+
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={enablePositiveUrls}
+                          onChange={e => setEnablePositiveUrls(e.target.checked)}
+                        />
+                      }
+                      label="Highlight Specific URLs (Green)"
+                      sx={{ mb: 1 }}
+                    />
+                    <br />
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={enablePositiveSentiment}
+                          onChange={e => setEnablePositiveSentiment(e.target.checked)}
+                        />
+                      }
+                      label="Highlight Positive Sentiment (Green)"
+                      sx={{ mb: 1 }}
+                    />
+                    <br />
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={enablePositiveKeywords}
+                          onChange={e => setEnablePositiveKeywords(e.target.checked)}
+                        />
+                      }
+                      label="Highlight Specific Keywords (Green)"
+                    />
+                  </Box>
+
+                  {/* Positive URL Input */}
+                  {enablePositiveUrls && (
+                    <URLInputSection
+                      title="URLs to Highlight (Green)"
+                      urls={positiveUrls}
+                      setUrls={setPositiveUrls}
+                      addUrlField={addPositiveUrlField}
+                      removeUrlField={removePositiveUrlField}
+                      color="success"
+                    />
+                  )}
+
+                  {/* Positive Keyword Input */}
+                  {enablePositiveKeywords && (
+                    <KeywordInputSection
+                      title="Keywords to Highlight (Green)"
+                      keywords={positiveKeywords}
+                      setKeywords={setPositiveKeywords}
+                      addKeywordField={addPositiveKeywordField}
+                      removeKeywordField={removePositiveKeywordField}
+                      color="success"
+                    />
+                  )}
+
+                  {/* Geographic Location - Same style as other inputs */}
+                  <TextField
+                    fullWidth
+                    label="Geographic Location (Optional)"
+                    type="text"
+                    value={location}
+                    onChange={e => setLocation(e.target.value)}
+                    placeholder="e.g. New York, NY or London, UK (will default to your current location)"
+                    variant="outlined"
+                    helperText="Examples: 'New York, NY', 'London, UK', 'Los Angeles, California'"
+                  />
 
                   <Box>
                     <IntercomButton variant="primary" type="submit" disabled={loading}>
@@ -1080,6 +1367,7 @@ function StillbrookContent() {
                         maxHeight: '600px',
                         overflowY: 'auto',
                         position: 'relative',
+                        backgroundColor: '#ffffff !important', // Force white background
                         '& *': {
                           pointerEvents: 'none !important',
                           userSelect: 'none !important',
@@ -1094,7 +1382,30 @@ function StillbrookContent() {
                       }}
                       title="Preview only - links and interactions are disabled for cleaner screenshots"
                     >
-                      <Box id="html-preview">
+                      <Box
+                        id="html-preview"
+                        sx={{
+                          // Isolate Google HTML from parent dark mode styles
+                          color: '#202124 !important',
+                          backgroundColor: '#ffffff !important',
+                          fontFamily: 'arial, sans-serif !important',
+                          fontSize: '14px !important',
+                          lineHeight: 'normal !important',
+                          // Reset all inherited styles to ensure clean Google appearance
+                          '& *': {
+                            boxSizing: 'content-box',
+                          },
+                          // Ensure Google's default styles take precedence over dark mode
+                          '& body, & html': {
+                            backgroundColor: '#ffffff !important',
+                            color: '#202124 !important',
+                          },
+                          // Reset dark mode overrides
+                          '& div, & span, & p, & h1, & h2, & h3, & h4, & h5, & h6': {
+                            color: 'inherit',
+                          },
+                        }}
+                      >
                         <div dangerouslySetInnerHTML={{ __html: result.htmlPreview }} />
                       </Box>
                     </Box>

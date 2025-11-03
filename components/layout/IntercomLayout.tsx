@@ -251,6 +251,12 @@ const navigationItems: NavigationItem[] = [
         href: '/backlink-buddy',
       },
       {
+        id: 'stillbrook',
+        label: 'Stillbrook',
+        icon: <CameraAltIcon />,
+        href: '/stillbrook',
+      },
+      {
         id: 'wiki-scraper',
         label: 'Wiki Scraper',
         icon: <TravelExploreIcon />,
@@ -261,12 +267,6 @@ const navigationItems: NavigationItem[] = [
         label: 'Zoom Backdrop',
         icon: <WallpaperIcon />,
         href: '/zoom',
-      },
-      {
-        id: 'stillbrook',
-        label: 'Stillbrook',
-        icon: <CameraAltIcon />,
-        href: '/stillbrook',
       },
     ],
   },

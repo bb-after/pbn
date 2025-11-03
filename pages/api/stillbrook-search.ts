@@ -8,11 +8,20 @@ interface SearchRequestBody {
   url?: string;
   urls?: string[];
   keywords?: string[];
+  positiveUrls?: string[];
+  positiveKeywords?: string[];
   location?: string;
   googleDomain?: string;
   language?: string;
   searchType?: string;
   screenshotType: string;
+  // New highlight options
+  enableNegativeUrls?: boolean;
+  enableNegativeSentiment?: boolean;
+  enableNegativeKeywords?: boolean;
+  enablePositiveUrls?: boolean;
+  enablePositiveSentiment?: boolean;
+  enablePositiveKeywords?: boolean;
 }
 
 interface SerpApiResult {
@@ -179,11 +188,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     url,
     urls,
     keywords,
+    positiveUrls,
+    positiveKeywords,
     location,
     googleDomain,
     language,
     searchType,
     screenshotType,
+    enableNegativeUrls,
+    enableNegativeSentiment,
+    enableNegativeKeywords,
+    enablePositiveUrls,
+    enablePositiveSentiment,
+    enablePositiveKeywords,
   } = req.body as SearchRequestBody;
   
   // Extract country from googleDomain or use default
@@ -200,6 +217,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
 
   if (screenshotType === 'exact_url_match' && !url && (!urls || urls.length === 0)) {
     return res.status(400).json({ error: 'URL or URLs are required for Exact URL Match.', searchType: undefined, noMatches: undefined });
+  }
+
+  if (screenshotType === 'positive_url_match' && (!positiveUrls || positiveUrls.length === 0)) {
+    return res.status(400).json({ error: 'URLs are required for Positive URL Match.', searchType: undefined, noMatches: undefined });
+  }
+
+  if (screenshotType === 'keyword_match' && (!keywords || keywords.length === 0)) {
+    return res.status(400).json({ error: 'Keywords are required for Keyword Match.', searchType: undefined, noMatches: undefined });
+  }
+
+  if (screenshotType === 'positive_keyword_match' && (!positiveKeywords || positiveKeywords.length === 0)) {
+    return res.status(400).json({ error: 'Keywords are required for Positive Keyword Match.', searchType: undefined, noMatches: undefined });
   }
 
   // Extract user information and start timing
@@ -335,12 +364,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       });
     }
 
-    // Process results based on search type
-    let matchedResults: SerpApiResult[] = [];
-    console.log('ORGGG', organicResults);
+    // Process results with combined positive and negative highlighting
+    let negativeMatches: SerpApiResult[] = [];
+    let positiveMatches: SerpApiResult[] = [];
+    let allMatches: SerpApiResult[] = [];
+    
+    console.log('Processing results for combined highlighting...');
+    console.log('Organic results count:', organicResults.length);
 
-    if (screenshotType === 'exact_url_match') {
-      // Extract domains from user-provided URLs and find matches in search results
+    // Process negative URL matches
+    if (enableNegativeUrls) {
       const urlsToMatch = urls && urls.length > 0 ? urls : url ? [url] : [];
       const userDomains: string[] = [];
 
@@ -357,16 +390,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
         }
       }
 
-      console.log(`Looking for domain matches: ${userDomains.join(', ')}`);
+      console.log(`Looking for negative domain matches: ${userDomains.join(', ')}`);
 
-      matchedResults = organicResults.filter((result, index) => {
+      const urlMatches = organicResults.filter((result, index) => {
         try {
           const resultDomain = new URL(result.link).hostname.replace(/^www\./, '');
           const isMatch = userDomains.some(
             userDomain => resultDomain === userDomain || resultDomain.endsWith('.' + userDomain)
           );
           console.log(
-            `Result ${index + 1}: ${resultDomain} vs [${userDomains.join(', ')}] - Match: ${isMatch}`
+            `Result ${index + 1}: ${resultDomain} vs [${userDomains.join(', ')}] - Negative Match: ${isMatch}`
           );
           return isMatch;
         } catch (e) {
@@ -374,12 +407,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
           return false;
         }
       });
-    } else if (screenshotType === 'negative_sentiment') {
-      // Analyze sentiment of snippets (or titles for image search)
+      
+      negativeMatches = [...negativeMatches, ...urlMatches];
+    }
+
+    // Process negative sentiment matches
+    if (enableNegativeSentiment) {
       const sentiment = new Sentiment();
 
-      matchedResults = organicResults.filter((result, index) => {
-        // For Google Images, snippet is often empty, so use title instead
+      const sentimentMatches = organicResults.filter((result, index) => {
         const textToAnalyze = result.snippet || result.title;
         if (textToAnalyze) {
           const resultSentiment = sentiment.analyze(textToAnalyze);
@@ -394,17 +430,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
         }
         return false;
       });
-    } else if (screenshotType === 'keyword_match') {
-      // Look for specific keywords in snippets and titles
+
+      negativeMatches = [...negativeMatches, ...sentimentMatches];
+    }
+
+    // Process negative keyword matches
+    if (enableNegativeKeywords) {
       const keywordsToMatch = keywords && keywords.length > 0 ? keywords : [];
 
-      if (keywordsToMatch.length === 0) {
-        console.log('No keywords provided for keyword match');
-        matchedResults = [];
-      } else {
-        console.log(`Looking for keyword matches: ${keywordsToMatch.join(', ')}`);
+      if (keywordsToMatch.length > 0) {
+        console.log(`Looking for negative keyword matches: ${keywordsToMatch.join(', ')}`);
 
-        matchedResults = organicResults.filter((result, index) => {
+        const keywordMatches = organicResults.filter((result, index) => {
           const resultText = `${result.title || ''} ${result.snippet || ''}`.toLowerCase();
 
           const matchedKeywords = keywordsToMatch.filter(kw =>
@@ -413,17 +450,123 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
 
           const isMatch = matchedKeywords.length > 0;
 
-          console.log(`Result ${index + 1}: "${result.title}" - Keywords match: ${isMatch}`);
+          console.log(`Result ${index + 1}: "${result.title}" - Negative Keywords match: ${isMatch}`);
           if (isMatch) {
-            console.log(`  Matched keywords: ${matchedKeywords.join(', ')}`);
+            console.log(`  Matched negative keywords: ${matchedKeywords.join(', ')}`);
             console.log(`  Snippet: ${result.snippet?.substring(0, 150)}...`);
           }
           return isMatch;
         });
+
+        negativeMatches = [...negativeMatches, ...keywordMatches];
       }
     }
 
-    console.log(`Found ${matchedResults.length} matching results for ${screenshotType}`);
+    // Process positive URL matches
+    if (enablePositiveUrls) {
+      const urlsToMatch = positiveUrls && positiveUrls.length > 0 ? positiveUrls : [];
+      const userDomains: string[] = [];
+
+      for (const urlToMatch of urlsToMatch) {
+        try {
+          const domain = new URL(urlToMatch).hostname.replace(/^www\./, '');
+          userDomains.push(domain);
+        } catch (error) {
+          return res.status(400).json({
+            error: `Invalid positive URL provided: ${urlToMatch}`,
+            searchType: undefined,
+            noMatches: undefined
+          });
+        }
+      }
+
+      console.log(`Looking for positive domain matches: ${userDomains.join(', ')}`);
+
+      const urlMatches = organicResults.filter((result, index) => {
+        try {
+          const resultDomain = new URL(result.link).hostname.replace(/^www\./, '');
+          const isMatch = userDomains.some(
+            userDomain => resultDomain === userDomain || resultDomain.endsWith('.' + userDomain)
+          );
+          console.log(
+            `Result ${index + 1}: ${resultDomain} vs [${userDomains.join(', ')}] - Positive Match: ${isMatch}`
+          );
+          return isMatch;
+        } catch (e) {
+          console.log(`Error parsing URL: ${result.link}`, e);
+          return false;
+        }
+      });
+
+      positiveMatches = [...positiveMatches, ...urlMatches];
+    }
+
+    // Process positive sentiment matches
+    if (enablePositiveSentiment) {
+      const sentiment = new Sentiment();
+
+      const sentimentMatches = organicResults.filter((result, index) => {
+        const textToAnalyze = result.snippet || result.title;
+        if (textToAnalyze) {
+          const resultSentiment = sentiment.analyze(textToAnalyze);
+          const isPositive = resultSentiment.score > 0;
+          console.log(
+            `Result ${index + 1}: "${result.title}" - Sentiment: ${resultSentiment.score} (${isPositive ? 'POSITIVE' : 'negative/neutral'}) - Analyzed: ${result.snippet ? 'snippet' : 'title'}`
+          );
+          if (isPositive) {
+            console.log(`  Text: ${textToAnalyze.substring(0, 150)}...`);
+          }
+          return isPositive;
+        }
+        return false;
+      });
+
+      positiveMatches = [...positiveMatches, ...sentimentMatches];
+    }
+
+    // Process positive keyword matches
+    if (enablePositiveKeywords) {
+      const keywordsToMatch = positiveKeywords && positiveKeywords.length > 0 ? positiveKeywords : [];
+
+      if (keywordsToMatch.length > 0) {
+        console.log(`Looking for positive keyword matches: ${keywordsToMatch.join(', ')}`);
+
+        const keywordMatches = organicResults.filter((result, index) => {
+          const resultText = `${result.title || ''} ${result.snippet || ''}`.toLowerCase();
+
+          const matchedKeywords = keywordsToMatch.filter(kw =>
+            resultText.includes(kw.toLowerCase())
+          );
+
+          const isMatch = matchedKeywords.length > 0;
+
+          console.log(`Result ${index + 1}: "${result.title}" - Positive Keywords match: ${isMatch}`);
+          if (isMatch) {
+            console.log(`  Matched positive keywords: ${matchedKeywords.join(', ')}`);
+            console.log(`  Snippet: ${result.snippet?.substring(0, 150)}...`);
+          }
+          return isMatch;
+        });
+
+        positiveMatches = [...positiveMatches, ...keywordMatches];
+      }
+    }
+
+    // Remove duplicates and combine all matches
+    const uniqueNegativeMatches = negativeMatches.filter((result, index, array) => 
+      index === array.findIndex(r => r.position === result.position)
+    );
+    const uniquePositiveMatches = positiveMatches.filter((result, index, array) => 
+      index === array.findIndex(r => r.position === result.position)
+    );
+    
+    allMatches = [...uniqueNegativeMatches, ...uniquePositiveMatches].filter((result, index, array) => 
+      index === array.findIndex(r => r.position === result.position)
+    );
+
+    console.log(`Found ${uniqueNegativeMatches.length} negative matches`);
+    console.log(`Found ${uniquePositiveMatches.length} positive matches`);
+    console.log(`Total unique matches: ${allMatches.length}`);
 
     // Use SerpAPI's raw HTML file directly - no complex highlighting needed since we use Google operators
     let htmlPreview = '';
@@ -440,16 +583,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
           // Use headless browser to render HTML with JavaScript execution for proper image loading
           const renderedHtml = await renderHtmlWithBrowser(data.search_metadata.raw_html_file);
           const isImageSearch = searchType === 'isch';
-          htmlPreview = addCleanHighlighting(renderedHtml, matchedResults, screenshotType, isImageSearch, searchType);
+          htmlPreview = addCombinedHighlighting(renderedHtml, uniqueNegativeMatches, uniquePositiveMatches, isImageSearch, searchType);
         } else {
           console.error('Failed to fetch raw HTML:', htmlResponse.status);
           // Fallback to custom generated preview
-          const matchedIds = new Set(matchedResults.map(result => result.position));
+          const negativeMatchedIds = new Set(uniqueNegativeMatches.map(result => result.position));
+          const positiveMatchedIds = new Set(uniquePositiveMatches.map(result => result.position));
           const isImageSearch = searchType === 'isch';
-          htmlPreview = generateFullPagePreview(
+          htmlPreview = generateCombinedPagePreview(
             organicResults,
-            matchedIds,
-            screenshotType,
+            negativeMatchedIds,
+            positiveMatchedIds,
             keyword,
             isImageSearch
           );
@@ -457,23 +601,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       } catch (error) {
         console.error('Error fetching raw HTML:', error);
         // Fallback to custom generated preview
-        const matchedIds = new Set(matchedResults.map(result => result.position));
+        const negativeMatchedIds = new Set(uniqueNegativeMatches.map(result => result.position));
+        const positiveMatchedIds = new Set(uniquePositiveMatches.map(result => result.position));
         const isImageSearch = searchType === 'isch';
-        htmlPreview = generateFullPagePreview(organicResults, matchedIds, screenshotType, keyword, isImageSearch);
+        htmlPreview = generateCombinedPagePreview(organicResults, negativeMatchedIds, positiveMatchedIds, keyword, isImageSearch);
       }
     } else {
       console.log('No raw HTML file available, using custom preview');
       // Fallback to custom generated preview
-      const matchedIds = new Set(matchedResults.map(result => result.position));
+      const negativeMatchedIds = new Set(uniqueNegativeMatches.map(result => result.position));
+      const positiveMatchedIds = new Set(uniquePositiveMatches.map(result => result.position));
       const isImageSearch = searchType === 'isch';
-      htmlPreview = generateFullPagePreview(organicResults, matchedIds, screenshotType, keyword, isImageSearch);
+      htmlPreview = generateCombinedPagePreview(organicResults, negativeMatchedIds, positiveMatchedIds, keyword, isImageSearch);
     }
 
-    if (matchedResults.length === 0) {
+    if (allMatches.length === 0) {
       const processingTime = Date.now() - startTime;
       const submission = createSubmission(
         user, keyword, screenshotType, urls, keywords, location, language, country,
-        0, 'no_results', `No matching results found for ${screenshotType}`, serpApiSearchId, rawHtmlUrl, true, processingTime
+        0, 'no_results', 'No matching results found', serpApiSearchId, rawHtmlUrl, true, processingTime
       );
       await logStillbrookSubmission(submission);
       
@@ -482,9 +628,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
         matchedResults: [], // Empty matched results
         results: organicResults, // Return all results for reference
         totalResults: organicResults.length,
-        htmlPreview: generateFullPagePreview(organicResults, new Set(), 'no_matches', keyword, searchType === 'isch'),
+        htmlPreview: generateCombinedPagePreview(organicResults, new Set(), new Set(), keyword, searchType === 'isch'),
         noMatches: true, // Flag to indicate no matches were found
-        searchType: screenshotType, // Include search type for frontend messaging
+        searchType: 'combined', // Include search type for frontend messaging
       });
     }
 
@@ -492,12 +638,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     const processingTime = Date.now() - startTime;
     const submission = createSubmission(
       user, keyword, screenshotType, urls, keywords, location, language, country,
-      matchedResults.length, 'success', undefined, serpApiSearchId, rawHtmlUrl, true, processingTime
+      allMatches.length, 'success', undefined, serpApiSearchId, rawHtmlUrl, true, processingTime
     );
     await logStillbrookSubmission(submission);
 
     return res.status(200).json({
-      matchedResults,
+      matchedResults: allMatches,
       results: organicResults, // Include all results for reference
       totalResults: organicResults.length,
       htmlPreview,
@@ -565,8 +711,8 @@ async function renderHtmlWithBrowser(rawHtmlUrl: string): Promise<string> {
       timeout: 30000, // 30 second timeout
     });
 
-    // Wait a bit more for any lazy loading to complete, especially for images
-    await new Promise<void>(resolve => setTimeout(resolve, 5000));
+    // Wait longer for images to load on production (increased from 5s to 8s)
+    await new Promise<void>(resolve => setTimeout(resolve, 8000));
     
     // For Google Images, try to trigger any lazy loading by scrolling
     if (rawHtmlUrl.includes('tbm=isch') || rawHtmlUrl.includes('google') && rawHtmlUrl.includes('images')) {
@@ -586,8 +732,8 @@ async function renderHtmlWithBrowser(rawHtmlUrl: string): Promise<string> {
           }, 100);
         });
       });
-      // Wait a bit more after scrolling
-      await new Promise<void>(resolve => setTimeout(resolve, 2000));
+      // Wait longer after scrolling for images to fully load (increased from 2s to 4s)
+      await new Promise<void>(resolve => setTimeout(resolve, 4000));
     }
 
     // Get the fully rendered HTML after JavaScript execution
@@ -648,14 +794,22 @@ function addCleanHighlighting(
 ): string {
   const getHighlightColor = (searchType: string) => {
     switch (searchType) {
+      // Negative highlighting - RED
       case 'exact_url_match':
-        return '#4caf50'; // Green
+        return '#f44336'; // Red
       case 'negative_sentiment':
         return '#f44336'; // Red
       case 'keyword_match':
-        return '#ff9800'; // Orange
+        return '#f44336'; // Red
+      // Positive highlighting - GREEN
+      case 'positive_url_match':
+        return '#4caf50'; // Green
+      case 'positive_sentiment':
+        return '#4caf50'; // Green
+      case 'positive_keyword_match':
+        return '#4caf50'; // Green
       default:
-        return '#2196f3'; // Blue
+        return '#f44336'; // Red (default to red for negative results)
     }
   };
 
@@ -890,14 +1044,22 @@ function generateFullPagePreview(
 
   const getHighlightColor = (searchType: string) => {
     switch (searchType) {
+      // Negative highlighting - RED
       case 'exact_url_match':
-        return '#4caf50'; // Green
+        return '#f44336'; // Red
       case 'negative_sentiment':
         return '#f44336'; // Red
       case 'keyword_match':
-        return '#ff9800'; // Orange
+        return '#f44336'; // Red
+      // Positive highlighting - GREEN
+      case 'positive_url_match':
+        return '#4caf50'; // Green
+      case 'positive_sentiment':
+        return '#4caf50'; // Green
+      case 'positive_keyword_match':
+        return '#4caf50'; // Green
       default:
-        return '#2196f3'; // Blue
+        return '#f44336'; // Red (default to red for negative results)
     }
   };
 
@@ -998,6 +1160,261 @@ function generateFullPagePreview(
         
         <div style="color: #545454; font-size: 14px; line-height: 1.4;">
           ${result.snippet || ''}
+        </div>
+      </div>
+    `;
+    })
+    .join('');
+
+  return `
+    <div style="font-family: arial, sans-serif; padding: 15px; ${isImageSearch ? 'max-width: 1200px;' : 'max-width: 600px;'} margin: 0 auto; background: white;">
+      <div style="margin-bottom: 25px;">
+        <div style="color: #70757a; font-size: 13px; margin-bottom: 25px;">
+          About ${allResults.length.toLocaleString()} results
+        </div>
+        <div style="${isImageSearch ? 'display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-start;' : ''}">
+          ${resultsHtml}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// New combined highlighting function for both positive and negative matches
+function addCombinedHighlighting(
+  rawHtml: string,
+  negativeMatches: SerpApiResult[],
+  positiveMatches: SerpApiResult[],
+  isImageSearch: boolean = false,
+  searchTypeParam?: string
+): string {
+  console.log(`Adding combined highlighting for ${negativeMatches.length} negative and ${positiveMatches.length} positive matches`);
+
+  let highlightedHtml = rawHtml;
+
+  // Fix duplicate body tag issue by ensuring clean HTML structure
+  if (highlightedHtml.includes('<body') && highlightedHtml.includes('<body')) {
+    const bodyMatches = highlightedHtml.match(/<body[^>]*>/gi);
+    if (bodyMatches && bodyMatches.length > 1) {
+      console.log('Fixing duplicate body tags');
+      highlightedHtml = highlightedHtml.replace(/<body[^>]*><body/gi, '<body');
+    }
+  }
+
+  // Add CSS for both red and green highlights
+  const css = `
+    <style>
+      .negative-result-highlight {
+        border: 3px solid #f44336 !important;
+        border-radius: 8px !important;
+        padding: 8px !important;
+        margin: 8px 0 !important;
+        background: rgba(244, 67, 54, 0.05) !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+      }
+      .positive-result-highlight {
+        border: 3px solid #4caf50 !important;
+        border-radius: 8px !important;
+        padding: 8px !important;
+        margin: 8px 0 !important;
+        background: rgba(76, 175, 80, 0.05) !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+      }
+    </style>
+  `;
+
+  // Insert CSS before the closing </head> tag or at the beginning
+  if (highlightedHtml.includes('</head>')) {
+    highlightedHtml = highlightedHtml.replace('</head>', css + '</head>');
+  } else {
+    highlightedHtml = css + highlightedHtml;
+  }
+
+  // Apply negative highlighting (RED)
+  if (negativeMatches.length > 0) {
+    console.log('Applying negative (red) highlighting...');
+    highlightedHtml = applyHighlighting(highlightedHtml, negativeMatches, '#f44336', 'negative-result-highlight', isImageSearch, searchTypeParam);
+  }
+
+  // Apply positive highlighting (GREEN) 
+  if (positiveMatches.length > 0) {
+    console.log('Applying positive (green) highlighting...');
+    highlightedHtml = applyHighlighting(highlightedHtml, positiveMatches, '#4caf50', 'positive-result-highlight', isImageSearch, searchTypeParam);
+  }
+
+  return highlightedHtml;
+}
+
+// Helper function to apply highlighting for a specific set of matches
+function applyHighlighting(
+  html: string,
+  matches: SerpApiResult[],
+  color: string,
+  className: string,
+  isImageSearch: boolean,
+  searchTypeParam?: string
+): string {
+  let highlightedHtml = html;
+
+  if (searchTypeParam === 'isch') {
+    // Handle Google Images highlighting
+    matches.forEach((result, index) => {
+      try {
+        console.log(`Adding image highlight for result ${index + 1}: ${result.title}`);
+        
+        const titleText = result.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        
+        const patterns = [
+          new RegExp(`(<img[^>]*alt="[^"]*${titleText}[^"]*"[^>]*>)`, 'gi'),
+          new RegExp(`(<div[^>]*>[^<]*${titleText}[^<]*</div>)`, 'gi')
+        ];
+        
+        let highlightAdded = false;
+        patterns.forEach(pattern => {
+          if (!highlightAdded) {
+            highlightedHtml = highlightedHtml.replace(pattern, (match) => {
+              highlightAdded = true;
+              console.log(`Added image highlight style to result ${index + 1}`);
+              return `<div class="${className}" style="border: 3px solid ${color} !important; border-radius: 8px !important; padding: 8px !important; margin: 8px !important; background: rgba(255, 235, 59, 0.05) !important; display: inline-block !important;">${match}</div>`;
+            });
+          }
+        });
+      } catch (error) {
+        console.error(`Error highlighting image result ${index + 1}:`, error);
+      }
+    });
+  } else if (searchTypeParam === 'shop') {
+    // Handle Google Shopping highlighting
+    matches.forEach((result, index) => {
+      try {
+        console.log(`Adding shopping highlight for result ${index + 1}: "${result.title}"`);
+        
+        const titleText = result.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        
+        const patterns = [
+          new RegExp(`(<li[^>]*class="[^"]*I8iMf[^"]*"[^>]*>[\\s\\S]*?${titleText}[\\s\\S]*?</li>)`, 'gi'),
+          new RegExp(`(<div[^>]*class="[^"]*(?:MtXiu|gkQHve|SsM98d|RmEs5b)[^"]*"[^>]*>[\\s\\S]*?${titleText}[\\s\\S]*?</div>)`, 'gi'),
+        ];
+        
+        let highlightAdded = false;
+        patterns.forEach(pattern => {
+          if (!highlightAdded) {
+            highlightedHtml = highlightedHtml.replace(pattern, (match) => {
+              highlightAdded = true;
+              console.log(`Added shopping highlight style to result ${index + 1}`);
+              return `<div class="${className}" style="border: 3px solid ${color} !important; border-radius: 8px !important; padding: 8px !important; margin: 8px !important; background: rgba(255, 235, 59, 0.05) !important; display: block !important;">${match}</div>`;
+            });
+          }
+        });
+      } catch (error) {
+        console.error(`Error highlighting shopping result ${index + 1}:`, error);
+      }
+    });
+  } else {
+    // Handle regular search result highlighting
+    matches.forEach((result, index) => {
+      try {
+        console.log(`Adding border highlight for result ${index + 1}: ${result.link}`);
+
+        const escapedLink = result.link.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const linkPattern = new RegExp(`(<a[^>]*href="[^"]*${escapedLink}[^"]*"[^>]*>)`, 'gi');
+
+        let highlightAdded = false;
+        highlightedHtml = highlightedHtml.replace(linkPattern, match => {
+          if (!highlightAdded) {
+            const highlightedLink = match.replace(
+              '<a ',
+              '<a style="display: block; border: 3px solid ' +
+                color +
+                ' !important; border-radius: 8px !important; padding: 8px !important; margin: 8px 0 !important; background: rgba(255, 235, 59, 0.05) !important;" '
+            );
+            highlightAdded = true;
+            console.log(`Added highlight style to result ${index + 1}`);
+            return highlightedLink;
+          }
+          return match;
+        });
+      } catch (e) {
+        console.error('Error processing result URL:', e);
+      }
+    });
+  }
+
+  return highlightedHtml;
+}
+
+// New combined page preview generator
+function generateCombinedPagePreview(
+  allResults: SerpApiResult[],
+  negativeMatchedPositions: Set<number>,
+  positiveMatchedPositions: Set<number>,
+  keyword: string,
+  isImageSearch: boolean = false
+): string {
+  const highlightKeyword = (text: string, keyword: string) => {
+    if (!text) return '';
+    const regex = new RegExp(`(${keyword})`, 'gi');
+    return text.replace(
+      regex,
+      '<mark style="background-color: #ffeb3b; padding: 2px 4px; border-radius: 2px;">$1</mark>'
+    );
+  };
+
+  if (!allResults || allResults.length === 0) {
+    return `
+      <div style="font-family: arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; background: white;">
+        <p style="text-align: center; color: #70757a; font-size: 14px;">No results found</p>
+      </div>
+    `;
+  }
+
+  const resultsHtml = allResults
+    .map((result, index) => {
+      const isNegativeMatch = negativeMatchedPositions.has(result.position);
+      const isPositiveMatch = positiveMatchedPositions.has(result.position);
+      
+      let highlightStyle = '';
+      if (isNegativeMatch) {
+        highlightStyle = 'border: 3px solid #f44336; border-radius: 8px; padding: 12px; margin: 16px 0; background: rgba(244, 67, 54, 0.05);';
+      } else if (isPositiveMatch) {
+        highlightStyle = 'border: 3px solid #4caf50; border-radius: 8px; padding: 12px; margin: 16px 0; background: rgba(76, 175, 80, 0.05);';
+      } else {
+        highlightStyle = 'margin: 16px 0;';
+      }
+
+      if (isImageSearch && result.title) {
+        // For image search results, create image tiles
+        const imageUrl = `https://via.placeholder.com/300x200/f0f0f0/666?text=${encodeURIComponent(result.title.substring(0, 20))}`;
+        
+        return `
+        <div style="${highlightStyle} display: inline-block; width: 200px; margin: 8px; vertical-align: top;">
+          <div style="position: relative; width: 100%; height: 200px; background: #f0f0f0; border-radius: 4px; overflow: hidden; ${isNegativeMatch ? 'border: 3px solid #f44336 !important;' : isPositiveMatch ? 'border: 3px solid #4caf50 !important;' : 'border: 1px solid #e0e0e0;'}">
+            <img src="${imageUrl}" 
+                 alt="${result.title || 'Image'}"
+                 style="width: 100%; height: 100%; object-fit: cover; display: block;">
+          </div>
+          <div style="padding: 8px 4px; font-size: 12px; line-height: 1.3; color: #202124;">
+            ${highlightKeyword(result.title || '', keyword)}
+          </div>
+        </div>
+      `;
+      }
+
+      // Regular search result format
+      return `
+      <div style="${highlightStyle}">
+        <div style="margin-bottom: 4px;">
+          <div style="font-size: 14px; line-height: 1.3;">
+            <a href="${result.link}" style="color: #1a0dab; text-decoration: none; font-size: 20px; font-weight: normal; line-height: 1.3; display: block; margin-bottom: 3px;">
+              ${highlightKeyword(result.title, keyword)}
+            </a>
+          </div>
+          <div style="font-size: 14px; color: #006621; margin-bottom: 3px;">
+            ${result.displayed_link || new URL(result.link).hostname}
+          </div>
+        </div>
+        <div style="font-size: 14px; color: #4d5156; line-height: 1.58; max-width: 600px;">
+          ${highlightKeyword(result.snippet || '', keyword)}
         </div>
       </div>
     `;
