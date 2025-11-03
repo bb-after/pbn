@@ -36,6 +36,8 @@ interface SerpApiResult {
 }
 
 interface SearchResult {
+  searchType: any;
+  noMatches: any;
   results?: SerpApiResult[];
   matchedResults?: SerpApiResult[];
   htmlPreview?: string;
@@ -67,7 +69,7 @@ interface SearchType {
 const SEARCH_TYPES: SearchType[] = [
   { value: '', name: 'Web Search', description: 'Regular Google Search' },
   { value: 'isch', name: 'Images', description: 'Google Images API' },
-  { value: 'lcl', name: 'Local', description: 'Google Local API' },
+  // { value: 'lcl', name: 'Local', description: 'Google Local API' },
   { value: 'vid', name: 'Videos', description: 'Google Videos API' },
   { value: 'nws', name: 'News', description: 'Google News API' },
   { value: 'shop', name: 'Shopping', description: 'Google Shopping API' },
@@ -134,6 +136,7 @@ function StillbrookContent() {
   const [animateToHeader, setAnimateToHeader] = useState(false);
   const [currentStep, setCurrentStep] = useState<'form' | 'generating' | 'results'>('form');
   const [lastFormData, setLastFormData] = useState<any>(null);
+  const [showLocationInput, setShowLocationInput] = useState(false);
 
   // Sort Google domains alphabetically by country name, with google.com first
   const sortedGoogleDomains = googleDomainsData.sort((a: GoogleDomain, b: GoogleDomain) => {
@@ -246,7 +249,7 @@ function StillbrookContent() {
           ? 'Request timed out. Please try again.'
           : err.message || 'Something went wrong';
       setError(errorMessage);
-      setResult({ error: errorMessage });
+      setResult({ error: errorMessage, searchType: undefined, noMatches: undefined });
       setCurrentStep('results'); // Show results even with error
     } finally {
       setLoading(false);
@@ -905,25 +908,65 @@ function StillbrookContent() {
                     </Box>
                   )}
 
-                  <TextField
-                    fullWidth
-                    label="Geographic Location (Optional)"
-                    type="text"
-                    value={location}
-                    onChange={e => setLocation(e.target.value)}
-                    variant="outlined"
-                    placeholder="e.g., New York, NY"
-                    helperText={
-                      <Box component="span">
-                        Examples: &quot;New York, NY&quot;, &quot;London, UK&quot;, &quot;Los
-                        Angeles, California&quot;, &quot;Toronto, Canada&quot;, &quot;Sydney,
-                        Australia&quot;
-                        <br />
-                        <strong>Popular formats:</strong> &quot;City, State&quot;, &quot;City,
-                        Country&quot;, &quot;State, Country&quot;
+                  {/* Geographic Location - Collapsed by default */}
+                  <Box>
+                    {!showLocationInput ? (
+                      <Box sx={{ textAlign: 'left' }}>
+                        <Button
+                          variant="text"
+                          onClick={() => setShowLocationInput(true)}
+                          sx={{
+                            p: 0,
+                            minWidth: 'auto',
+                            fontSize: '14px',
+                            textDecoration: 'underline',
+                            '&:hover': {
+                              textDecoration: 'underline',
+                              backgroundColor: 'transparent',
+                            },
+                          }}
+                        >
+                          + Add geographic location
+                        </Button>
+                        <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                          (will default to your current location)
+                        </Typography>
                       </Box>
-                    }
-                  />
+                    ) : (
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                        <TextField
+                          fullWidth
+                          label="Geographic Location"
+                          type="text"
+                          value={location}
+                          onChange={e => setLocation(e.target.value)}
+                          variant="outlined"
+                          size="small"
+                          placeholder="Leave blank for your current location"
+                          helperText={
+                            <Box component="span">
+                              Examples: &quot;New York, NY&quot;, &quot;London, UK&quot;, &quot;Los
+                              Angeles, California&quot;, &quot;Toronto, Canada&quot;, &quot;Sydney,
+                              Australia&quot;
+                              <br />
+                              <strong>Popular formats:</strong> &quot;City, State&quot;, &quot;City,
+                              Country&quot;, &quot;State, Country&quot;
+                            </Box>
+                          }
+                        />
+                        <IconButton
+                          onClick={() => {
+                            setShowLocationInput(false);
+                            setLocation('');
+                          }}
+                          size="small"
+                          sx={{ mt: 0.5 }}
+                        >
+                          <RemoveIcon />
+                        </IconButton>
+                      </Box>
+                    )}
+                  </Box>
 
                   <Box>
                     <IntercomButton variant="primary" type="submit" disabled={loading}>
@@ -958,11 +1001,23 @@ function StillbrookContent() {
                 ) : result.htmlPreview ? (
                   <Stack spacing={3}>
                     {/* Results Summary */}
-                    <Alert severity={result.matchedResults?.length ? 'success' : 'warning'}>
+                    <Alert
+                      severity={
+                        result.matchedResults?.length
+                          ? 'success'
+                          : result.noMatches
+                            ? 'error'
+                            : 'warning'
+                      }
+                    >
                       {result.matchedResults?.length
                         ? `Found ${result.matchedResults.length} matching results`
-                        : 'No matching results found, but generated screenshot of all results'}
-                      {result.totalResults ? ` out of ${result.totalResults} total results` : ''}
+                        : result.noMatches
+                          ? `No ${result.searchType?.replace('_', ' ')} matches found${result.totalResults ? ` in ${result.totalResults} search results` : ''}, but generated screenshot of all results`
+                          : 'No matching results found, but generated screenshot of all results'}
+                      {result.totalResults && !result.noMatches
+                        ? ` out of ${result.totalResults} total results`
+                        : ''}
                     </Alert>
 
                     {/* Download CTA Section - Above the fold */}
@@ -1016,58 +1071,33 @@ function StillbrookContent() {
                       </Stack>
                     </IntercomCard>
 
-                    {/* HTML Preview with Read-Only Overlay */}
+                    {/* HTML Preview with Read-Only Styling */}
                     <Box
                       sx={{
-                        position: 'relative',
                         border: '1px solid #ddd',
                         borderRadius: 2,
                         overflow: 'hidden',
                         maxHeight: '600px',
                         overflowY: 'auto',
+                        position: 'relative',
+                        '& *': {
+                          pointerEvents: 'none !important',
+                          userSelect: 'none !important',
+                        },
+                        '& a': {
+                          cursor: 'default !important',
+                          textDecoration: 'none !important',
+                        },
+                        '& button, & input, & select, & textarea': {
+                          cursor: 'default !important',
+                        },
                       }}
+                      title="Preview only - links and interactions are disabled for cleaner screenshots"
                     >
-                      {/* Transparent overlay to make it read-only */}
-                      <Box
-                        sx={{
-                          position: 'absolute',
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                          backgroundColor: 'transparent',
-                          zIndex: 10,
-                          cursor: 'default',
-                        }}
-                        title="Preview only - links are disabled for cleaner screenshots"
-                      />
                       <Box id="html-preview">
                         <div dangerouslySetInnerHTML={{ __html: result.htmlPreview }} />
                       </Box>
                     </Box>
-
-                    {/* Debug Info (if needed) */}
-                    {result.matchedResults && result.matchedResults.length > 0 && (
-                      <Box mt={2}>
-                        <Typography variant="h6" gutterBottom>
-                          Raw Result Data ({result.matchedResults.length} results):
-                        </Typography>
-                        <Box
-                          component="pre"
-                          sx={{
-                            backgroundColor: '#f5f5f5',
-                            padding: 2,
-                            borderRadius: 1,
-                            fontSize: '12px',
-                            maxHeight: '200px',
-                            overflow: 'auto',
-                            border: '1px solid #ddd',
-                          }}
-                        >
-                          {JSON.stringify(result.matchedResults, null, 2)}
-                        </Box>
-                      </Box>
-                    )}
                   </Stack>
                 ) : result.screenshot ? (
                   // Legacy screenshot support
