@@ -49,6 +49,7 @@ interface SearchResult {
   results?: SerpApiResult[];
   matchedResults?: SerpApiResult[];
   htmlPreview?: string;
+  page2HtmlPreview?: string;
   error?: string;
   totalResults?: number;
   // Legacy support
@@ -387,6 +388,7 @@ function StillbrookContent() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isUpdatingSearch, setIsUpdatingSearch] = useState(false);
   const [showUpdateOptions, setShowUpdateOptions] = useState(false);
+  const [includePage2, setIncludePage2] = useState(false);
 
   // Sort Google domains alphabetically by country name, with google.com first
   const sortedGoogleDomains = googleDomainsData.sort((a: GoogleDomain, b: GoogleDomain) => {
@@ -496,6 +498,7 @@ function StillbrookContent() {
       setEnablePositiveUrls(targetSearch.enable_positive_urls || false);
       setEnablePositiveSentiment(targetSearch.enable_positive_sentiment || false);
       setEnablePositiveKeywords(targetSearch.enable_positive_keywords || false);
+      setIncludePage2(targetSearch.include_page2 || false);
 
       // Set loaded search info
       setIsLoadedSearch(true);
@@ -525,6 +528,7 @@ function StillbrookContent() {
       keywords: keywords.filter(k => k.trim() !== ''),
       positive_urls: positiveUrls.filter(u => u.trim() !== ''),
       positive_keywords: positiveKeywords.filter(k => k.trim() !== ''),
+      include_page2: includePage2,
       enable_negative_urls: enableNegativeUrls,
       enable_negative_sentiment: enableNegativeSentiment,
       enable_negative_keywords: enableNegativeKeywords,
@@ -543,6 +547,7 @@ function StillbrookContent() {
       keywords: originalSearchData.keywords || [],
       positive_urls: originalSearchData.positive_urls || [],
       positive_keywords: originalSearchData.positive_keywords || [],
+      include_page2: originalSearchData.include_page2 || false,
       enable_negative_urls: originalSearchData.enable_negative_urls || false,
       enable_negative_sentiment: originalSearchData.enable_negative_sentiment || false,
       enable_negative_keywords: originalSearchData.enable_negative_keywords || false,
@@ -570,6 +575,7 @@ function StillbrookContent() {
     keywords,
     positiveUrls,
     positiveKeywords,
+    includePage2,
     enableNegativeUrls,
     enableNegativeSentiment,
     enableNegativeKeywords,
@@ -603,6 +609,7 @@ function StillbrookContent() {
       searchType,
       screenshotType: 'combined', // New combined approach
       savedSearchId: loadedSearchId, // Include saved search ID for analytics
+      includePage2, // Include page 2 option
       // Include highlight options
       enableNegativeUrls,
       enableNegativeSentiment,
@@ -612,6 +619,9 @@ function StillbrookContent() {
       enablePositiveKeywords,
     };
     setLastFormData(formData);
+
+    console.log('Form data being submitted:', formData);
+    console.log('Include Page 2 setting:', includePage2);
 
     // Validate that at least one highlight option is selected
     const hasAnyHighlight =
@@ -915,6 +925,118 @@ function StillbrookContent() {
     }
   };
 
+  const handleDownloadPage = (htmlContent: string, pageType: 'page-1' | 'page-2') => {
+    const pageTitle = pageType === 'page-1' ? 'Page 1' : 'Page 2';
+    const htmlDocument = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Stillbrook ${pageTitle} Results - ${keyword}</title>
+        <meta charset="utf-8">
+      </head>
+      <body>
+        ${htmlContent}
+      </body>
+      </html>
+    `;
+    const blob = new Blob([htmlDocument], { type: 'text/html' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `stillbrook-${pageType}-${keyword.replace(/[^a-zA-Z0-9]/g, '-')}.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  };
+
+  const handleDownloadPageImage = async (pageType: 'page-1' | 'page-2') => {
+    if (!result) return;
+    
+    setIsGeneratingImage(true);
+    try {
+      const iframeSelector = pageType === 'page-1' 
+        ? 'iframe[title="Page 1 Search Results"]' 
+        : 'iframe[title="Page 2 Search Results"]';
+      
+      const iframe = document.querySelector(iframeSelector) as HTMLIFrameElement;
+      if (!iframe || !iframe.contentDocument) {
+        throw new Error(`${pageType} iframe not found or not accessible`);
+      }
+      
+      const iframeDocument = iframe.contentDocument;
+      const iframeBody = iframeDocument.body;
+      if (!iframeBody) {
+        throw new Error(`${pageType} iframe content not loaded`);
+      }
+      
+      // Pre-process images similar to the original function
+      const images = iframeDocument.querySelectorAll('img');
+      console.log(`Found ${images.length} images to convert for ${pageType}...`);
+      
+      const imagePromises = Array.from(images).map(async (img, index) => {
+        try {
+          if (!img.src || img.src.startsWith('data:')) return;
+          
+          if (img.src.includes('transparent.gif') || img.src.includes('pixel.gif') || img.src.includes('spacer.gif')) {
+            const betterSrc = 
+              img.getAttribute('data-src') ||
+              img.getAttribute('data-lazy-src') ||
+              img.getAttribute('data-original');
+            if (betterSrc && betterSrc.startsWith('http')) {
+              img.src = betterSrc;
+            } else {
+              return;
+            }
+          }
+          
+          const dataURL = await convertImageToDataURL(img.src);
+          if (dataURL && dataURL !== img.src) {
+            img.src = dataURL;
+            console.log(`Successfully converted ${pageType} image ${index + 1}`);
+          }
+        } catch (error) {
+          console.warn(`Failed to convert ${pageType} image ${index + 1}:`, error);
+        }
+      });
+      
+      await Promise.all(imagePromises);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Generate screenshot
+      const canvas = await html2canvas(iframeBody, {
+        allowTaint: false,
+        useCORS: false,
+        scale: 2,
+        width: iframeBody.scrollWidth,
+        height: iframeBody.scrollHeight,
+        backgroundColor: '#ffffff',
+        logging: false,
+      });
+      
+      // Download the image
+      canvas.toBlob(
+        blob => {
+          if (blob) {
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `stillbrook-${pageType}-${keyword.replace(/[^a-zA-Z0-9]/g, '-')}.png`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+          }
+        },
+        'image/png',
+        0.95
+      );
+    } catch (error) {
+      console.error(`Error generating ${pageType} image:`, error);
+      setError(`Failed to generate ${pageType} image. Please try again.`);
+    } finally {
+      setIsGeneratingImage(false);
+    }
+  };
+
   const handleRunAnotherSearch = () => {
     // Go back to form step with previous data intact
     setCurrentStep('form');
@@ -1075,6 +1197,7 @@ function StillbrookContent() {
         enablePositiveUrls,
         enablePositiveSentiment,
         enablePositiveKeywords,
+        includePage2,
       };
 
       const response = await fetch('/api/saved-searches', {
@@ -1159,6 +1282,7 @@ function StillbrookContent() {
         enablePositiveUrls,
         enablePositiveSentiment,
         enablePositiveKeywords,
+        includePage2,
       };
 
       const response = await fetch(`/api/saved-searches?id=${loadedSearchId}`, {
@@ -1377,6 +1501,7 @@ function StillbrookContent() {
             {currentStep === 'form' && (
               <Box component="form" onSubmit={handleSubmit}>
                 <Stack spacing={3}>
+
                   {isLoadedSearch && (
                     <Alert severity={hasUnsavedChanges ? 'warning' : 'info'}>
                       {hasUnsavedChanges ? (
@@ -1619,6 +1744,17 @@ function StillbrookContent() {
                     helperText="Examples: 'New York, NY', 'London, UK', 'Los Angeles, California'"
                   />
 
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={includePage2}
+                        onChange={(e) => setIncludePage2(e.target.checked)}
+                        color="primary"
+                      />
+                    }
+                    label="Include page 2 of search results (more comprehensive results)"
+                  />
+
                   <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                     <IntercomButton variant="primary" type="submit" disabled={loading}>
                       {loading ? 'Processing...' : 'Submit'}
@@ -1645,6 +1781,7 @@ function StillbrookContent() {
                         ← Back to Saved Stillbrook Searches
                       </IntercomButton>
                     )}
+
 
                     {isLoadedSearch && hasUnsavedChanges && !showUpdateOptions && (
                       <IntercomButton
@@ -1782,34 +1919,119 @@ function StillbrookContent() {
                     </IntercomCard>
 
                     {/* HTML Preview with Read-Only Styling */}
-                    <Box
-                      sx={{
-                        border: '1px solid #ddd',
-                        borderRadius: 2,
-                        overflow: 'hidden',
-                        maxHeight: '600px',
-                        overflowY: 'auto',
-                        position: 'relative',
-                        backgroundColor: '#ffffff !important', // Force white background
-                        '& *': {
-                          pointerEvents: 'none !important',
-                          userSelect: 'none !important',
-                        },
-                        '& iframe': {
-                          pointerEvents: 'auto !important', // Allow iframe interactions
-                        },
-                        '& a': {
-                          cursor: 'default !important',
-                          textDecoration: 'none !important',
-                        },
-                        '& button, & input, & select, & textarea': {
-                          cursor: 'default !important',
-                        },
-                      }}
-                      title="Preview only - links and interactions are disabled for cleaner screenshots"
-                    >
+                    {result.page2HtmlPreview ? (
+                      // Side-by-side layout for page 1 and page 2
                       <Box
-                        id="html-preview"
+                        sx={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr',
+                          gap: 2,
+                          '& *': {
+                            pointerEvents: 'none !important',
+                            userSelect: 'none !important',
+                          },
+                          '& iframe': {
+                            pointerEvents: 'auto !important', // Allow iframe interactions
+                          },
+                        }}
+                      >
+                        {/* Page 1 */}
+                        <Box>
+                          <Typography variant="h6" sx={{ mb: 2, color: '#1a73e8', textAlign: 'center' }}>
+                            📄 Page 1 Results (1-10)
+                          </Typography>
+                          <Box
+                            sx={{
+                              border: '2px solid #1a73e8',
+                              borderRadius: 2,
+                              overflow: 'hidden',
+                              backgroundColor: '#fff',
+                            }}
+                          >
+                            <iframe
+                              srcDoc={result.htmlPreview}
+                              style={{
+                                width: '100%',
+                                height: '500px',
+                                border: 'none',
+                                pointerEvents: 'auto',
+                                display: 'block',
+                                overflow: 'auto',
+                              }}
+                              sandbox="allow-same-origin allow-scripts"
+                              title="Page 1 Search Results"
+                              loading="lazy"
+                              scrolling="auto"
+                            />
+                          </Box>
+                          <Box sx={{ mt: 1, display: 'flex', gap: 1, justifyContent: 'center' }}>
+                            <IntercomButton
+                              variant="ghost"
+                              size="small"
+                              onClick={() => handleDownloadPage(result.htmlPreview!, 'page-1')}
+                            >
+                              📁 Download Page 1 HTML
+                            </IntercomButton>
+                            <IntercomButton
+                              variant="ghost"
+                              size="small"
+                              onClick={() => handleDownloadPageImage('page-1')}
+                            >
+                              📷 Download Page 1 PNG
+                            </IntercomButton>
+                          </Box>
+                        </Box>
+
+                        {/* Page 2 */}
+                        <Box>
+                          <Typography variant="h6" sx={{ mb: 2, color: '#34a853', textAlign: 'center' }}>
+                            📄 Page 2 Results (11-20)
+                          </Typography>
+                          <Box
+                            sx={{
+                              border: '2px solid #34a853',
+                              borderRadius: 2,
+                              overflow: 'hidden',
+                              backgroundColor: '#fff',
+                            }}
+                          >
+                            <iframe
+                              srcDoc={result.page2HtmlPreview}
+                              style={{
+                                width: '100%',
+                                height: '500px',
+                                border: 'none',
+                                pointerEvents: 'auto',
+                                display: 'block',
+                                overflow: 'auto',
+                              }}
+                              sandbox="allow-same-origin allow-scripts"
+                              title="Page 2 Search Results"
+                              loading="lazy"
+                              scrolling="auto"
+                            />
+                          </Box>
+                          <Box sx={{ mt: 1, display: 'flex', gap: 1, justifyContent: 'center' }}>
+                            <IntercomButton
+                              variant="ghost"
+                              size="small"
+                              onClick={() => handleDownloadPage(result.page2HtmlPreview!, 'page-2')}
+                            >
+                              📁 Download Page 2 HTML
+                            </IntercomButton>
+                            <IntercomButton
+                              variant="ghost"
+                              size="small"
+                              onClick={() => handleDownloadPageImage('page-2')}
+                            >
+                              📷 Download Page 2 PNG
+                            </IntercomButton>
+                          </Box>
+                        </Box>
+                      </Box>
+                    ) : (
+                      // Single page layout
+                      <Box
                         sx={{
                           border: '1px solid #ddd',
                           borderRadius: 2,
@@ -1817,28 +2039,56 @@ function StillbrookContent() {
                           maxHeight: '600px',
                           overflowY: 'auto',
                           position: 'relative',
-                          backgroundColor: '#fff',
-                          pointerEvents: 'auto', // Explicitly enable pointer events
+                          backgroundColor: '#ffffff !important',
+                          '& *': {
+                            pointerEvents: 'none !important',
+                            userSelect: 'none !important',
+                          },
+                          '& iframe': {
+                            pointerEvents: 'auto !important',
+                          },
+                          '& a': {
+                            cursor: 'default !important',
+                            textDecoration: 'none !important',
+                          },
+                          '& button, & input, & select, & textarea': {
+                            cursor: 'default !important',
+                          },
                         }}
+                        title="Preview only - links and interactions are disabled for cleaner screenshots"
                       >
-                        <iframe
-                          srcDoc={result.htmlPreview}
-                          style={{
-                            width: '100%',
-                            height: '600px',
-                            border: 'none',
-                            borderRadius: '4px',
+                        <Box
+                          id="html-preview"
+                          sx={{
+                            border: '1px solid #ddd',
+                            borderRadius: 2,
+                            overflow: 'hidden',
+                            maxHeight: '600px',
+                            overflowY: 'auto',
+                            position: 'relative',
+                            backgroundColor: '#fff',
                             pointerEvents: 'auto',
-                            display: 'block',
-                            overflow: 'auto', // Enable scrolling within iframe
                           }}
-                          sandbox="allow-same-origin allow-scripts"
-                          title="Search Results Preview"
-                          loading="lazy"
-                          scrolling="auto"
-                        />
+                        >
+                          <iframe
+                            srcDoc={result.htmlPreview}
+                            style={{
+                              width: '100%',
+                              height: '600px',
+                              border: 'none',
+                              borderRadius: '4px',
+                              pointerEvents: 'auto',
+                              display: 'block',
+                              overflow: 'auto',
+                            }}
+                            sandbox="allow-same-origin allow-scripts"
+                            title="Search Results Preview"
+                            loading="lazy"
+                            scrolling="auto"
+                          />
+                        </Box>
                       </Box>
-                    </Box>
+                    )}
                   </Stack>
                 ) : result.screenshot ? (
                   // Legacy screenshot support

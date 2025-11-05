@@ -16,6 +16,7 @@ interface SearchRequestBody {
   searchType?: string;
   screenshotType: string;
   savedSearchId?: string; // Optional saved search ID for analytics
+  includePage2?: boolean; // Include page 2 of search results
   // New highlight options
   enableNegativeUrls?: boolean;
   enableNegativeSentiment?: boolean;
@@ -39,6 +40,7 @@ interface SearchResponse {
   results?: SerpApiResult[];
   matchedResults?: SerpApiResult[];
   htmlPreview?: string;
+  page2HtmlPreview?: string;
   error?: string;
   totalResults?: number;
 }
@@ -210,6 +212,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     searchType,
     screenshotType,
     savedSearchId,
+    includePage2,
     enableNegativeUrls,
     enableNegativeSentiment,
     enableNegativeKeywords,
@@ -290,8 +293,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     if (searchType) {
       serpApiUrl.searchParams.set('tbm', searchType); // Set search type (images, videos, news, etc.)
     }
-    serpApiUrl.searchParams.set('api_key', process.env.SERP_API_KEY);
-    serpApiUrl.searchParams.set('num', '20'); // Get up to 20 results
+    serpApiUrl.searchParams.set('api_key', process.env.SERP_API_KEY!);
+    serpApiUrl.searchParams.set('num', '10'); // Get 10 results per page
 
     const response = await fetch(serpApiUrl.toString());
 
@@ -585,47 +588,82 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     console.log(`Found ${uniquePositiveMatches.length} positive matches`);
     console.log(`Total unique matches: ${allMatches.length}`);
 
-    // Use SerpAPI's raw HTML file directly - no complex highlighting needed since we use Google operators
+    // Use SerpAPI's raw HTML file directly - handle page 2 if requested
     let htmlPreview = '';
-    if (data.search_metadata && data.search_metadata.raw_html_file) {
-      console.log('Raw HTML file available:', data.search_metadata.raw_html_file);
-
+    let page2HtmlPreview = '';
+    
+    if (includePage2) {
+      console.log('Processing page 1 and page 2 HTML...');
+      
+      // Fetch page 2 data for HTML
       try {
-        // Fetch the raw HTML from SerpAPI - use it as-is since Google already filtered results
-        const htmlResponse = await fetch(data.search_metadata.raw_html_file);
-        if (htmlResponse.ok) {
-          const rawHtml = await htmlResponse.text();
-          console.log('Successfully fetched raw HTML, length:', rawHtml.length);
+        const page2ApiUrl = new URL('https://serpapi.com/search');
+        page2ApiUrl.searchParams.set('engine', 'google');
+        page2ApiUrl.searchParams.set('q', keyword);
+        if (location) {
+          page2ApiUrl.searchParams.set('location', location);
+        }
+        page2ApiUrl.searchParams.set('gl', countryCode);
+        if (googleDomain) {
+          page2ApiUrl.searchParams.set('google_domain', googleDomain);
+        }
+        page2ApiUrl.searchParams.set('hl', language || 'en');
+        if (searchType) {
+          page2ApiUrl.searchParams.set('tbm', searchType);
+        }
+        page2ApiUrl.searchParams.set('api_key', process.env.SERP_API_KEY!);
+        page2ApiUrl.searchParams.set('num', '10');
+        page2ApiUrl.searchParams.set('start', '10'); // Start at result 11 (page 2)
+        
+        const page2Response = await fetch(page2ApiUrl.toString());
+        if (page2Response.ok) {
+          const page2Data = await page2Response.json();
+          console.log('Successfully fetched page 2 data');
+          
+          if (page2Data.search_metadata?.raw_html_file) {
+            console.log('Page 2 raw HTML file available:', page2Data.search_metadata.raw_html_file);
+            const page2HtmlResponse = await fetch(page2Data.search_metadata.raw_html_file);
+            if (page2HtmlResponse.ok) {
+              const page2RenderedHtml = await renderHtmlWithBrowser(page2Data.search_metadata.raw_html_file);
+              page2HtmlPreview = addCombinedHighlighting(page2RenderedHtml, uniqueNegativeMatches, uniquePositiveMatches, searchType === 'isch', searchType);
+              console.log('Successfully processed page 2 HTML');
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('Error fetching page 2 HTML:', error);
+      }
+      
+      // Process page 1 HTML
+      if (data.search_metadata && data.search_metadata.raw_html_file) {
+        console.log('Processing page 1 HTML:', data.search_metadata.raw_html_file);
+        try {
+          const renderedHtml = await renderHtmlWithBrowser(data.search_metadata.raw_html_file);
+          htmlPreview = addCombinedHighlighting(renderedHtml, uniqueNegativeMatches, uniquePositiveMatches, searchType === 'isch', searchType);
+          console.log('Successfully processed page 1 HTML');
+        } catch (error) {
+          console.error('Error processing page 1 HTML:', error);
+        }
+      }
+    } else {
+      // Single page processing (existing logic)
+      if (data.search_metadata && data.search_metadata.raw_html_file) {
+        console.log('Raw HTML file available:', data.search_metadata.raw_html_file);
 
+        try {
           // Use headless browser to render HTML with JavaScript execution for proper image loading
           const renderedHtml = await renderHtmlWithBrowser(data.search_metadata.raw_html_file);
           const isImageSearch = searchType === 'isch';
           htmlPreview = addCombinedHighlighting(renderedHtml, uniqueNegativeMatches, uniquePositiveMatches, isImageSearch, searchType);
-        } else {
-          console.error('Failed to fetch raw HTML:', htmlResponse.status);
-          // Fallback to custom generated preview
-          const negativeMatchedIds = new Set(uniqueNegativeMatches.map(result => result.position));
-          const positiveMatchedIds = new Set(uniquePositiveMatches.map(result => result.position));
-          const isImageSearch = searchType === 'isch';
-          htmlPreview = generateCombinedPagePreview(
-            organicResults,
-            negativeMatchedIds,
-            positiveMatchedIds,
-            keyword,
-            isImageSearch
-          );
+        } catch (error) {
+          console.error('Error fetching raw HTML:', error);
         }
-      } catch (error) {
-        console.error('Error fetching raw HTML:', error);
-        // Fallback to custom generated preview
-        const negativeMatchedIds = new Set(uniqueNegativeMatches.map(result => result.position));
-        const positiveMatchedIds = new Set(uniquePositiveMatches.map(result => result.position));
-        const isImageSearch = searchType === 'isch';
-        htmlPreview = generateCombinedPagePreview(organicResults, negativeMatchedIds, positiveMatchedIds, keyword, isImageSearch);
       }
-    } else {
-      console.log('No raw HTML file available, using custom preview');
-      // Fallback to custom generated preview
+    }
+    
+    // Fallback to custom generated preview if HTML processing failed
+    if (!htmlPreview) {
+      console.log('No HTML preview generated, using custom fallback');
       const negativeMatchedIds = new Set(uniqueNegativeMatches.map(result => result.position));
       const positiveMatchedIds = new Set(uniquePositiveMatches.map(result => result.position));
       const isImageSearch = searchType === 'isch';
@@ -647,6 +685,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
         results: organicResults, // Return all results for reference
         totalResults: organicResults.length,
         htmlPreview: generateCombinedPagePreview(organicResults, new Set(), new Set(), keyword, searchType === 'isch'),
+        page2HtmlPreview: includePage2 ? '' : undefined,
         noMatches: true, // Flag to indicate no matches were found
         searchType: 'combined', // Include search type for frontend messaging
       });
@@ -666,6 +705,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       results: organicResults, // Include all results for reference
       totalResults: organicResults.length,
       htmlPreview,
+      page2HtmlPreview: includePage2 ? page2HtmlPreview : undefined,
       searchType: undefined,
       noMatches: undefined
     });
@@ -1008,34 +1048,137 @@ function addCleanHighlighting(
       }
     });
   } else {
-    // Original logic for regular search results
-    matchedResults.forEach((result, index) => {
+    // Use enhanced position-based highlighting for regular web search
+    highlightedHtml = applyEnhancedWebSearchHighlighting(highlightedHtml, matchedResults, color);
+    return highlightedHtml;
+  }
+
+  return highlightedHtml;
+}
+
+// Remove old backup function entirely
+/*
       try {
-        console.log(`Adding border highlight for result ${index + 1}: ${result.link}`);
+        console.log(`Adding border highlight for web result ${index + 1}: ${result.link}`);
 
-        // Find all links that match this result's URL
+        // First try to find the data-rpos container by finding the link and working up
         const escapedLink = result.link.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const linkPattern = new RegExp(`(<a[^>]*href="[^"]*${escapedLink}[^"]*"[^>]*>)`, 'gi');
-
+        console.log(`Escaped link: ${escapedLink}`);
+        
+        // Check if the link exists in the HTML at all
+        const linkExists = highlightedHtml.includes(result.link);
+        console.log(`Link exists in HTML: ${linkExists}`);
+        
+        // Check if data-rpos containers exist
+        const dataRposMatches = highlightedHtml.match(/data-rpos="[^"]*"/g);
+        console.log(`Found ${dataRposMatches ? dataRposMatches.length : 0} data-rpos attributes:`, dataRposMatches?.slice(0, 5));
+        
+        // Strategy 1: Find the data-rpos container that contains our target link
+        const dataRposPattern = new RegExp(
+          `(<div[^>]*data-rpos="[^"]*"[^>]*>[\\s\\S]*?href="[^"]*${escapedLink}[^"]*"[\\s\\S]*?</div>)`,
+          'gi'
+        );
+        
+        console.log('dataRposPattern', dataRposPattern);
+        
+        // Test if the pattern matches anything in the HTML
+        const dataRposTestMatches = highlightedHtml.match(dataRposPattern);
+        console.log(`Data-rpos pattern matches: ${dataRposTestMatches ? dataRposTestMatches.length : 0}`);
+        
         let highlightAdded = false;
-        highlightedHtml = highlightedHtml.replace(linkPattern, match => {
+        highlightedHtml = highlightedHtml.replace(dataRposPattern, (match) => {
           if (!highlightAdded) {
-            // Add highlighting to the link element itself for now
-            const highlightedLink = match.replace(
-              '<a ',
-              '<a style="display: block; border: 3px solid ' +
-                color +
-                ' !important; border-radius: 8px !important; padding: 8px !important; margin: 8px 0 !important; background: rgba(255, 235, 59, 0.05) !important;" '
-            );
             highlightAdded = true;
-            console.log(`Added highlight style to result ${index + 1}`);
-            return highlightedLink;
+            console.log(`✅ Added highlight style to data-rpos container for result ${index + 1}`);
+            // Add the highlight styling to the data-rpos div
+            return match.replace(
+              /<div([^>]*data-rpos="[^"]*"[^>]*)>/,
+              `<div$1 style="border: 3px solid ${color} !important; border-radius: 8px !important; padding: 8px !important; margin: 8px 0 !important; background: rgba(255, 235, 59, 0.05) !important; box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;">`
+            );
           }
           return match;
         });
+        
+        if (!highlightAdded) {
+          console.log(`❌ Data-rpos strategy failed for result ${index + 1}`);
+          
+          // Show a sample of the HTML structure around the link to understand the issue
+          const linkIndex = highlightedHtml.indexOf(result.link);
+          if (linkIndex !== -1) {
+            const sampleStart = Math.max(0, linkIndex - 200);
+            const sampleEnd = Math.min(highlightedHtml.length, linkIndex + 200);
+            const htmlSample = highlightedHtml.substring(sampleStart, sampleEnd);
+            console.log(`HTML sample around link:`, htmlSample);
+          }
+          
+          // Try a simpler approach - find any data-rpos div that contains our URL
+          const simplePattern = new RegExp(`(data-rpos="[^"]*"[^>]*>[\\s\\S]*?${result.link}[\\s\\S]*?</div>)`, 'gi');
+          const simpleMatches = highlightedHtml.match(simplePattern);
+          console.log(`Simple pattern matches: ${simpleMatches ? simpleMatches.length : 0}`);
+          
+          // Also try to find just the href patterns
+          const hrefPattern = new RegExp(`href="[^"]*${escapedLink}[^"]*"`, 'gi');
+          const hrefMatches = highlightedHtml.match(hrefPattern);
+          console.log(`Href pattern matches: ${hrefMatches ? hrefMatches.length : 0}`, hrefMatches?.slice(0, 3));
+        }
+
+        // Strategy 2: If data-rpos approach didn't work, try finding MjjYud containers (Google's result containers)
+        if (!highlightAdded) {
+          console.log(`🔄 Trying MjjYud strategy for result ${index + 1}`);
+          
+          // Check if MjjYud containers exist
+          const mjjYudContainers = highlightedHtml.match(/class="[^"]*MjjYud[^"]*"/g);
+          console.log(`Found ${mjjYudContainers ? mjjYudContainers.length : 0} MjjYud containers`);
+          
+          const mjjYudPattern = new RegExp(
+            `(<div[^>]*class="[^"]*MjjYud[^"]*"[^>]*>[\\s\\S]*?href="[^"]*${escapedLink}[^"]*"[\\s\\S]*?</div>)`,
+            'gi'
+          );
+          
+          // Test if the pattern matches
+          const mjjYudTestMatches = highlightedHtml.match(mjjYudPattern);
+          console.log(`MjjYud pattern matches: ${mjjYudTestMatches ? mjjYudTestMatches.length : 0}`);
+          
+          highlightedHtml = highlightedHtml.replace(mjjYudPattern, (match) => {
+            if (!highlightAdded) {
+              highlightAdded = true;
+              console.log(`✅ Added highlight style to MjjYud container for result ${index + 1}`);
+              return match.replace(
+                /<div([^>]*class="[^"]*MjjYud[^"]*"[^>]*)>/,
+                `<div$1 style="border: 3px solid ${color} !important; border-radius: 8px !important; padding: 8px !important; margin: 8px 0 !important; background: rgba(255, 235, 59, 0.05) !important; box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;">`
+              );
+            }
+            return match;
+          });
+          
+          if (!highlightAdded) {
+            console.log(`❌ MjjYud strategy also failed for result ${index + 1}`);
+          }
+        }
+
+        // Strategy 3: Fallback to the original link-based approach if container methods fail
+        if (!highlightAdded) {
+          console.log(`Container-based highlighting failed for result ${index + 1}, falling back to link highlighting`);
+          const linkPattern = new RegExp(`(<a[^>]*href="[^"]*${escapedLink}[^"]*"[^>]*>)`, 'gi');
+          
+          highlightedHtml = highlightedHtml.replace(linkPattern, match => {
+            if (!highlightAdded) {
+              const highlightedLink = match.replace(
+                '<a ',
+                '<a style="display: block; border: 3px solid ' +
+                  color +
+                  ' !important; border-radius: 8px !important; padding: 8px !important; margin: 8px 0 !important; background: rgba(255, 235, 59, 0.05) !important;" '
+              );
+              highlightAdded = true;
+              console.log(`Added fallback highlight style to link for result ${index + 1}`);
+              return highlightedLink;
+            }
+            return match;
+          });
+        }
 
         if (!highlightAdded) {
-          console.log(`Could not find link to highlight for result ${index + 1}`);
+          console.log(`All highlighting strategies failed for result ${index + 1}: ${result.link}`);
         }
       } catch (e) {
         console.error('Error processing result URL:', e);
@@ -1044,7 +1187,7 @@ function addCleanHighlighting(
   }
 
   return highlightedHtml;
-}
+*/
 
 function generateFullPagePreview(
   allResults: SerpApiResult[],
@@ -1208,7 +1351,11 @@ function addCombinedHighlighting(
   isImageSearch: boolean = false,
   searchTypeParam?: string
 ): string {
-  console.log(`Adding combined highlighting for ${negativeMatches.length} negative and ${positiveMatches.length} positive matches`);
+  console.log(`🔥 addCombinedHighlighting CALLED with ${negativeMatches.length} negative and ${positiveMatches.length} positive matches`);
+  console.log('HTML length:', rawHtml?.length || 'undefined');
+  console.log('isImageSearch:', isImageSearch);
+  console.log('searchTypeParam:', searchTypeParam);
+  console.log('First few negative matches:', negativeMatches.slice(0, 2).map(m => ({ title: m.title, link: m.link })));
 
   let highlightedHtml = rawHtml;
 
@@ -1265,6 +1412,224 @@ function addCombinedHighlighting(
   return highlightedHtml;
 }
 
+// Enhanced position-based highlighting for regular web search results
+function applyEnhancedWebSearchHighlighting(html: string, matches: SerpApiResult[], color: string): string {
+  let highlightedHtml = html;
+  
+  console.log(`🚀 Using enhanced position-based highlighting for ${matches.length} matches`);
+  
+  matches.forEach((result, index) => {
+    try {
+      console.log(`🎯 Processing result ${index + 1} - Position: ${result.position}, Link: ${result.link}`);
+      
+      // Check if the link exists at all in the HTML (for debugging)
+      const linkExistsInHtml = highlightedHtml.includes(result.link);
+      const linkExistsPartial = highlightedHtml.includes(result.link.substring(0, 50));
+      console.log(`🔗 Link exists in HTML: ${linkExistsInHtml}, Partial exists: ${linkExistsPartial}`);
+      
+      // Extract domain for fallback matching
+      const urlDomain = result.link.match(/https?:\/\/([^\/]+)/)?.[1] || '';
+      const domainExists = urlDomain && highlightedHtml.includes(urlDomain);
+      console.log(`🌐 Domain exists in HTML: ${domainExists}, Domain: ${urlDomain}`);
+      
+      // Check if there's a redirect_link field that might be used instead
+      const resultData = result as any;
+      if (resultData.redirect_link) {
+        const redirectExists = highlightedHtml.includes(resultData.redirect_link);
+        console.log(`🔀 Redirect link exists: ${redirectExists}, Redirect: ${resultData.redirect_link.substring(0, 100)}...`);
+      }
+      
+      // Debug: Show what URLs actually exist in HTML around this result's domain
+      if (urlDomain && domainExists) {
+        const regex = new RegExp(`href="([^"]*${urlDomain.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"]*)"`, 'gi');
+        const actualLinks = Array.from(highlightedHtml.matchAll(regex)).map(match => match[1]);
+        console.log(`🔍 Found ${actualLinks.length} links with domain ${urlDomain}:`, actualLinks.slice(0, 3));
+      }
+      
+      let highlightAdded = false;
+      
+      // Choose the best link to search for
+      let searchLink = result.link;
+      let escapedLink = result.link.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      
+      // If the direct link doesn't exist, try redirect link
+      if (!linkExistsInHtml && resultData.redirect_link && highlightedHtml.includes(resultData.redirect_link)) {
+        searchLink = resultData.redirect_link;
+        escapedLink = resultData.redirect_link.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        console.log(`🔄 Using redirect link for pattern matching`);
+      }
+      
+      // Strategy 1: Position-based targeting using CSS selectors
+      // This is more reliable than class-based targeting as positions are consistent
+      const positionBasedPatterns = [
+        // Try to find elements with specific positional indicators
+        new RegExp(`(<[^>]*data-pos="${result.position}"[^>]*>[\\s\\S]*?</[^>]*>)`, 'gi'),
+        new RegExp(`(<[^>]*data-result-index="${result.position - 1}"[^>]*>[\\s\\S]*?</[^>]*>)`, 'gi'),
+        // Look for div containers (works well on page 1)
+        new RegExp(`(<div[^>]*>[\\s\\S]*?href="${escapedLink}"[\\s\\S]*?</div>)`, 'gi'),
+        // Look for other common container elements (for simplified HTML structures)
+        new RegExp(`(<article[^>]*>[\\s\\S]*?href="${escapedLink}"[\\s\\S]*?</article>)`, 'gi'),
+        new RegExp(`(<li[^>]*>[\\s\\S]*?href="${escapedLink}"[\\s\\S]*?</li>)`, 'gi'),
+        new RegExp(`(<section[^>]*>[\\s\\S]*?href="${escapedLink}"[\\s\\S]*?</section>)`, 'gi'),
+        // Broader pattern for any container element
+        new RegExp(`(<[^>]+>[\\s\\S]*?href="${escapedLink}"[\\s\\S]*?</[^>]+>)`, 'gi'),
+        // Ultra-aggressive fallback for minimal HTML structures
+        new RegExp(`([\\s\\S]{0,200}href="${escapedLink}"[\\s\\S]{0,200})`, 'gi'),
+        // Domain-based fallback when exact URLs don't match
+        urlDomain ? new RegExp(`([\\s\\S]{0,300}${urlDomain.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]{0,300})`, 'gi') : null
+      ].filter(Boolean) as RegExp[];
+      
+      for (let patternIndex = 0; patternIndex < positionBasedPatterns.length; patternIndex++) {
+        const pattern = positionBasedPatterns[patternIndex];
+        if (!highlightAdded) {
+          const matches = highlightedHtml.match(pattern);
+          console.log(`🔍 Pattern ${patternIndex + 1} found ${matches ? matches.length : 0} matches for result ${index + 1}`);
+          if (matches) {
+            highlightedHtml = highlightedHtml.replace(pattern, (match) => {
+              highlightAdded = true;
+              console.log(`✅ Applied position-based highlight to result ${index + 1} using pattern ${patternIndex + 1}`);
+              return applyHighlightStyles(match, color);
+            });
+          }
+        }
+      }
+      
+      // Strategy 2: Content-based targeting using unique identifiers from the result
+      if (!highlightAdded && result.title) {
+        console.log(`🔍 Trying content-based targeting for result ${index + 1}`);
+        const titleText = result.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').substring(0, 50); // Use first 50 chars for reliability
+        
+        // Find containers that have both the title text and the link
+        const contentPattern = new RegExp(
+          `(<div[^>]*>[\\s\\S]*?${titleText}[\\s\\S]*?href="${escapedLink}"[\\s\\S]*?</div>)`,
+          'gi'
+        );
+        
+        highlightedHtml = highlightedHtml.replace(contentPattern, (match) => {
+          if (!highlightAdded) {
+            highlightAdded = true;
+            console.log(`✅ Applied content-based highlight to result ${index + 1}`);
+            return applyHighlightStyles(match, color);
+          }
+          return match;
+        });
+      }
+      
+      // Strategy 3: Reverse DOM traversal - find the link and highlight its container
+      if (!highlightAdded) {
+        console.log(`🔄 Trying reverse DOM traversal for result ${index + 1}`);
+        
+        // Find all anchor tags with our target href
+        const linkPattern = new RegExp(`<a[^>]*href="${escapedLink}"[^>]*>([\\s\\S]*?)</a>`, 'gi');
+        const linkMatches = highlightedHtml.match(linkPattern);
+        
+        if (linkMatches && linkMatches.length > 0) {
+          // Try to find the parent container by looking for common search result patterns
+          const containerPatterns = [
+            // Google's common container classes (more flexible matching)
+            new RegExp(`(<div[^>]*class="[^"]*(?:MjjYud|tF2Cxc|Wt5Tfe)[^"]*"[^>]*>[\\s\\S]*?${escapedLink}[\\s\\S]*?</div>)`, 'gi'),
+            // Data attribute patterns
+            new RegExp(`(<div[^>]*data-[^>]*>[\\s\\S]*?${escapedLink}[\\s\\S]*?</div>)`, 'gi'),
+            // Generic result container patterns
+            new RegExp(`(<div[^>]*>[\\s\\S]*?${escapedLink}[\\s\\S]*?</div>)`, 'gi')
+          ];
+          
+          for (const containerPattern of containerPatterns) {
+            if (!highlightAdded) {
+              const containerMatches = highlightedHtml.match(containerPattern);
+              if (containerMatches && containerMatches.length > 0) {
+                // Find the shortest match (most specific container)
+                const shortestMatch = containerMatches.reduce((shortest, current) => 
+                  current.length < shortest.length ? current : shortest
+                );
+                
+                highlightedHtml = highlightedHtml.replace(shortestMatch, () => {
+                  highlightAdded = true;
+                  console.log(`✅ Applied reverse DOM highlight to result ${index + 1}`);
+                  return applyHighlightStyles(shortestMatch, color);
+                });
+                break;
+              }
+            }
+          }
+        }
+      }
+      
+      // Strategy 4: URL-domain based targeting for better accuracy
+      if (!highlightAdded && result.displayed_link) {
+        console.log(`🌐 Trying domain-based targeting for result ${index + 1}`);
+        try {
+          const url = new URL(result.link);
+          const domain = url.hostname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          
+          // Find containers that mention the domain
+          const domainPattern = new RegExp(
+            `(<div[^>]*>[\\s\\S]*?${domain}[\\s\\S]*?href="${escapedLink}"[\\s\\S]*?</div>)`,
+            'gi'
+          );
+          
+          highlightedHtml = highlightedHtml.replace(domainPattern, (match) => {
+            if (!highlightAdded) {
+              highlightAdded = true;
+              console.log(`✅ Applied domain-based highlight to result ${index + 1}`);
+              return applyHighlightStyles(match, color);
+            }
+            return match;
+          });
+        } catch (error) {
+          console.log(`Failed to parse URL for domain targeting: ${result.link}`);
+        }
+      }
+      
+      // Strategy 5: Fallback to simple link highlighting with enhanced styling
+      if (!highlightAdded) {
+        console.log(`🚨 Using fallback link highlighting for result ${index + 1}`);
+        const linkPattern = new RegExp(`(<a[^>]*href="${escapedLink}"[^>]*>[\\s\\S]*?</a>)`, 'gi');
+        
+        highlightedHtml = highlightedHtml.replace(linkPattern, (match) => {
+          highlightAdded = true;
+          console.log(`⚠️ Applied fallback link highlight to result ${index + 1}`);
+          return `<div style="border: 3px solid ${color} !important; border-radius: 8px !important; padding: 8px !important; margin: 8px 0 !important; background: rgba(255, 235, 59, 0.05) !important; display: inline-block !important;">${match}</div>`;
+        });
+      }
+      
+      if (!highlightAdded) {
+        console.error(`❌ All highlighting strategies failed for result ${index + 1}: ${result.link}`);
+        // Log diagnostic information
+        console.log(`Result data:`, {
+          position: result.position,
+          title: result.title?.substring(0, 50) + '...',
+          link: result.link,
+          displayed_link: result.displayed_link
+        });
+      }
+      
+    } catch (error) {
+      console.error(`Error in enhanced highlighting for result ${index + 1}:`, error);
+    }
+  });
+  
+  return highlightedHtml;
+}
+
+// Helper function to apply consistent highlight styles to any element
+function applyHighlightStyles(htmlElement: string, color: string): string {
+  // Check if the element already has a style attribute
+  if (htmlElement.includes('style=')) {
+    // Add to existing style
+    return htmlElement.replace(
+      /style=["']([^"']*?)["']/,
+      `style="$1; border: 3px solid ${color} !important; border-radius: 8px !important; padding: 8px !important; margin: 8px 0 !important; background: rgba(255, 235, 59, 0.05) !important; box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;"`
+    );
+  } else {
+    // Add new style attribute to the first opening tag
+    return htmlElement.replace(
+      /(<[^>]*?)>/,
+      `$1 style="border: 3px solid ${color} !important; border-radius: 8px !important; padding: 8px !important; margin: 8px 0 !important; background: rgba(255, 235, 59, 0.05) !important; box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;">`
+    );
+  }
+}
+
 // Helper function to apply highlighting for a specific set of matches
 function applyHighlighting(
   html: string,
@@ -1274,6 +1639,10 @@ function applyHighlighting(
   isImageSearch: boolean,
   searchTypeParam?: string
 ): string {
+  console.log(`🎯 applyHighlighting CALLED with ${matches.length} matches, color: ${color}, className: ${className}`);
+  console.log('searchTypeParam:', searchTypeParam, 'isImageSearch:', isImageSearch);
+  console.log('HTML length:', html?.length || 'undefined');
+  
   let highlightedHtml = html;
 
   if (searchTypeParam === 'isch') {
@@ -1331,6 +1700,16 @@ function applyHighlighting(
       }
     });
   } else {
+    // Use enhanced position-based highlighting for regular web search
+    highlightedHtml = applyEnhancedWebSearchHighlighting(highlightedHtml, matches, color);
+    return highlightedHtml;
+  }
+
+  return highlightedHtml;
+}
+
+// Old code commented out
+/*
     // Handle regular search result highlighting
     matches.forEach((result, index) => {
       try {
@@ -1359,9 +1738,7 @@ function applyHighlighting(
       }
     });
   }
-
-  return highlightedHtml;
-}
+*/
 
 // New combined page preview generator
 function generateCombinedPagePreview(

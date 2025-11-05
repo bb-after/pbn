@@ -57,6 +57,7 @@ import {
   Sync as SyncIcon,
   History as HistoryIcon,
   CameraAlt as CameraAltIcon,
+  BookmarkAdd as BookmarkAddIcon,
 } from '@mui/icons-material';
 import { tokens } from '../../theme/intercom-theme';
 import { keyframes } from '@mui/system';
@@ -257,6 +258,12 @@ const navigationItems: NavigationItem[] = [
         href: '/stillbrook',
       },
       {
+        id: 'saved-stillbrook-searches',
+        label: 'My Saved Searches',
+        icon: <BookmarkAddIcon />,
+        href: '/my-saved-searches',
+      },
+      {
         id: 'wiki-scraper',
         label: 'Wiki Scraper',
         icon: <TravelExploreIcon />,
@@ -310,8 +317,6 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
   const { user } = useValidateUserToken();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
-  // Debug logging
-  console.log('IntercomLayout user object:', user);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Determine which sections should be expanded based on current route
