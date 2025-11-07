@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { query } from '../../lib/db';
+import { validateUserToken } from './validate-user-token';
 
 interface User {
   id: number;
@@ -56,42 +57,9 @@ interface SavedSearchResponse {
   updated_at: string;
 }
 
-// Helper function to extract user from database using token
-async function getUserFromRequest(req: NextApiRequest): Promise<User | null> {
-  try {
-    const token = req.headers['x-auth-token'] as string ||
-                  req.cookies?.auth_token ||
-                  req.headers.authorization?.replace('Bearer ', '');
-    
-    if (!token) {
-      console.log('No token found in request');
-      return null;
-    }
-
-    // Query database to get user info from token
-    const [rows] = await query('SELECT id, name, email FROM users WHERE user_token = ?', [token]);
-    const users = rows as any[];
-    
-    if (users.length === 0) {
-      console.log('No user found for token');
-      return null;
-    }
-
-    return {
-      id: users[0].id,
-      username: users[0].name || 'unknown',
-      email: users[0].email || 'unknown@example.com'
-    };
-  } catch (error) {
-    console.error('Error extracting user from token:', error);
-    return null;
-  }
-}
-
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const user = await getUserFromRequest(req);
-  
-  if (!user) {
+  const user = await validateUserToken(req);
+  if (!user.isValid) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -128,7 +96,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Check if search name already exists for this user
       const [existing] = await query(
         'SELECT id FROM saved_stillbrook_searches WHERE user_id = ? AND search_name = ?',
-        [user.id, searchName]
+        [user.user_id, searchName]
       );
       
       if ((existing as any[]).length > 0) {
@@ -158,7 +126,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       `;
 
       const params = [
-        user.id,
+        user.user_id,
         clientId,
         searchName,
         searchQuery,
@@ -204,7 +172,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         JOIN clients c ON s.client_id = c.client_id
         WHERE s.user_id = ?
       `;
-      let params: any[] = [user.id];
+      let params: any[] = [user.user_id];
 
       // Filter by client if specified
       if (clientId && clientId !== 'all') {
@@ -286,7 +254,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Verify the search belongs to the user
       const [existing] = await query(
         'SELECT id FROM saved_stillbrook_searches WHERE id = ? AND user_id = ?',
-        [id, user.id]
+        [id, user.user_id]
       );
       
       if ((existing as any[]).length === 0) {
@@ -296,7 +264,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Check if the new search name conflicts with another search (excluding current one)
       const [nameCheck] = await query(
         'SELECT id FROM saved_stillbrook_searches WHERE user_id = ? AND search_name = ? AND id != ?',
-        [user.id, searchName, id]
+        [user.user_id, searchName, id]
       );
       
       if ((nameCheck as any[]).length > 0) {
@@ -346,7 +314,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         enablePositiveKeywords || false,
         includePage2 || false,
         id,
-        user.id,
+        user.user_id,
       ];
 
       await query(sql, params);
@@ -371,14 +339,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Verify the search belongs to the user
       const [existing] = await query(
         'SELECT id FROM saved_stillbrook_searches WHERE id = ? AND user_id = ?',
-        [id, user.id]
+        [id, user.user_id]
       );
       
       if ((existing as any[]).length === 0) {
         return res.status(404).json({ error: 'Search not found or access denied' });
       }
 
-      await query('DELETE FROM saved_stillbrook_searches WHERE id = ? AND user_id = ?', [id, user.id]);
+      await query('DELETE FROM saved_stillbrook_searches WHERE id = ? AND user_id = ?', [id, user.user_id]);
       
       res.status(200).json({ message: 'Search deleted successfully' });
     } catch (error) {
