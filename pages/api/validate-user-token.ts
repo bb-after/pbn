@@ -4,10 +4,13 @@ import { query } from 'lib/db';
 
 // Function to validate user token
 export async function validateUserToken(req: NextApiRequest) {
-  const token = (req.headers['x-auth-token'] as string) || (req.cookies && req.cookies.auth_token);
+  const token =
+    (req.headers['x-auth-token'] as string) ||
+    (req.headers.authorization && req.headers.authorization.replace('Bearer ', '')) ||
+    (req.cookies && req.cookies.auth_token);
 
   if (!token) {
-    return { isValid: false, user_id: null, role: null };
+    return { isValid: false, user_id: null, username: null, email: null, role: null };
   }
 
   try {
@@ -17,18 +20,19 @@ export async function validateUserToken(req: NextApiRequest) {
     ]);
 
     if (rows.length === 0) {
-      return { isValid: false, user_id: null, name: null, role: null };
+      return { isValid: false, user_id: null, username: null, email: null, role: null };
     }
 
     return {
       isValid: true,
       user_id: rows[0].id,
       username: rows[0].name,
+      email: rows[0].email,
       role: rows[0].role || 'staff', // Default to 'staff' if role is not yet set
     };
   } catch (error) {
     console.error('Error validating user token:', error);
-    return { isValid: false, user_id: null, role: null };
+    return { isValid: false, user_id: null, username: null, email: null, role: null };
   }
 }
 

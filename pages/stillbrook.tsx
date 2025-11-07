@@ -27,6 +27,12 @@ import SaveAltIcon from '@mui/icons-material/SaveAlt';
 import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
 import BookmarkAddIcon from '@mui/icons-material/BookmarkAdd';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import EditIcon from '@mui/icons-material/Edit';
+import EditOffIcon from '@mui/icons-material/EditOff';
+import DownloadIcon from '@mui/icons-material/Download';
+import CodeIcon from '@mui/icons-material/Code';
+import SaveIcon from '@mui/icons-material/Save';
 import { IntercomLayout, ToastProvider, IntercomCard, IntercomButton } from '../components/ui';
 import UnauthorizedAccess from '../components/UnauthorizedAccess';
 import useValidateUserToken from '../hooks/useValidateUserToken';
@@ -49,6 +55,7 @@ interface SearchResult {
   results?: SerpApiResult[];
   matchedResults?: SerpApiResult[];
   htmlPreview?: string;
+  page2HtmlPreview?: string;
   error?: string;
   totalResults?: number;
   // Legacy support
@@ -387,6 +394,11 @@ function StillbrookContent() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isUpdatingSearch, setIsUpdatingSearch] = useState(false);
   const [showUpdateOptions, setShowUpdateOptions] = useState(false);
+  const [includePage2, setIncludePage2] = useState(false);
+
+  // Interactive highlighting state
+  const [interactiveMode, setInteractiveMode] = useState(false);
+  const [hoveredElement, setHoveredElement] = useState<HTMLElement | null>(null);
 
   // Sort Google domains alphabetically by country name, with google.com first
   const sortedGoogleDomains = googleDomainsData.sort((a: GoogleDomain, b: GoogleDomain) => {
@@ -496,6 +508,7 @@ function StillbrookContent() {
       setEnablePositiveUrls(targetSearch.enable_positive_urls || false);
       setEnablePositiveSentiment(targetSearch.enable_positive_sentiment || false);
       setEnablePositiveKeywords(targetSearch.enable_positive_keywords || false);
+      setIncludePage2(targetSearch.include_page2 || false);
 
       // Set loaded search info
       setIsLoadedSearch(true);
@@ -525,6 +538,7 @@ function StillbrookContent() {
       keywords: keywords.filter(k => k.trim() !== ''),
       positive_urls: positiveUrls.filter(u => u.trim() !== ''),
       positive_keywords: positiveKeywords.filter(k => k.trim() !== ''),
+      include_page2: includePage2,
       enable_negative_urls: enableNegativeUrls,
       enable_negative_sentiment: enableNegativeSentiment,
       enable_negative_keywords: enableNegativeKeywords,
@@ -543,6 +557,7 @@ function StillbrookContent() {
       keywords: originalSearchData.keywords || [],
       positive_urls: originalSearchData.positive_urls || [],
       positive_keywords: originalSearchData.positive_keywords || [],
+      include_page2: originalSearchData.include_page2 || false,
       enable_negative_urls: originalSearchData.enable_negative_urls || false,
       enable_negative_sentiment: originalSearchData.enable_negative_sentiment || false,
       enable_negative_keywords: originalSearchData.enable_negative_keywords || false,
@@ -570,6 +585,7 @@ function StillbrookContent() {
     keywords,
     positiveUrls,
     positiveKeywords,
+    includePage2,
     enableNegativeUrls,
     enableNegativeSentiment,
     enableNegativeKeywords,
@@ -603,6 +619,7 @@ function StillbrookContent() {
       searchType,
       screenshotType: 'combined', // New combined approach
       savedSearchId: loadedSearchId, // Include saved search ID for analytics
+      includePage2, // Include page 2 option
       // Include highlight options
       enableNegativeUrls,
       enableNegativeSentiment,
@@ -612,6 +629,9 @@ function StillbrookContent() {
       enablePositiveKeywords,
     };
     setLastFormData(formData);
+
+    console.log('Form data being submitted:', formData);
+    console.log('Include Page 2 setting:', includePage2);
 
     // Validate that at least one highlight option is selected
     const hasAnyHighlight =
@@ -816,39 +836,301 @@ function StillbrookContent() {
 
     setIsGeneratingImage(true);
     try {
-      // Get the iframe element
-      const iframe = document.querySelector('#html-preview iframe') as HTMLIFrameElement;
+      // Debug: Log all available iframes
+      const allIframes = document.querySelectorAll('iframe');
+      console.log(
+        '🔍 Available iframes for download:',
+        Array.from(allIframes).map(iframe => ({
+          title: iframe.title,
+          id: iframe.id,
+          src: iframe.src,
+          className: iframe.className,
+          hasContentDocument: !!iframe.contentDocument,
+        }))
+      );
+
+      // Check if we have dual page layout
+      const page1Iframe = document.querySelector(
+        'iframe[title="Page 1 Search Results"]'
+      ) as HTMLIFrameElement;
+      const page2Iframe = document.querySelector(
+        'iframe[title="Page 2 Search Results"]'
+      ) as HTMLIFrameElement;
+      const hasDualPages = page1Iframe && page2Iframe && result.page2HtmlPreview;
+
+      console.log('📄 Page layout detected:', {
+        hasDualPages,
+        page1: !!page1Iframe,
+        page2: !!page2Iframe,
+        hasPage2Data: !!result.page2HtmlPreview,
+      });
+
+      if (hasDualPages) {
+        // Handle dual page download
+        await handleDualPageDownload(page1Iframe, page2Iframe);
+      } else {
+        // Handle single page download
+        await handleSinglePageDownload();
+      }
+    } catch (error) {
+      console.error('Error generating image:', error);
+      setError('Failed to generate image. Please try again.');
+    } finally {
+      setIsGeneratingImage(false);
+    }
+  };
+
+  const handleSinglePageDownload = async () => {
+    // Get the iframe element - try multiple selectors
+    let iframe = document.querySelector('#html-preview iframe') as HTMLIFrameElement;
+
+    if (!iframe) {
+      // Try alternative selectors
+      iframe = document.querySelector('iframe[title*="Search Results"]') as HTMLIFrameElement;
+    }
+
+    if (!iframe) {
+      // Try any iframe as fallback
+      iframe = document.querySelector('iframe') as HTMLIFrameElement;
+    }
+
+    console.log('🖼️ Selected single iframe for download:', {
+      iframe: !!iframe,
+      contentDocument: !!iframe?.contentDocument,
+      title: iframe?.title,
+      id: iframe?.id,
+    });
+
+    if (!iframe || !iframe.contentDocument) {
+      throw new Error(
+        'Preview iframe not found or not accessible. Check console logs for available iframes.'
+      );
+    }
+
+    const canvas = await processIframeToCanvas(iframe);
+    downloadCanvas(canvas, 'stillbrook-results');
+  };
+
+  const handleDualPageDownload = async (
+    page1Iframe: HTMLIFrameElement,
+    page2Iframe: HTMLIFrameElement
+  ) => {
+    console.log('🔄 Processing dual page download...');
+
+    // Process both iframes to canvas
+    const [page1Canvas, page2Canvas] = await Promise.all([
+      processIframeToCanvas(page1Iframe, 'Page 1'),
+      processIframeToCanvas(page2Iframe, 'Page 2'),
+    ]);
+
+    // Create combined canvas
+    const combinedCanvas = document.createElement('canvas');
+    const ctx = combinedCanvas.getContext('2d');
+
+    if (!ctx) {
+      throw new Error('Could not create canvas context');
+    }
+
+    // Calculate dimensions
+    const padding = 20;
+    const headerHeight = 50;
+    const maxWidth = Math.max(page1Canvas.width, page2Canvas.width);
+    const totalHeight =
+      headerHeight + page1Canvas.height + padding + headerHeight + page2Canvas.height + padding;
+
+    combinedCanvas.width = maxWidth + padding * 2;
+    combinedCanvas.height = totalHeight;
+
+    // Fill background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, combinedCanvas.width, combinedCanvas.height);
+
+    // Add Page 1 header and content
+    ctx.fillStyle = '#1a73e8';
+    ctx.font = 'bold 24px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('📄 Page 1 Results (1-10)', combinedCanvas.width / 2, 35);
+
+    const page1Y = headerHeight + padding;
+    const page1X = (combinedCanvas.width - page1Canvas.width) / 2;
+    ctx.drawImage(page1Canvas, page1X, page1Y);
+
+    // Add Page 2 header and content
+    const page2HeaderY = page1Y + page1Canvas.height + padding + 35;
+    ctx.fillStyle = '#34a853';
+    ctx.fillText('📄 Page 2 Results (11-20)', combinedCanvas.width / 2, page2HeaderY);
+
+    const page2Y = page2HeaderY + padding;
+    const page2X = (combinedCanvas.width - page2Canvas.width) / 2;
+    ctx.drawImage(page2Canvas, page2X, page2Y);
+
+    console.log('✅ Combined dual page canvas created');
+    downloadCanvas(combinedCanvas, 'stillbrook-pages-1-and-2');
+  };
+
+  const processIframeToCanvas = async (
+    iframe: HTMLIFrameElement,
+    pageLabel?: string
+  ): Promise<HTMLCanvasElement> => {
+    if (!iframe.contentDocument) {
+      throw new Error(`${pageLabel || 'Iframe'} content not accessible`);
+    }
+
+    const iframeDocument = iframe.contentDocument;
+    const iframeBody = iframeDocument.body;
+
+    if (!iframeBody) {
+      throw new Error(`${pageLabel || 'Iframe'} content not loaded`);
+    }
+
+    // Pre-process all images to data URLs within the iframe
+    const images = iframeDocument.querySelectorAll('img');
+    console.log(`Found ${images.length} images to convert for ${pageLabel || 'page'}...`);
+
+    const imagePromises = Array.from(images).map(async (img, index) => {
+      if (img.src) {
+        // Skip if it's already a data URL or placeholder
+        if (img.src.startsWith('data:')) {
+          if (img.src.includes('R0lGODlhAQABAIAAAP///////yH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==')) {
+            // This is a placeholder GIF, try to find a better src in data attributes
+            const betterSrc =
+              img.getAttribute('data-src') ||
+              img.getAttribute('data-lazy-src') ||
+              img.getAttribute('data-original');
+            if (betterSrc && betterSrc.startsWith('http')) {
+              console.log(`Found better src in data attribute: ${betterSrc}`);
+              img.src = betterSrc;
+            } else {
+              return;
+            }
+          } else {
+            return;
+          }
+        }
+
+        const dataURL = await convertImageToDataURL(img.src);
+        if (dataURL && dataURL !== img.src) {
+          img.src = dataURL;
+          console.log(`Successfully converted ${pageLabel || 'page'} image ${index + 1}`);
+        }
+      }
+    });
+
+    await Promise.all(imagePromises);
+    console.log(`Finished converting all images for ${pageLabel || 'page'}`);
+
+    // Wait for DOM to update
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Generate screenshot of the iframe content
+    const canvas = await html2canvas(iframeBody, {
+      allowTaint: false,
+      useCORS: false,
+      scale: 2,
+      width: iframeBody.scrollWidth,
+      height: iframeBody.scrollHeight,
+      backgroundColor: '#ffffff',
+      logging: false,
+    });
+
+    console.log(`✅ Canvas created for ${pageLabel || 'page'}: ${canvas.width}x${canvas.height}`);
+    return canvas;
+  };
+
+  const downloadCanvas = (canvas: HTMLCanvasElement, filename: string) => {
+    canvas.toBlob(
+      blob => {
+        if (blob) {
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = `${filename}-${keyword.replace(/[^a-zA-Z0-9]/g, '-')}.png`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(link.href);
+        }
+      },
+      'image/png',
+      0.95
+    );
+  };
+
+  const handleDownload = () => {
+    if (result && result.screenshot) {
+      // Legacy screenshot download
+      const link = document.createElement('a');
+      link.href = result.screenshot;
+      link.download = 'screenshot.png';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  const handleDownloadPage = (htmlContent: string, pageType: 'page-1' | 'page-2') => {
+    const pageTitle = pageType === 'page-1' ? 'Page 1' : 'Page 2';
+    const htmlDocument = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Stillbrook ${pageTitle} Results - ${keyword}</title>
+        <meta charset="utf-8">
+      </head>
+      <body>
+        ${htmlContent}
+      </body>
+      </html>
+    `;
+    const blob = new Blob([htmlDocument], { type: 'text/html' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `stillbrook-${pageType}-${keyword.replace(/[^a-zA-Z0-9]/g, '-')}.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  };
+
+  const handleDownloadPageImage = async (pageType: 'page-1' | 'page-2') => {
+    if (!result) return;
+
+    setIsGeneratingImage(true);
+    try {
+      const iframeSelector =
+        pageType === 'page-1'
+          ? 'iframe[title="Page 1 Search Results"]'
+          : 'iframe[title="Page 2 Search Results"]';
+
+      const iframe = document.querySelector(iframeSelector) as HTMLIFrameElement;
       if (!iframe || !iframe.contentDocument) {
-        throw new Error('Preview iframe not found or not accessible');
+        throw new Error(`${pageType} iframe not found or not accessible`);
       }
 
       const iframeDocument = iframe.contentDocument;
       const iframeBody = iframeDocument.body;
-
       if (!iframeBody) {
-        throw new Error('Iframe content not loaded');
+        throw new Error(`${pageType} iframe content not loaded`);
       }
 
-      // Pre-process all images to data URLs within the iframe
+      // Pre-process images similar to the original function
       const images = iframeDocument.querySelectorAll('img');
-      console.log(`Found ${images.length} images to convert to data URLs...`);
+      console.log(`Found ${images.length} images to convert for ${pageType}...`);
 
       const imagePromises = Array.from(images).map(async (img, index) => {
-        if (img.src) {
-          // Skip if it's already a data URL or placeholder
-          if (img.src.startsWith('data:')) {
-            if (img.src.includes('R0lGODlhAQABAIAAAP///////yH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==')) {
-              // This is a placeholder GIF, try to find a better src in data attributes
-              const betterSrc =
-                img.getAttribute('data-src') ||
-                img.getAttribute('data-lazy-src') ||
-                img.getAttribute('data-original');
-              if (betterSrc && betterSrc.startsWith('http')) {
-                console.log(`Found better src in data attribute: ${betterSrc}`);
-                img.src = betterSrc;
-              } else {
-                return;
-              }
+        try {
+          if (!img.src || img.src.startsWith('data:')) return;
+
+          if (
+            img.src.includes('transparent.gif') ||
+            img.src.includes('pixel.gif') ||
+            img.src.includes('spacer.gif')
+          ) {
+            const betterSrc =
+              img.getAttribute('data-src') ||
+              img.getAttribute('data-lazy-src') ||
+              img.getAttribute('data-original');
+            if (betterSrc && betterSrc.startsWith('http')) {
+              img.src = betterSrc;
             } else {
               return;
             }
@@ -857,18 +1139,17 @@ function StillbrookContent() {
           const dataURL = await convertImageToDataURL(img.src);
           if (dataURL && dataURL !== img.src) {
             img.src = dataURL;
-            console.log(`Successfully converted image ${index + 1}`);
+            console.log(`Successfully converted ${pageType} image ${index + 1}`);
           }
+        } catch (error) {
+          console.warn(`Failed to convert ${pageType} image ${index + 1}:`, error);
         }
       });
 
       await Promise.all(imagePromises);
-      console.log('Finished converting all images');
-
-      // Wait for DOM to update
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Generate screenshot of the iframe content
+      // Generate screenshot
       const canvas = await html2canvas(iframeBody, {
         allowTaint: false,
         useCORS: false,
@@ -885,7 +1166,7 @@ function StillbrookContent() {
           if (blob) {
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = `stillbrook-results-${keyword.replace(/[^a-zA-Z0-9]/g, '-')}.png`;
+            link.download = `stillbrook-${pageType}-${keyword.replace(/[^a-zA-Z0-9]/g, '-')}.png`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -896,22 +1177,10 @@ function StillbrookContent() {
         0.95
       );
     } catch (error) {
-      console.error('Error generating image:', error);
-      setError('Failed to generate image. Please try again.');
+      console.error(`Error generating ${pageType} image:`, error);
+      setError(`Failed to generate ${pageType} image. Please try again.`);
     } finally {
       setIsGeneratingImage(false);
-    }
-  };
-
-  const handleDownload = () => {
-    if (result && result.screenshot) {
-      // Legacy screenshot download
-      const link = document.createElement('a');
-      link.href = result.screenshot;
-      link.download = 'screenshot.png';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
     }
   };
 
@@ -1075,6 +1344,7 @@ function StillbrookContent() {
         enablePositiveUrls,
         enablePositiveSentiment,
         enablePositiveKeywords,
+        includePage2,
       };
 
       const response = await fetch('/api/saved-searches', {
@@ -1159,6 +1429,7 @@ function StillbrookContent() {
         enablePositiveUrls,
         enablePositiveSentiment,
         enablePositiveKeywords,
+        includePage2,
       };
 
       const response = await fetch(`/api/saved-searches?id=${loadedSearchId}`, {
@@ -1208,6 +1479,321 @@ function StillbrookContent() {
       setIsUpdatingSearch(false);
     }
   };
+
+  // Interactive highlighting functions
+  const setupInteractiveHighlighting = (iframe: HTMLIFrameElement) => {
+    console.log('🎨 Setting up interactive highlighting...', { iframe, interactiveMode });
+
+    if (!iframe.contentDocument) {
+      console.log('❌ No contentDocument found in iframe');
+      return;
+    }
+
+    const doc = iframe.contentDocument;
+    console.log('📄 Got iframe document:', doc);
+
+    // First, clean up any existing controls
+    const existingControls = doc.querySelectorAll('.stillbrook-controls');
+    console.log(`🧹 Cleaning up ${existingControls.length} existing controls`);
+    existingControls.forEach(control => control.remove());
+
+    const elements = doc.querySelectorAll('[data-rpos]');
+    console.log(`🎯 Found ${elements.length} elements with data-rpos attribute`);
+
+    if (elements.length === 0) {
+      console.log('⚠️ No elements with data-rpos found! Checking for any divs...');
+      const allDivs = doc.querySelectorAll('div');
+      console.log(`📦 Found ${allDivs.length} total div elements in iframe`);
+
+      // Let's check the first few divs to see their attributes
+      Array.from(allDivs)
+        .slice(0, 5)
+        .forEach((div, index) => {
+          console.log(`🔍 Div ${index}:`, {
+            className: div.className,
+            attributes: Array.from(div.attributes).map(attr => `${attr.name}="${attr.value}"`),
+            innerHTML: div.innerHTML.substring(0, 100) + '...',
+          });
+        });
+    }
+
+    elements.forEach((element, index) => {
+      const el = element as HTMLElement;
+      console.log(`✨ Processing element ${index}:`, {
+        tagName: el.tagName,
+        className: el.className,
+        dataRpos: el.getAttribute('data-rpos'),
+        innerHTML: el.innerHTML.substring(0, 100) + '...',
+      });
+
+      // Add styles for hoverable elements
+      if (!el.style.position || el.style.position === 'static') {
+        el.style.position = 'relative';
+      }
+      el.style.transition = 'all 0.2s ease';
+
+      // Inject hover styles and controls directly into the iframe
+      el.style.cursor = 'pointer';
+
+      // Add a visible indicator that this element is interactive
+      el.style.boxShadow = 'inset 0 0 0 1px rgba(33, 150, 243, 0.3)';
+      // el.style.backgroundColor = 'rgba(33, 150, 243, 0.05)';
+
+      console.log(`🎨 Applied styles to element ${index}`);
+
+      // Create permanent control overlay for each element
+      const overlay = doc.createElement('div');
+      overlay.className = 'stillbrook-controls';
+      overlay.style.cssText = `
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 10000;
+        display: none;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-family: Arial, sans-serif;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        pointer-events: auto;
+      `;
+
+      const hasNegativeHighlight = el.classList.contains('negative-result-highlight');
+      const hasPositiveHighlight = el.classList.contains('positive-result-highlight');
+
+      console.log(`🏷️ Element ${index} highlight status:`, {
+        hasNegativeHighlight,
+        hasPositiveHighlight,
+      });
+
+      if (hasNegativeHighlight || hasPositiveHighlight) {
+        // Show remove button
+        const removeBtn = doc.createElement('button');
+        removeBtn.textContent = '✕ Remove';
+        removeBtn.style.cssText = `
+          background: #ff4444;
+          color: white;
+          border: none;
+          padding: 6px 12px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 12px;
+          font-weight: 500;
+          pointer-events: auto;
+        `;
+        removeBtn.onclick = e => {
+          console.log(`🗑️ Remove button clicked for element ${index}`);
+          e.stopPropagation();
+          removeHighlight(el, doc);
+          // Refresh the controls
+          setTimeout(() => setupInteractiveHighlighting(iframe), 100);
+        };
+        overlay.appendChild(removeBtn);
+        console.log(`➖ Added remove button to element ${index}`);
+      } else {
+        // Show add positive/negative buttons
+        const addPositiveBtn = doc.createElement('button');
+        addPositiveBtn.textContent = '+ Good';
+        addPositiveBtn.style.cssText = `
+          background: #22c55e;
+          color: white;
+          border: none;
+          padding: 6px 12px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 12px;
+          font-weight: 500;
+          pointer-events: auto;
+        `;
+        addPositiveBtn.onclick = e => {
+          console.log(`✅ Positive button clicked for element ${index}`);
+          e.stopPropagation();
+          addHighlight(el, 'positive');
+          // Refresh the controls
+          setTimeout(() => setupInteractiveHighlighting(iframe), 100);
+        };
+
+        const addNegativeBtn = doc.createElement('button');
+        addNegativeBtn.textContent = '+ Bad';
+        addNegativeBtn.style.cssText = `
+          background: #ef4444;
+          color: white;
+          border: none;
+          padding: 6px 12px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 12px;
+          font-weight: 500;
+          pointer-events: auto;
+        `;
+        addNegativeBtn.onclick = e => {
+          console.log(`❌ Negative button clicked for element ${index}`);
+          e.stopPropagation();
+          addHighlight(el, 'negative');
+          // Refresh the controls
+          setTimeout(() => setupInteractiveHighlighting(iframe), 100);
+        };
+
+        overlay.appendChild(addPositiveBtn);
+        overlay.appendChild(addNegativeBtn);
+        console.log(`➕ Added positive/negative buttons to element ${index}`);
+      }
+
+      el.appendChild(overlay);
+      console.log(`📌 Appended overlay to element ${index}`);
+
+      // Add hover events directly in the iframe context
+      el.addEventListener('mouseenter', () => {
+        console.log(`🐭 Mouse entered element ${index}`, { interactiveMode });
+        if (!interactiveMode) return;
+        el.style.boxShadow = 'inset 0 0 0 2px #2196f3';
+        overlay.style.display = 'flex';
+        console.log(`👁️ Showing overlay for element ${index}`);
+      });
+
+      el.addEventListener('mouseleave', () => {
+        console.log(`🐭 Mouse left element ${index}`, { interactiveMode });
+        if (!interactiveMode) return;
+        const hasHighlight =
+          el.classList.contains('negative-result-highlight') ||
+          el.classList.contains('positive-result-highlight');
+        if (!hasHighlight) {
+          el.style.boxShadow = 'inset 0 0 0 1px rgba(33, 150, 243, 0.3)';
+          // el.style.backgroundColor = 'rgba(33, 150, 243, 0.05)';
+        } else {
+          // Keep existing highlight styles but remove hover effect
+          el.style.boxShadow = el.style.boxShadow.replace('inset 0 0 0 2px #2196f3', '');
+        }
+        overlay.style.display = 'none';
+        console.log(`👁️ Hiding overlay for element ${index}`);
+      });
+
+      console.log(`🎉 Completed setup for element ${index}`);
+    });
+
+    console.log('✨ Interactive highlighting setup complete!');
+  };
+
+  const addHighlight = (element: HTMLElement, type: 'positive' | 'negative') => {
+    const className =
+      type === 'positive' ? 'positive-result-highlight' : 'negative-result-highlight';
+    element.classList.add(className);
+
+    // Add the appropriate highlight styles
+    if (type === 'positive') {
+      element.style.border = '2px solid #22c55e';
+      element.style.boxShadow = 'inset 0 0 0 2px #22c55e';
+    } else {
+      element.style.border = '2px solid #ef4444';
+      element.style.boxShadow = 'inset 0 0 0 2px #ef4444';
+    }
+  };
+
+  const removeHighlight = (element: HTMLElement, doc?: Document) => {
+    element.classList.remove('positive-result-highlight', 'negative-result-highlight');
+    element.style.border = '';
+    element.style.boxShadow = 'inset 0 0 0 1px rgba(33, 150, 243, 0.3)';
+  };
+
+  const cleanupInteractiveMode = () => {
+    console.log('🧹 Cleaning up interactive mode...');
+    // Remove hover styles and controls from all elements
+    const iframes = document.querySelectorAll(
+      'iframe[title*="Search Results"]'
+    ) as NodeListOf<HTMLIFrameElement>;
+    iframes.forEach(iframe => {
+      if (iframe.contentDocument) {
+        const elements = iframe.contentDocument.querySelectorAll('[data-rpos]');
+        console.log(`🧽 Cleaning ${elements.length} elements in iframe`);
+        elements.forEach(element => {
+          const el = element as HTMLElement;
+
+          // Remove interactive styles
+          el.style.cursor = '';
+
+          // Remove control overlays
+          const controls = el.querySelectorAll('.stillbrook-controls');
+          controls.forEach(control => control.remove());
+
+          // Reset box shadows and background for non-highlighted elements
+          const hasHighlight =
+            el.classList.contains('negative-result-highlight') ||
+            el.classList.contains('positive-result-highlight');
+          if (!hasHighlight) {
+            el.style.boxShadow = '';
+            el.style.backgroundColor = '';
+          }
+        });
+      }
+    });
+    console.log('✨ Cleanup complete');
+  };
+
+  const toggleInteractiveMode = () => {
+    const newMode = !interactiveMode;
+    console.log(`🎛️ Toggling interactive mode: ${interactiveMode} -> ${newMode}`);
+    setInteractiveMode(newMode);
+
+    if (newMode) {
+      console.log('🔍 Looking for Search Results iframes...');
+      // Setup interactive highlighting on all iframes
+      const iframes = document.querySelectorAll(
+        'iframe[title*="Search Results"]'
+      ) as NodeListOf<HTMLIFrameElement>;
+      console.log(`📺 Found ${iframes.length} Search Results iframes`);
+
+      if (iframes.length === 0) {
+        console.log('⚠️ No Search Results iframes found! Looking for all iframes...');
+        const allIframes = document.querySelectorAll('iframe') as NodeListOf<HTMLIFrameElement>;
+        console.log(
+          `📺 Found ${allIframes.length} total iframes:`,
+          Array.from(allIframes).map(iframe => ({
+            title: iframe.title,
+            src: iframe.src,
+            id: iframe.id,
+            className: iframe.className,
+          }))
+        );
+      }
+
+      iframes.forEach((iframe, index) => {
+        console.log(`📺 Processing iframe ${index}:`, {
+          title: iframe.title,
+          contentDocument: !!iframe.contentDocument,
+        });
+        if (iframe.contentDocument) {
+          setupInteractiveHighlighting(iframe);
+        } else {
+          console.log(`⏳ Iframe ${index} not loaded yet, adding load listener`);
+          // Wait for iframe to load
+          iframe.addEventListener('load', () => {
+            console.log(`✅ Iframe ${index} loaded, setting up highlighting`);
+            setupInteractiveHighlighting(iframe);
+          });
+        }
+      });
+    } else {
+      console.log('🧹 Cleaning up interactive mode');
+      setHoveredElement(null);
+      cleanupInteractiveMode();
+    }
+  };
+
+  // Effect to setup interactive highlighting when results are loaded
+  useEffect(() => {
+    if (interactiveMode && result && result.htmlPreview) {
+      setTimeout(() => {
+        const iframes = document.querySelectorAll(
+          'iframe[title*="Search Results"]'
+        ) as NodeListOf<HTMLIFrameElement>;
+        iframes.forEach(iframe => {
+          setupInteractiveHighlighting(iframe);
+        });
+      }, 1000); // Wait for iframe content to load
+    }
+  }, [interactiveMode, result]);
 
   const handleSaveAsNew = () => {
     // Reset loaded search state and show save modal
@@ -1619,6 +2205,17 @@ function StillbrookContent() {
                     helperText="Examples: 'New York, NY', 'London, UK', 'Los Angeles, California'"
                   />
 
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={includePage2}
+                        onChange={e => setIncludePage2(e.target.checked)}
+                        color="primary"
+                      />
+                    }
+                    label="Include page 2 of search results (more comprehensive results)"
+                  />
+
                   <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                     <IntercomButton variant="primary" type="submit" disabled={loading}>
                       {loading ? 'Processing...' : 'Submit'}
@@ -1741,75 +2338,241 @@ function StillbrookContent() {
                           to ensure clean screenshots.
                         </Typography>
 
-                        {/* Primary Download Buttons */}
-                        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 2 }}>
-                          <IntercomButton
-                            variant="primary"
-                            leftIcon={
+                        {/* Action Buttons */}
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            gap: 2,
+                            mb: 3,
+                            flexWrap: 'wrap',
+                            justifyContent: 'flex-start',
+                          }}
+                        >
+                          {/* Run Another Search */}
+                          <Button
+                            variant="outlined"
+                            onClick={handleRunAnotherSearch}
+                            startIcon={<RefreshIcon />}
+                            sx={{
+                              borderRadius: 1,
+                              textTransform: 'none',
+                              fontWeight: 500,
+                            }}
+                          >
+                            New Search
+                          </Button>
+
+                          {/* Interactive Mode Toggle */}
+                          <Button
+                            variant={interactiveMode ? 'contained' : 'outlined'}
+                            onClick={toggleInteractiveMode}
+                            startIcon={interactiveMode ? <EditOffIcon /> : <EditIcon />}
+                            sx={{
+                              borderRadius: 1,
+                              textTransform: 'none',
+                              fontWeight: 500,
+                            }}
+                          >
+                            {interactiveMode ? 'Done' : 'Edit'}
+                          </Button>
+
+                          {/* Download PNG */}
+                          <Button
+                            variant="contained"
+                            onClick={handleDownloadImage}
+                            disabled={isGeneratingImage}
+                            startIcon={
                               isGeneratingImage ? (
                                 <CircularProgress size={20} color="inherit" />
                               ) : (
-                                <SaveAltIcon />
+                                <DownloadIcon />
                               )
                             }
-                            onClick={handleDownloadImage}
-                            disabled={isGeneratingImage}
-                            sx={{ minWidth: '160px' }}
+                            sx={{
+                              borderRadius: 1,
+                              textTransform: 'none',
+                              fontWeight: 500,
+                            }}
                           >
                             {isGeneratingImage ? 'Generating...' : 'Download PNG'}
-                          </IntercomButton>
-                          <IntercomButton
-                            variant="secondary"
-                            leftIcon={<SaveAltIcon />}
+                          </Button>
+
+                          {/* Download HTML */}
+                          <Button
+                            variant="outlined"
                             onClick={handleDownloadHTML}
-                            sx={{ minWidth: '160px' }}
+                            startIcon={<CodeIcon />}
+                            sx={{
+                              borderRadius: 1,
+                              textTransform: 'none',
+                              fontWeight: 500,
+                            }}
                           >
                             Download HTML
-                          </IntercomButton>
+                          </Button>
+
+                          {/* Save Search */}
+                          <Button
+                            variant="outlined"
+                            onClick={() => setShowSaveModal(true)}
+                            startIcon={<SaveIcon />}
+                            sx={{
+                              borderRadius: 1,
+                              textTransform: 'none',
+                              fontWeight: 500,
+                            }}
+                          >
+                            Save Search
+                          </Button>
                         </Box>
 
-                        {/* Run Another Search Button */}
-                        <Box sx={{ borderTop: '1px solid #eee', pt: 2 }}>
-                          <IntercomButton
-                            variant="secondary"
-                            onClick={handleRunAnotherSearch}
-                            sx={{ width: '100%' }}
+                        {/* Interactive Mode Status Message */}
+                        {interactiveMode && (
+                          <Box
+                            sx={{
+                              mb: 3,
+                              p: 1.5,
+                              // backgroundColor: '#fff3cd',
+                              border: '1px solid #ffeaa7',
+                              borderRadius: 1,
+                              textAlign: 'center',
+                            }}
                           >
-                            🔄 Run Another Search
-                          </IntercomButton>
-                        </Box>
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                fontWeight: 500,
+                                color: '#856404',
+                              }}
+                            >
+                              💡 <strong>Edit Mode Active:</strong> Hover over search results below
+                              to add green (good) or red (bad) highlighting
+                            </Typography>
+                          </Box>
+                        )}
                       </Stack>
                     </IntercomCard>
 
                     {/* HTML Preview with Read-Only Styling */}
-                    <Box
-                      sx={{
-                        border: '1px solid #ddd',
-                        borderRadius: 2,
-                        overflow: 'hidden',
-                        maxHeight: '600px',
-                        overflowY: 'auto',
-                        position: 'relative',
-                        backgroundColor: '#ffffff !important', // Force white background
-                        '& *': {
-                          pointerEvents: 'none !important',
-                          userSelect: 'none !important',
-                        },
-                        '& iframe': {
-                          pointerEvents: 'auto !important', // Allow iframe interactions
-                        },
-                        '& a': {
-                          cursor: 'default !important',
-                          textDecoration: 'none !important',
-                        },
-                        '& button, & input, & select, & textarea': {
-                          cursor: 'default !important',
-                        },
-                      }}
-                      title="Preview only - links and interactions are disabled for cleaner screenshots"
-                    >
+                    {result.page2HtmlPreview ? (
+                      // Side-by-side layout for page 1 and page 2
                       <Box
-                        id="html-preview"
+                        sx={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr',
+                          gap: 2,
+                          '& *': {
+                            pointerEvents: interactiveMode ? 'auto !important' : 'none !important',
+                            userSelect: interactiveMode ? 'auto !important' : 'none !important',
+                          },
+                          '& iframe': {
+                            pointerEvents: 'auto !important', // Allow iframe interactions
+                          },
+                        }}
+                      >
+                        {/* Page 1 */}
+                        <Box>
+                          <Typography
+                            variant="h6"
+                            sx={{ mb: 2, color: '#1a73e8', textAlign: 'center' }}
+                          >
+                            📄 Page 1 Results (1-10)
+                          </Typography>
+                          <Box
+                            sx={{
+                              border: '2px solid #1a73e8',
+                              borderRadius: 2,
+                              overflow: 'hidden',
+                              backgroundColor: '#fff',
+                            }}
+                          >
+                            <iframe
+                              srcDoc={result.htmlPreview}
+                              style={{
+                                width: '100%',
+                                height: '500px',
+                                border: 'none',
+                                pointerEvents: 'auto',
+                                display: 'block',
+                                overflow: 'auto',
+                              }}
+                              sandbox="allow-same-origin allow-scripts"
+                              title="Page 1 Search Results"
+                              loading="lazy"
+                              scrolling="auto"
+                            />
+                          </Box>
+                          <Box sx={{ mt: 1, display: 'flex', gap: 1, justifyContent: 'center' }}>
+                            <IntercomButton
+                              variant="ghost"
+                              size="small"
+                              onClick={() => handleDownloadPage(result.htmlPreview!, 'page-1')}
+                            >
+                              📁 Download Page 1 HTML
+                            </IntercomButton>
+                            <IntercomButton
+                              variant="ghost"
+                              size="small"
+                              onClick={() => handleDownloadPageImage('page-1')}
+                            >
+                              📷 Download Page 1 PNG
+                            </IntercomButton>
+                          </Box>
+                        </Box>
+
+                        {/* Page 2 */}
+                        <Box>
+                          <Typography
+                            variant="h6"
+                            sx={{ mb: 2, color: '#34a853', textAlign: 'center' }}
+                          >
+                            📄 Page 2 Results (11-20)
+                          </Typography>
+                          <Box
+                            sx={{
+                              border: '2px solid #34a853',
+                              borderRadius: 2,
+                              overflow: 'hidden',
+                              backgroundColor: '#fff',
+                            }}
+                          >
+                            <iframe
+                              srcDoc={result.page2HtmlPreview}
+                              style={{
+                                width: '100%',
+                                height: '500px',
+                                border: 'none',
+                                pointerEvents: 'auto',
+                                display: 'block',
+                                overflow: 'auto',
+                              }}
+                              sandbox="allow-same-origin allow-scripts"
+                              title="Page 2 Search Results"
+                              loading="lazy"
+                              scrolling="auto"
+                            />
+                          </Box>
+                          <Box sx={{ mt: 1, display: 'flex', gap: 1, justifyContent: 'center' }}>
+                            <IntercomButton
+                              variant="ghost"
+                              size="small"
+                              onClick={() => handleDownloadPage(result.page2HtmlPreview!, 'page-2')}
+                            >
+                              📁 Download Page 2 HTML
+                            </IntercomButton>
+                            <IntercomButton
+                              variant="ghost"
+                              size="small"
+                              onClick={() => handleDownloadPageImage('page-2')}
+                            >
+                              📷 Download Page 2 PNG
+                            </IntercomButton>
+                          </Box>
+                        </Box>
+                      </Box>
+                    ) : (
+                      // Single page layout
+                      <Box
                         sx={{
                           border: '1px solid #ddd',
                           borderRadius: 2,
@@ -1817,28 +2580,62 @@ function StillbrookContent() {
                           maxHeight: '600px',
                           overflowY: 'auto',
                           position: 'relative',
-                          backgroundColor: '#fff',
-                          pointerEvents: 'auto', // Explicitly enable pointer events
+                          backgroundColor: '#ffffff !important',
+                          '& *': {
+                            pointerEvents: interactiveMode ? 'auto !important' : 'none !important',
+                            userSelect: interactiveMode ? 'auto !important' : 'none !important',
+                          },
+                          '& iframe': {
+                            pointerEvents: 'auto !important',
+                          },
+                          '& a': {
+                            cursor: interactiveMode ? 'pointer !important' : 'default !important',
+                            textDecoration: interactiveMode
+                              ? 'underline !important'
+                              : 'none !important',
+                          },
+                          '& button, & input, & select, & textarea': {
+                            cursor: interactiveMode ? 'pointer !important' : 'default !important',
+                          },
                         }}
+                        title={
+                          interactiveMode
+                            ? 'Interactive mode - hover over search results to highlight'
+                            : 'Preview only - links and interactions are disabled for cleaner screenshots'
+                        }
                       >
-                        <iframe
-                          srcDoc={result.htmlPreview}
-                          style={{
-                            width: '100%',
-                            height: '600px',
-                            border: 'none',
-                            borderRadius: '4px',
+                        <Box
+                          id="html-preview"
+                          sx={{
+                            border: '1px solid #ddd',
+                            borderRadius: 2,
+                            overflow: 'hidden',
+                            maxHeight: '600px',
+                            overflowY: 'auto',
+                            position: 'relative',
+                            backgroundColor: '#fff',
                             pointerEvents: 'auto',
-                            display: 'block',
-                            overflow: 'auto', // Enable scrolling within iframe
                           }}
-                          sandbox="allow-same-origin allow-scripts"
-                          title="Search Results Preview"
-                          loading="lazy"
-                          scrolling="auto"
-                        />
+                        >
+                          <iframe
+                            srcDoc={result.htmlPreview}
+                            style={{
+                              width: '100%',
+                              height: '600px',
+                              border: 'none',
+                              borderRadius: '4px',
+                              pointerEvents: 'auto',
+                              display: 'block',
+                              overflow: 'auto',
+                            }}
+                            sandbox="allow-same-origin allow-scripts"
+                            title="Search Results Preview"
+                            loading="lazy"
+                            scrolling="auto"
+                          />
+                        </Box>
                       </Box>
-                    </Box>
+                    )}
                   </Stack>
                 ) : result.screenshot ? (
                   // Legacy screenshot support

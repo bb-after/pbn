@@ -4,7 +4,6 @@ import { getGeminiSentiment } from './gemini';
 import { searchPerplexity } from './perplexity';
 import { getGrokSentiment } from './grok';
 import { getAllDataSources } from './dataSource';
-import { fetchAhrefsAIResponses, formatAhrefsDataForGeoAnalysis } from '../ahrefs-api';
 
 const BRAND_INTENT_CATEGORIES = [
   {
@@ -22,7 +21,7 @@ const BRAND_INTENT_CATEGORIES = [
   {
     value: 'reputation',
     label: 'Reputation',
-    prompt: 'Is [Brand Name] trustworthy? What do people think of [Brand Name]?',
+    prompt: 'Does [Brand Name] have a good reputation? What do people think of [Brand Name]?',
   },
   {
     value: 'product_service',
@@ -72,7 +71,7 @@ const INDIVIDUAL_INTENT_CATEGORIES = [
   {
     value: 'reputation',
     label: 'Reputation',
-    prompt: 'Is [Full Name] trustworthy? What do people say about [Full Name]?',
+    prompt: 'Does [Full Name] have a good reputation? What do people say about [Full Name]?',
   },
   {
     value: 'employment_leadership',
@@ -215,17 +214,6 @@ export interface GeoAnalysisResult {
       positive: string[];
       negative: string[];
     };
-    // Ahrefs Brand Radar data
-    ahrefsData?: {
-      aiMentions: {
-        source: string;
-        mentions: number;
-        sample_responses: string[];
-        urls: string[];
-      }[];
-      totalAIMentions: number;
-      aiVisibilityInsights: string[];
-    };
   };
   timestamp: Date;
 }
@@ -245,8 +233,8 @@ const engineFunctions = {
 
 export async function analyzeKeywordWithEngines(
   keyword: string,
-  clientName?: string,
-  selectedEngineIds?: number[],
+  clientName: string,
+  selectedEngineIds: number[],
   customPrompt?: string,
   analysisType?: 'brand' | 'individual',
   intentCategory?: string
@@ -254,13 +242,7 @@ export async function analyzeKeywordWithEngines(
   const results: AIEngineResult[] = [];
   const dataSources = getAllDataSources();
 
-  // Default to all active engines if none specified
-  const engineIds =
-    selectedEngineIds && selectedEngineIds.length > 0
-      ? selectedEngineIds
-      : dataSources.filter(ds => ds.isActive).map(ds => ds.id);
-
-  const enginePromises = engineIds.map(async engineId => {
+  const enginePromises = selectedEngineIds.map(async engineId => {
     try {
       const engineFunction = engineFunctions[engineId as keyof typeof engineFunctions];
       if (!engineFunction) {
@@ -297,31 +279,13 @@ export async function analyzeKeywordWithEngines(
   const engineResults = await Promise.all(enginePromises);
   results.push(...engineResults);
 
-  // Fetch Ahrefs Brand Radar data in parallel with AI engines
-  console.log('Fetching Ahrefs Brand Radar data...');
-  const ahrefsDataPromise = fetchAhrefsAIResponses(keyword, {
-    limit: 50,
-    sources: ['chatgpt', 'perplexity', 'gemini', 'copilot'],
-    // Get data from last 30 days
-    dateFrom: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    dateTo: new Date().toISOString().split('T')[0],
-  });
-
-  // Wait for Ahrefs data (don't block on it)
-  let ahrefsData = null;
-  try {
-    ahrefsData = await ahrefsDataPromise;
-  } catch (error) {
-    console.warn('Failed to fetch Ahrefs data, continuing without it:', error);
-  }
-
   // Aggregate insights from all successful results
   const successfulResults = results.filter(r => !r.error && r.summary.length > 0);
-  const aggregatedInsights = aggregateInsights(successfulResults, keyword, ahrefsData);
+  const aggregatedInsights = aggregateInsights(successfulResults, keyword);
 
   return {
     keyword,
-    clientName: clientName || '',
+    clientName,
     results,
     aggregatedInsights,
     timestamp: new Date(),
@@ -330,8 +294,7 @@ export async function analyzeKeywordWithEngines(
 
 function aggregateInsights(
   results: AIEngineResult[],
-  keyword: string,
-  ahrefsData?: any
+  keyword: string
 ): GeoAnalysisResult['aggregatedInsights'] {
   if (results.length === 0) {
     return {
@@ -353,7 +316,6 @@ function aggregateInsights(
         positive: [],
         negative: [],
       },
-      ahrefsData: ahrefsData ? formatAhrefsDataForGeoAnalysis(ahrefsData) : undefined,
     };
   }
 
@@ -376,28 +338,17 @@ function aggregateInsights(
   // Get main sentiment highlights
   const mainSentimentHighlights = extractMainSentimentHighlights(results);
 
-  // Format Ahrefs data for integration
-  const formattedAhrefsData = ahrefsData ? formatAhrefsDataForGeoAnalysis(ahrefsData) : null;
-
-  // Build common insights with Ahrefs data
-  const commonInsights = [
-    `Analysis completed across ${results.length} AI engine${results.length === 1 ? '' : 's'}`,
-    `Overall sentiment: ${overallSentiment} for "${keyword}"`,
-    `${sentimentBreakdown.positive.count} positive, ${sentimentBreakdown.negative.count} negative, ${sentimentBreakdown.neutral.count} neutral responses`,
-    topTags.length > 0
-      ? `Top ${Math.min(5, topTags.length)} tags identified across engines`
-      : 'No common tags identified',
-  ];
-
-  // Add Ahrefs insights if available
-  if (formattedAhrefsData && formattedAhrefsData.aiVisibilityInsights.length > 0) {
-    commonInsights.push(...formattedAhrefsData.aiVisibilityInsights.slice(0, 3));
-  }
-
   return {
     overallSentiment,
     keyThemes,
-    commonInsights,
+    commonInsights: [
+      `Analysis completed across ${results.length} AI engine${results.length === 1 ? '' : 's'}`,
+      `Overall sentiment: ${overallSentiment} for "${keyword}"`,
+      `${sentimentBreakdown.positive.count} positive, ${sentimentBreakdown.negative.count} negative, ${sentimentBreakdown.neutral.count} neutral responses`,
+      topTags.length > 0
+        ? `Top ${Math.min(5, topTags.length)} tags identified across engines`
+        : 'No common tags identified',
+    ],
     competitiveAdvantages: extractCompetitiveAdvantages(results),
     recommendations: extractRecommendations(results, keyword),
     topTags,
@@ -405,7 +356,6 @@ function aggregateInsights(
     urlSources,
     sentimentBreakdown,
     mainSentimentHighlights,
-    ahrefsData: formattedAhrefsData || undefined,
   };
 }
 
