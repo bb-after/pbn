@@ -86,8 +86,8 @@ const GLOBAL_HIGHLIGHT_CSS = `
 </style>
 `;
 
-const RESULT_CONTAINER_CLASS = 'MjjYud';
-const EXCLUDED_CONTAINER_WRAPPER_CLASS = 'ULSxyf';
+export const RESULT_CONTAINER_CLASS = 'MjjYud';
+export const EXCLUDED_CONTAINER_WRAPPER_CLASS = 'ULSxyf';
 
 function ensureHighlightStylesInjected(html: string): string {
   if (html.includes('stillbrook-highlight-styles')) {
