@@ -22,6 +22,19 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Avatar,
+  Card,
+  CardContent,
+  CardActions,
+  Paper,
+  Chip,
+  Divider,
+  InputAdornment,
+  Tooltip,
+  Badge,
+  Fade,
+  Grow,
+  alpha,
 } from '@mui/material';
 import SaveAltIcon from '@mui/icons-material/SaveAlt';
 import AddIcon from '@mui/icons-material/Add';
@@ -33,6 +46,49 @@ import EditOffIcon from '@mui/icons-material/EditOff';
 import DownloadIcon from '@mui/icons-material/Download';
 import CodeIcon from '@mui/icons-material/Code';
 import SaveIcon from '@mui/icons-material/Save';
+
+// Modern Lucide Icons for enhanced UI
+import {
+  Brain,
+  Camera,
+  Search,
+  Target,
+  Globe,
+  Sparkles,
+  Zap,
+  Settings,
+  FileText,
+  Users,
+  Activity,
+  TrendingUp,
+  Shield,
+  ExternalLink,
+  Plus,
+  X,
+  Eye,
+  Download,
+  Save,
+  RefreshCw,
+  Edit3,
+  CheckCircle,
+  ArrowRight,
+  ArrowLeft,
+  Map,
+  Filter,
+  ImageIcon,
+  Video,
+  Newspaper,
+  ShoppingBag,
+  Languages,
+  MapPin,
+  Link,
+  Hash,
+  Bookmark,
+  Code2,
+  Palette,
+  MousePointer,
+  Layers,
+} from 'lucide-react';
 import { IntercomLayout, ToastProvider, IntercomCard, IntercomButton } from '../components/ui';
 import UnauthorizedAccess from '../components/UnauthorizedAccess';
 import useValidateUserToken from '../hooks/useValidateUserToken';
@@ -40,6 +96,10 @@ import ClientDropdown from '../components/ClientDropdown';
 import Image from 'next/image';
 import googleDomainsData from '../google-domains.json';
 import html2canvas from 'html2canvas';
+import {
+  RESULT_CONTAINER_CLASS,
+  EXCLUDED_CONTAINER_WRAPPER_CLASS,
+} from '../utils/stillbrook/highlighting';
 
 interface SerpApiResult {
   position: number;
@@ -1497,11 +1557,17 @@ function StillbrookContent() {
     console.log(`🧹 Cleaning up ${existingControls.length} existing controls`);
     existingControls.forEach(control => control.remove());
 
-    const elements = doc.querySelectorAll('.MjjYud');
-    console.log(`🎯 Found ${elements.length} elements with MjjYud class`);
+    const elements = Array.from(
+      doc.querySelectorAll(`div.${RESULT_CONTAINER_CLASS}`) as NodeListOf<HTMLElement>
+    ).filter(el => !el.closest(`.${EXCLUDED_CONTAINER_WRAPPER_CLASS}`));
+    console.log(
+      `🎯 Found ${elements.length} elements with class ${RESULT_CONTAINER_CLASS} eligible for interaction`
+    );
 
     if (elements.length === 0) {
-      console.log('⚠️ No elements with MjjYud class found! Checking for any divs...');
+      console.log(
+        `⚠️ No elements with class ${RESULT_CONTAINER_CLASS} found! Checking for any divs...`
+      );
       const allDivs = doc.querySelectorAll('div');
       console.log(`📦 Found ${allDivs.length} total div elements in iframe`);
 
@@ -1519,10 +1585,13 @@ function StillbrookContent() {
 
     elements.forEach((element, index) => {
       const el = element as HTMLElement;
+      if (!el.textContent?.trim()) {
+        return;
+      }
       console.log(`✨ Processing element ${index}:`, {
         tagName: el.tagName,
         className: el.className,
-        hasTargetClass: el.classList.contains('MjjYud'),
+        hasTargetClass: el.classList.contains(RESULT_CONTAINER_CLASS),
         innerHTML: el.innerHTML.substring(0, 100) + '...',
       });
 
@@ -1551,6 +1620,8 @@ function StillbrookContent() {
         transform: translate(-50%, -50%);
         z-index: 10000;
         display: none;
+        opacity: 0;
+        transition: opacity 0.2s ease;
         gap: 8px;
         padding: 8px 12px;
         border-radius: 6px;
@@ -1586,7 +1657,7 @@ function StillbrookContent() {
         removeBtn.onclick = e => {
           console.log(`🗑️ Remove button clicked for element ${index}`);
           e.stopPropagation();
-          removeHighlight(el, doc);
+          removeHighlight(el);
           // Refresh the controls
           setTimeout(() => setupInteractiveHighlighting(iframe), 100);
         };
@@ -1651,25 +1722,43 @@ function StillbrookContent() {
         el.style.boxShadow = 'inset 0 0 0 2px #2196f3';
         el.style.opacity = '0.8';
         overlay.style.display = 'flex';
+        overlay.style.opacity = '1';
         console.log(`👁️ Showing overlay for element ${index}`);
       });
 
-      el.addEventListener('mouseleave', () => {
-        console.log(`🐭 Mouse left element ${index}`, { interactiveMode });
-        if (!interactiveMode) return;
+      const hideOverlayIfNotHovered = () => {
+        if (el.matches(':hover') || overlay.matches(':hover')) {
+          return;
+        }
         const hasHighlight =
           el.classList.contains('negative-result-highlight') ||
           el.classList.contains('positive-result-highlight');
         if (!hasHighlight) {
-          el.style.boxShadow = ''; //inset 0 0 0 1px rgba(33, 150, 243, 0.3)';
-          // el.style.backgroundColor = 'rgba(33, 150, 243, 0.05)';
+          el.style.boxShadow = '';
         } else {
-          // Keep existing highlight styles but remove hover effect
           el.style.boxShadow = el.style.boxShadow.replace('inset 0 0 0 2px #2196f3', '');
         }
         el.style.opacity = '';
         overlay.style.display = 'none';
+        overlay.style.opacity = '0';
         console.log(`👁️ Hiding overlay for element ${index}`);
+      };
+
+      el.addEventListener('mouseleave', () => {
+        console.log(`🐭 Mouse left element ${index}`, { interactiveMode });
+        if (!interactiveMode) return;
+        setTimeout(hideOverlayIfNotHovered, 50);
+      });
+
+      overlay.addEventListener('mouseleave', () => {
+        if (!interactiveMode) return;
+        setTimeout(hideOverlayIfNotHovered, 50);
+      });
+
+      overlay.addEventListener('mouseenter', () => {
+        if (!interactiveMode) return;
+        overlay.style.display = 'flex';
+        overlay.style.opacity = '1';
       });
 
       console.log(`🎉 Completed setup for element ${index}`);
@@ -1679,24 +1768,21 @@ function StillbrookContent() {
   };
 
   const addHighlight = (element: HTMLElement, type: 'positive' | 'negative') => {
+    const target = element.closest<HTMLElement>(`div.${RESULT_CONTAINER_CLASS}`) ?? element;
     const className =
       type === 'positive' ? 'positive-result-highlight' : 'negative-result-highlight';
-    element.classList.add(className);
 
-    // Add the appropriate highlight styles
-    if (type === 'positive') {
-      element.style.border = '2px solid #22c55e';
-      element.style.boxShadow = 'inset 0 0 0 2px #22c55e';
-    } else {
-      element.style.border = '2px solid #ef4444';
-      element.style.boxShadow = 'inset 0 0 0 2px #ef4444';
-    }
+    target.classList.remove(
+      type === 'positive' ? 'negative-result-highlight' : 'positive-result-highlight'
+    );
+    target.classList.add(className);
   };
 
-  const removeHighlight = (element: HTMLElement, doc?: Document) => {
-    element.classList.remove('positive-result-highlight', 'negative-result-highlight');
-    element.style.border = '';
-    element.style.boxShadow = ''; //inset 0 0 0 1px rgba(33, 150, 243, 0.3)';
+  const removeHighlight = (element: HTMLElement) => {
+    const target = element.closest<HTMLElement>(`div.${RESULT_CONTAINER_CLASS}`) ?? element;
+    target.classList.remove('positive-result-highlight', 'negative-result-highlight');
+    target.style.border = '';
+    target.style.boxShadow = ''; //inset 0 0 0 1px rgba(33, 150, 243, 0.3)';
   };
 
   const cleanupInteractiveMode = () => {
@@ -1707,11 +1793,13 @@ function StillbrookContent() {
     ) as NodeListOf<HTMLIFrameElement>;
     iframes.forEach(iframe => {
       if (iframe.contentDocument) {
-        const elements = iframe.contentDocument.querySelectorAll('.MjjYud');
+        const elements = Array.from(
+          iframe.contentDocument.querySelectorAll(
+            `div.${RESULT_CONTAINER_CLASS}`
+          ) as NodeListOf<HTMLElement>
+        ).filter(el => !el.closest(`.${EXCLUDED_CONTAINER_WRAPPER_CLASS}`));
         console.log(`🧽 Cleaning ${elements.length} elements in iframe`);
-        elements.forEach(element => {
-          const el = element as HTMLElement;
-
+        elements.forEach(el => {
           // Remove interactive styles
           el.style.cursor = '';
 
@@ -1897,7 +1985,7 @@ function StillbrookContent() {
               letterSpacing: '-0.02em',
             }}
           >
-            Stillbrook
+            Agentic Insight
           </Typography>
           <Typography
             variant="subtitle1"
@@ -1916,151 +2004,395 @@ function StillbrookContent() {
 
   return (
     <IntercomLayout
-      title="Stillbrook - Screenshot Generator"
-      breadcrumbs={[{ label: 'Stillbrook' }]}
+      title="Agentic Insight"
+      breadcrumbs={[{ label: 'Advanced Tools' }, { label: 'Agentic Insight' }]}
     >
       <IntercomCard>
-        <Box
-          p={3}
-          sx={{
-            animation: 'formFadeIn 1s ease-out',
-            '@keyframes formFadeIn': {
-              '0%': {
-                opacity: 0,
-                transform: 'translateY(30px)',
-              },
-              '100%': {
-                opacity: 1,
-                transform: 'translateY(0)',
-              },
-            },
-          }}
-        >
+        <Box p={3}>
           <Stack spacing={3}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Image
-                src="/stillbrook-logo.png"
-                alt="Stillbrook Logo"
-                width={40}
-                height={40}
-                style={{
+            {/* Enhanced Logo Header Section */}
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 3,
+                p: 3,
+                border: '2px solid',
+                borderColor: alpha('#667eea', 0.15),
+                borderRadius: 3,
+                bgcolor: alpha('#f8fafc', 0.5),
+              }}
+            >
+              <Avatar
+                sx={{
+                  bgcolor: alpha('#667eea', 0.1),
+                  color: '#667eea',
+                  width: 56,
+                  height: 56,
                   opacity: showLogoOverlay ? 0 : 1,
                   transition: 'opacity 1s ease-in-out 0.5s',
                 }}
-              />
+              >
+                <Camera size={28} />
+              </Avatar>
               <Box>
-                <Typography variant="h5" gutterBottom sx={{ mb: 0.5 }}>
-                  Stillbrook - Screenshot Generator
+                <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
+                  🤖 Intelligent SERP Screenshot Generator
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Generate a screenshot of Google results based on keyword and criteria.
+                  Generate AI-enhanced screenshots of Google search results with advanced targeting
+                  and analysis
                 </Typography>
               </Box>
             </Box>
 
             {renderStepIndicator()}
 
-            {error && currentStep === 'form' && <Alert severity="error">{error}</Alert>}
+            {error && currentStep === 'form' && (
+              <Paper
+                sx={{
+                  p: 3,
+                  mb: 4,
+                  border: '2px solid',
+                  borderColor: alpha('#ef4444', 0.3),
+                  bgcolor: alpha('#fef2f2', 0.5),
+                  borderRadius: 2,
+                }}
+              >
+                <Box display="flex" alignItems="center" gap={2}>
+                  <Avatar
+                    sx={{ bgcolor: alpha('#ef4444', 0.1), color: '#ef4444', width: 32, height: 32 }}
+                  >
+                    <Shield size={16} />
+                  </Avatar>
+                  <Typography color="error" sx={{ fontWeight: 500 }}>
+                    {error}
+                  </Typography>
+                </Box>
+              </Paper>
+            )}
 
             {currentStep === 'form' && (
               <Box component="form" onSubmit={handleSubmit}>
-                <Stack spacing={3}>
-                  {isLoadedSearch && (
-                    <Alert severity={hasUnsavedChanges ? 'warning' : 'info'}>
-                      {hasUnsavedChanges ? (
-                        <>
-                          <strong>Modified search:</strong> &quot;{loadedSearchName}&quot;
-                          <br />
-                          <small>You have unsaved changes to this search.</small>
-                        </>
-                      ) : (
-                        <>
-                          Running saved search: <strong>&quot;{loadedSearchName}&quot;</strong>
-                          <br />
-                          <small>
-                            You can modify the parameters below before running the search.
-                          </small>
-                        </>
-                      )}
-                    </Alert>
-                  )}
-                  <TextField
-                    fullWidth
-                    label="Search Term"
-                    type="text"
-                    value={keyword}
-                    onChange={e => setKeyword(e.target.value)}
-                    required
-                  />
-
-                  <FormControl fullWidth>
-                    <InputLabel>Google Domain</InputLabel>
-                    <Select
-                      value={googleDomain}
-                      label="Google Domain"
-                      onChange={e => setGoogleDomain(e.target.value)}
-                    >
-                      {sortedGoogleDomains.map((domain: GoogleDomain) => (
-                        <MenuItem key={domain.domain} value={domain.domain}>
-                          {domain.domain} - {domain.country_name}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-
-                  <FormControl fullWidth>
-                    <InputLabel>Search Language</InputLabel>
-                    <Select
-                      value={language}
-                      label="Search Language"
-                      onChange={e => setLanguage(e.target.value)}
-                    >
-                      {GOOGLE_LANGUAGES.map((lang: GoogleLanguage) => (
-                        <MenuItem key={lang.code} value={lang.code}>
-                          {lang.name} ({lang.code})
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-
-                  <FormControl fullWidth>
-                    <InputLabel shrink>Search Type</InputLabel>
-                    <Select
-                      value={searchType}
-                      label="Search Type"
-                      onChange={e => setSearchType(e.target.value)}
-                      displayEmpty
-                      renderValue={selected => {
-                        const type = SEARCH_TYPES.find((t: SearchType) => t.value === selected);
-                        return type
-                          ? `${type.name} - ${type.description}`
-                          : 'Web Search - Regular Google Search';
+                {isLoadedSearch && (
+                  <Alert severity={hasUnsavedChanges ? 'warning' : 'info'}>
+                    {hasUnsavedChanges ? (
+                      <>
+                        <strong>Modified search:</strong> &quot;{loadedSearchName}&quot;
+                        <br />
+                        <small>You have unsaved changes to this search.</small>
+                      </>
+                    ) : (
+                      <>
+                        Running saved search: <strong>&quot;{loadedSearchName}&quot;</strong>
+                        <br />
+                        <small>
+                          You can modify the parameters below before running the search.
+                        </small>
+                      </>
+                    )}
+                  </Alert>
+                )}
+                {/* Enhanced Search Configuration Section */}
+                <Paper
+                  sx={{
+                    p: 4,
+                    border: '2px solid',
+                    borderColor: alpha('#667eea', 0.15),
+                    borderRadius: 3,
+                    bgcolor: alpha('#f8fafc', 0.5),
+                  }}
+                >
+                  <Box display="flex" alignItems="center" gap={2} mb={3}>
+                    <Avatar
+                      sx={{
+                        bgcolor: alpha('#667eea', 0.1),
+                        color: '#667eea',
+                        width: 40,
+                        height: 40,
                       }}
                     >
-                      {SEARCH_TYPES.map((type: SearchType) => (
-                        <MenuItem key={type.value} value={type.value}>
-                          {type.name} - {type.description}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                      <Search size={20} />
+                    </Avatar>
+                    <Box>
+                      <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                        🔍 Search Configuration
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Configure your intelligent Google search parameters
+                      </Typography>
+                    </Box>
+                  </Box>
 
-                  <Typography variant="h6" component="h3" sx={{ mb: 2 }}>
-                    Highlight Options
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                    Choose which types of results to highlight. You can select both positive and
-                    negative options for comprehensive analysis.
-                  </Typography>
+                  <Stack spacing={3}>
+                    <TextField
+                      fullWidth
+                      label="Search Query"
+                      type="text"
+                      value={keyword}
+                      onChange={e => setKeyword(e.target.value)}
+                      required
+                      variant="outlined"
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Search size={18} color="#667eea" />
+                          </InputAdornment>
+                        ),
+                      }}
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          borderRadius: 2,
+                          bgcolor: 'white',
+                          transition: 'all 0.3s ease',
+                          '&:hover': {
+                            bgcolor: alpha('#667eea', 0.02),
+                            '& .MuiOutlinedInput-notchedOutline': {
+                              borderColor: alpha('#667eea', 0.5),
+                            },
+                          },
+                          '&.Mui-focused': {
+                            bgcolor: 'white',
+                            '& .MuiOutlinedInput-notchedOutline': {
+                              borderColor: '#667eea',
+                              borderWidth: 2,
+                            },
+                          },
+                        },
+                        '& .MuiInputLabel-root': {
+                          fontWeight: 500,
+                          '&.Mui-focused': {
+                            color: '#667eea',
+                          },
+                        },
+                      }}
+                    />
 
-                  {/* Negative Highlights Section */}
+                    <FormControl fullWidth>
+                      <InputLabel sx={{ fontWeight: 600 }}>Geographic Domain</InputLabel>
+                      <Select
+                        value={googleDomain}
+                        label="Geographic Domain"
+                        onChange={e => setGoogleDomain(e.target.value)}
+                        startAdornment={
+                          <InputAdornment position="start">
+                            <Globe size={18} color="#667eea" />
+                          </InputAdornment>
+                        }
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: 2,
+                            bgcolor: 'white',
+                            '&:hover .MuiOutlinedInput-notchedOutline': {
+                              borderColor: alpha('#667eea', 0.5),
+                            },
+                            '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                              borderColor: '#667eea',
+                              borderWidth: 2,
+                            },
+                          },
+                        }}
+                      >
+                        {sortedGoogleDomains.map((domain: GoogleDomain) => (
+                          <MenuItem key={domain.domain} value={domain.domain}>
+                            <Box display="flex" alignItems="center" gap={2}>
+                              <Avatar
+                                sx={{
+                                  bgcolor: alpha('#667eea', 0.1),
+                                  color: '#667eea',
+                                  width: 20,
+                                  height: 20,
+                                }}
+                              >
+                                <MapPin size={10} />
+                              </Avatar>
+                              <span>
+                                {domain.domain} - {domain.country_name}
+                              </span>
+                            </Box>
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+
+                    <FormControl fullWidth>
+                      <InputLabel sx={{ fontWeight: 600 }}>Search Language</InputLabel>
+                      <Select
+                        value={language}
+                        label="Search Language"
+                        onChange={e => setLanguage(e.target.value)}
+                        startAdornment={
+                          <InputAdornment position="start">
+                            <Languages size={18} color="#8b5cf6" />
+                          </InputAdornment>
+                        }
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: 2,
+                            bgcolor: 'white',
+                            '&:hover .MuiOutlinedInput-notchedOutline': {
+                              borderColor: alpha('#8b5cf6', 0.5),
+                            },
+                            '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                              borderColor: '#8b5cf6',
+                              borderWidth: 2,
+                            },
+                          },
+                        }}
+                      >
+                        {GOOGLE_LANGUAGES.map((lang: GoogleLanguage) => (
+                          <MenuItem key={lang.code} value={lang.code}>
+                            <Box display="flex" alignItems="center" gap={2}>
+                              <Avatar
+                                sx={{
+                                  bgcolor: alpha('#8b5cf6', 0.1),
+                                  color: '#8b5cf6',
+                                  width: 20,
+                                  height: 20,
+                                }}
+                              >
+                                <Languages size={10} />
+                              </Avatar>
+                              <span>
+                                {lang.name} ({lang.code})
+                              </span>
+                            </Box>
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+
+                    <FormControl fullWidth>
+                      <InputLabel shrink sx={{ fontWeight: 600 }}>
+                        Search Type
+                      </InputLabel>
+                      <Select
+                        value={searchType}
+                        label="Search Type"
+                        onChange={e => setSearchType(e.target.value)}
+                        displayEmpty
+                        startAdornment={
+                          <InputAdornment position="start">
+                            <Filter size={18} color="#f59e0b" />
+                          </InputAdornment>
+                        }
+                        renderValue={selected => {
+                          const type = SEARCH_TYPES.find((t: SearchType) => t.value === selected);
+                          return type
+                            ? `${type.name} - ${type.description}`
+                            : 'Web Search - Regular Google Search';
+                        }}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: 2,
+                            bgcolor: 'white',
+                            '&:hover .MuiOutlinedInput-notchedOutline': {
+                              borderColor: alpha('#f59e0b', 0.5),
+                            },
+                            '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                              borderColor: '#f59e0b',
+                              borderWidth: 2,
+                            },
+                          },
+                        }}
+                      >
+                        {SEARCH_TYPES.map((type: SearchType) => {
+                          const getIcon = (value: string) => {
+                            switch (value) {
+                              case '':
+                                return <Search size={14} />;
+                              case 'isch':
+                                return <ImageIcon size={14} />;
+                              case 'vid':
+                                return <Video size={14} />;
+                              case 'nws':
+                                return <Newspaper size={14} />;
+                              case 'shop':
+                                return <ShoppingBag size={14} />;
+                              default:
+                                return <Search size={14} />;
+                            }
+                          };
+
+                          return (
+                            <MenuItem key={type.value} value={type.value}>
+                              <Box display="flex" alignItems="center" gap={2}>
+                                <Avatar
+                                  sx={{
+                                    bgcolor: alpha('#f59e0b', 0.1),
+                                    color: '#f59e0b',
+                                    width: 20,
+                                    height: 20,
+                                  }}
+                                >
+                                  {getIcon(type.value)}
+                                </Avatar>
+                                <span>
+                                  {type.name} - {type.description}
+                                </span>
+                              </Box>
+                            </MenuItem>
+                          );
+                        })}
+                      </Select>
+                    </FormControl>
+                  </Stack>
+                </Paper>
+
+                {/* Enhanced Highlight Configuration Section */}
+                <Paper
+                  sx={{
+                    p: 4,
+                    border: '2px solid',
+                    borderColor: alpha('#f59e0b', 0.15),
+                    borderRadius: 3,
+                    bgcolor:
+                      'linear-gradient(135deg, rgba(245, 158, 11, 0.02) 0%, rgba(255, 255, 255, 0.8) 100%)',
+                  }}
+                >
+                  <Box display="flex" alignItems="center" gap={2} mb={3}>
+                    <Avatar
+                      sx={{
+                        bgcolor: alpha('#f59e0b', 0.1),
+                        color: '#f59e0b',
+                        width: 40,
+                        height: 40,
+                      }}
+                    >
+                      <Palette size={20} />
+                    </Avatar>
+                    <Box>
+                      <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                        🎨 AI Highlight Intelligence
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Configure intelligent highlighting for comprehensive SERP analysis with
+                        AI-powered insights
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  {/* Enhanced Negative Highlights Section */}
                   <Box
                     sx={{
-                      mb: 4,
-                      p: 2,
-                      border: '1px solid',
-                      borderColor: 'error.light',
+                      mb: 3,
+                      p: 3,
+                      border: '2px solid',
+                      borderColor: alpha('#ef4444', 0.2),
                       borderRadius: 2,
+                      bgcolor:
+                        'linear-gradient(135deg, rgba(239, 68, 68, 0.02) 0%, rgba(255, 255, 255, 0.8) 100%)',
+                      position: 'relative',
+                      '&::before': {
+                        content: '""',
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: 4,
+                        height: '100%',
+                        bgcolor: '#ef4444',
+                        borderRadius: '2px 0 0 2px',
+                      },
                     }}
                   >
                     <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
@@ -2194,95 +2526,241 @@ function StillbrookContent() {
                       color="success"
                     />
                   )}
+                </Paper>
 
-                  {/* Geographic Location - Same style as other inputs */}
+                {/* Enhanced Geographic Location Section */}
+                <Paper
+                  sx={{
+                    p: 3,
+                    border: '2px solid',
+                    borderColor: alpha('#10b981', 0.15),
+                    borderRadius: 2,
+                    bgcolor: alpha('#f0fdf4', 0.5),
+                  }}
+                >
+                  <Box display="flex" alignItems="center" gap={2} mb={2}>
+                    <Avatar
+                      sx={{
+                        bgcolor: alpha('#10b981', 0.1),
+                        color: '#10b981',
+                        width: 32,
+                        height: 32,
+                      }}
+                    >
+                      <MapPin size={16} />
+                    </Avatar>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                      🗺️ Geographic Targeting
+                    </Typography>
+                  </Box>
                   <TextField
                     fullWidth
                     label="Geographic Location (Optional)"
                     type="text"
                     value={location}
                     onChange={e => setLocation(e.target.value)}
-                    placeholder="e.g. New York, NY or London, UK (will default to your current location)"
+                    placeholder="e.g. New York, NY or London, UK"
                     variant="outlined"
                     helperText="Examples: 'New York, NY', 'London, UK', 'Los Angeles, California'"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Map size={18} color="#10b981" />
+                        </InputAdornment>
+                      ),
+                    }}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        borderRadius: 2,
+                        bgcolor: 'white',
+                        '&:hover .MuiOutlinedInput-notchedOutline': {
+                          borderColor: alpha('#10b981', 0.5),
+                        },
+                        '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                          borderColor: '#10b981',
+                          borderWidth: 2,
+                        },
+                      },
+                    }}
                   />
+                </Paper>
 
+                {/* Enhanced Options Section */}
+                <Paper
+                  sx={{
+                    p: 3,
+                    border: '2px solid',
+                    borderColor: alpha('#8b5cf6', 0.15),
+                    borderRadius: 2,
+                    bgcolor: alpha('#faf5ff', 0.5),
+                  }}
+                >
+                  <Box display="flex" alignItems="center" gap={2} mb={2}>
+                    <Avatar
+                      sx={{
+                        bgcolor: alpha('#8b5cf6', 0.1),
+                        color: '#8b5cf6',
+                        width: 32,
+                        height: 32,
+                      }}
+                    >
+                      <Settings size={16} />
+                    </Avatar>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                      ⚙️ Advanced Options
+                    </Typography>
+                  </Box>
                   <FormControlLabel
                     control={
                       <Checkbox
                         checked={includePage2}
                         onChange={e => setIncludePage2(e.target.checked)}
-                        color="primary"
+                        sx={{
+                          color: '#8b5cf6',
+                          '&.Mui-checked': {
+                            color: '#8b5cf6',
+                          },
+                        }}
                       />
                     }
-                    label="Include page 2 of search results (more comprehensive results)"
+                    label={
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          Include Page 2 Results
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          More comprehensive analysis with extended SERP data
+                        </Typography>
+                      </Box>
+                    }
                   />
+                </Paper>
 
-                  <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                    <IntercomButton variant="primary" type="submit" disabled={loading}>
-                      {loading ? 'Processing...' : 'Submit'}
+                {/* Enhanced Action Section */}
+                <Paper
+                  sx={{
+                    p: 4,
+                    border: '2px solid',
+                    borderColor: alpha('#667eea', 0.2),
+                    borderRadius: 3,
+                    bgcolor:
+                      'linear-gradient(135deg, rgba(102, 126, 234, 0.02) 0%, rgba(255, 255, 255, 1) 100%)',
+                    textAlign: 'center',
+                  }}
+                >
+                  <Box display="flex" alignItems="center" justifyContent="center" gap={2} mb={3}>
+                    <Avatar
+                      sx={{
+                        bgcolor: alpha('#667eea', 0.1),
+                        color: '#667eea',
+                        width: 40,
+                        height: 40,
+                      }}
+                    >
+                      <Zap size={20} />
+                    </Avatar>
+                    <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                      Launch AI Analysis
+                    </Typography>
+                  </Box>
+
+                  <Stack direction="row" spacing={2} justifyContent="center" flexWrap="wrap">
+                    <IntercomButton
+                      variant="primary"
+                      type="submit"
+                      disabled={loading}
+                      startIcon={
+                        loading ? (
+                          <CircularProgress size={16} color="inherit" />
+                        ) : (
+                          <Brain size={18} />
+                        )
+                      }
+                      sx={{
+                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        minWidth: 160,
+                        py: 1.5,
+                      }}
+                    >
+                      {loading ? 'AI Processing...' : 'Generate Screenshot'}
                     </IntercomButton>
 
                     {/* Show different buttons based on loaded search state and changes */}
                     {!isLoadedSearch && (
                       <IntercomButton
                         variant="secondary"
-                        leftIcon={<BookmarkAddIcon />}
+                        startIcon={<Bookmark size={18} />}
                         onClick={handleOpenSaveModal}
                         disabled={loading}
+                        sx={{
+                          borderColor: alpha('#10b981', 0.3),
+                          color: '#10b981',
+                          '&:hover': {
+                            bgcolor: alpha('#10b981', 0.1),
+                            borderColor: '#10b981',
+                          },
+                        }}
                       >
-                        Save Stillbrook Search
+                        Save Search
                       </IntercomButton>
                     )}
 
                     {isLoadedSearch && !hasUnsavedChanges && (
                       <IntercomButton
-                        variant="ghost"
+                        variant="secondary"
                         onClick={() => router.push('/my-saved-searches')}
                         disabled={loading}
+                        startIcon={<ArrowLeft size={18} />}
+                        sx={{
+                          color: '#6b7280',
+                          borderColor: alpha('#6b7280', 0.3),
+                          '&:hover': {
+                            bgcolor: alpha('#6b7280', 0.1),
+                          },
+                        }}
                       >
-                        ← Back to Saved Stillbrook Searches
+                        Back to Saved Searches
                       </IntercomButton>
                     )}
+                  </Stack>
+                </Paper>
 
-                    {isLoadedSearch && hasUnsavedChanges && !showUpdateOptions && (
-                      <IntercomButton
-                        variant="secondary"
-                        onClick={() => setShowUpdateOptions(true)}
-                        disabled={loading}
-                      >
-                        Save Changes
-                      </IntercomButton>
-                    )}
+                {isLoadedSearch && hasUnsavedChanges && !showUpdateOptions && (
+                  <IntercomButton
+                    variant="secondary"
+                    onClick={() => setShowUpdateOptions(true)}
+                    disabled={loading}
+                  >
+                    Save Changes
+                  </IntercomButton>
+                )}
 
-                    {isLoadedSearch && hasUnsavedChanges && showUpdateOptions && (
-                      <>
-                        <IntercomButton
-                          variant="primary"
-                          onClick={handleUpdateSearch}
-                          disabled={loading || isUpdatingSearch}
-                        >
-                          {isUpdatingSearch ? 'Updating...' : 'Update Search'}
-                        </IntercomButton>
-                        <IntercomButton
-                          variant="secondary"
-                          leftIcon={<BookmarkAddIcon />}
-                          onClick={handleSaveAsNew}
-                          disabled={loading || isUpdatingSearch}
-                        >
-                          Save as New Search
-                        </IntercomButton>
-                        <IntercomButton
-                          variant="ghost"
-                          onClick={() => setShowUpdateOptions(false)}
-                          disabled={loading || isUpdatingSearch}
-                        >
-                          Cancel
-                        </IntercomButton>
-                      </>
-                    )}
-                  </Box>
-                </Stack>
+                {isLoadedSearch && hasUnsavedChanges && showUpdateOptions && (
+                  <>
+                    <IntercomButton
+                      variant="primary"
+                      onClick={handleUpdateSearch}
+                      disabled={loading || isUpdatingSearch}
+                    >
+                      {isUpdatingSearch ? 'Updating...' : 'Update Search'}
+                    </IntercomButton>
+                    <IntercomButton
+                      variant="secondary"
+                      leftIcon={<BookmarkAddIcon />}
+                      onClick={handleSaveAsNew}
+                      disabled={loading || isUpdatingSearch}
+                    >
+                      Save as New Search
+                    </IntercomButton>
+                    <IntercomButton
+                      variant="ghost"
+                      onClick={() => setShowUpdateOptions(false)}
+                      disabled={loading || isUpdatingSearch}
+                    >
+                      Cancel
+                    </IntercomButton>
+                  </>
+                )}
               </Box>
             )}
 

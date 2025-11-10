@@ -1,6 +1,40 @@
 import React, { useState, ReactNode, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import useValidateUserToken from '../../hooks/useValidateUserToken';
+
+// Lucide Icons for modern aesthetic
+import {
+  Brain,
+  Sparkles,
+  Globe,
+  FileText,
+  Users,
+  BarChart3,
+  Settings,
+  Target,
+  Zap,
+  Activity,
+  TrendingUp,
+  Shield,
+  Search,
+  Bell,
+  HelpCircle,
+  User,
+  Home,
+  ChevronRight,
+  ChevronDown,
+  Plus,
+  Building2,
+  Layers,
+  Map,
+  Wrench,
+  CreditCard,
+  Camera,
+  Bookmark,
+  ExternalLink,
+  Database,
+} from 'lucide-react';
+
 import {
   Box,
   Drawer,
@@ -25,40 +59,16 @@ import {
   Collapse,
   useTheme,
   useMediaQuery,
+  alpha,
+  Card,
+  CardContent,
+  Chip,
+  Stack,
 } from '@mui/material';
-import {
-  Menu as MenuIcon,
-  Search as SearchIcon,
-  Dashboard as DashboardIcon,
-  People as PeopleIcon,
-  Assignment as AssignmentIcon,
-  CheckCircle as CheckCircleIcon,
-  Article as ArticleIcon,
-  Star as StarIcon,
-  Language as LanguageIcon,
-  Explore as ExploreIcon,
-  Assessment as AssessmentIcon,
-  Notifications as NotificationsIcon,
-  Help as HelpIcon,
-  ExpandLess,
-  ExpandMore,
-  Home as HomeIcon,
-  ChevronRight as ChevronRightIcon,
-  AddCircleOutline as AddCircleOutlineIcon,
-  Build as BuildIcon,
-  Insights as InsightsIcon,
-  Link as LinkIcon,
-  TravelExplore as TravelExploreIcon,
-  Wallpaper as WallpaperIcon,
-  Business as BusinessIcon,
-  Public as PublicIcon,
-  Schedule as ScheduleIcon,
-  AccountBalance as AccountBalanceIcon,
-  Sync as SyncIcon,
-  History as HistoryIcon,
-  CameraAlt as CameraAltIcon,
-  BookmarkAdd as BookmarkAddIcon,
-} from '@mui/icons-material';
+
+// Import React Icons as fallbacks
+import { Menu as MenuIcon } from '@mui/icons-material';
+
 import { tokens } from '../../theme/intercom-theme';
 import { keyframes } from '@mui/system';
 
@@ -74,7 +84,7 @@ interface NavigationItem {
 interface IntercomLayoutProps {
   children: ReactNode;
   title?: string;
-  breadcrumbs?: Array<{ label: string; href?: string }>;
+  breadcrumbs?: Array<{ label: string; href?: string; icon?: any }>;
   actions?: ReactNode;
 }
 
@@ -85,226 +95,246 @@ const aiPopIn = keyframes`
   100% { opacity: 1; transform: translateX(0) scale(1); }
 `;
 
+const DRAWER_WIDTH = 320;
+
+// Enhanced gradient animation
+const gradientFlow = keyframes`
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+`;
+
+// Floating animation for AI badge
+const floatAnimation = keyframes`
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-2px); }
+`;
+
 const navigationItems: NavigationItem[] = [
   {
     id: 'dashboard',
     label: 'Dashboard',
-    icon: <DashboardIcon />,
+    icon: <BarChart3 size={20} />,
     href: '/',
   },
   {
     id: 'clients',
     label: 'Clients',
-    icon: <PeopleIcon />,
+    icon: <Users size={20} />,
     children: [
       {
         id: 'view-clients',
         label: 'View Clients',
-        icon: <PeopleIcon />,
+        icon: <Users size={18} />,
         href: '/clients',
       },
       {
         id: 'client-approval',
-        label: 'Client Approval',
-        icon: <CheckCircleIcon />,
+        label: 'Approval Desk',
+        icon: <Shield size={18} />,
         href: '/client-approval',
       },
       {
         id: 'content-compass',
         label: 'Content Compass',
-        icon: <ExploreIcon />,
+        icon: <Target size={18} />,
         href: '/content-compass',
       },
     ],
   },
   {
     id: 'pbn',
-    label: 'PBN',
-    icon: <ArticleIcon />,
+    label: 'Post Agent',
+    icon: <Layers size={20} />,
     children: [
       {
-        id: 'pbn-submissions',
-        label: 'PBN Sites',
-        icon: <BusinessIcon />,
+        id: 'pbn-sites',
+        label: 'Private Sites',
+        icon: <Building2 size={18} />,
         href: '/pbn-sites',
       },
       {
         id: 'pbn-submissions',
-        label: 'PBN Submissions',
-        icon: <AssignmentIcon />,
+        label: 'Post Agent Submissions',
+        icon: <FileText size={18} />,
         href: '/pbn-site-submissions',
       },
       {
         id: 'pbn-create-new',
         label: 'Create New Submission',
-        icon: <AddCircleOutlineIcon />,
+        icon: <Plus size={18} />,
         href: '/pbn-form',
       },
       {
         id: 'pbn-upload',
         label: 'Manual / Bulk Upload',
-        icon: <AssignmentIcon />,
+        icon: <Database size={18} />,
         href: '/pbn-upload',
       },
     ],
   },
   {
-    id: 'superstar',
-    label: 'Superstar',
-    icon: <StarIcon />,
+    id: 'ai-wordflow',
+    label: 'AI WordFlow',
+    icon: <Brain size={20} />,
     children: [
       {
-        id: 'superstar-sites',
-        label: 'Superstar Sites',
-        icon: <StarIcon />,
+        id: 'ai-wordflow-dashboard',
+        label: 'AI Dashboard',
+        icon: <Sparkles size={18} />,
+        href: '/ai-wordflow',
+        badge: 3,
+      },
+      {
+        id: 'ai-wordflow-submissions',
+        label: 'Content Submissions',
+        icon: <FileText size={18} />,
+        href: '/ai-wordflow-submissions',
+      },
+      {
+        id: 'ai-wordflow-create',
+        label: 'Create Content',
+        icon: <Zap size={18} />,
+        href: '/ai-wordflow-form',
+      },
+      {
+        id: 'ai-wordflow-capture',
+        label: 'Content Capture',
+        icon: <Globe size={18} />,
+        href: '/ai-wordflow-post-capture-form',
+      },
+      {
+        id: 'ai-wordflow-new-site',
+        label: 'Launch New Site',
+        icon: <Plus size={18} />,
+        href: '/ai-wordflow/new',
+      },
+      {
+        id: 'legacy-superstar',
+        label: '← Legacy Superstar',
+        icon: <ExternalLink size={18} />,
         href: '/superstar-sites',
-      },
-      {
-        id: 'superstar-submissions',
-        label: 'Superstar Submissions',
-        icon: <AssignmentIcon />,
-        href: '/superstar-site-submissions',
-      },
-      {
-        id: 'superstar-create-new-submission',
-        label: 'Create New Submission',
-        icon: <AddCircleOutlineIcon />,
-        href: '/superstar-form',
-      },
-      {
-        id: 'superstar-capture-post',
-        label: 'Capture WP Submission',
-        icon: <LanguageIcon />,
-        href: '/superstar-post-capture-form',
-      },
-      {
-        id: 'superstar-create-new',
-        label: 'Create New Site',
-        icon: <AddCircleOutlineIcon />,
-        href: '/superstar-sites/new',
       },
     ],
   },
   {
     id: 'geo',
-    label: 'GEO',
-    icon: <PublicIcon />,
+    label: 'GEO Analysis',
+    icon: <Map size={20} />,
     children: [
       {
         id: 'geo-competitive',
-        label: 'GEO Competitive Analysis',
-        icon: <InsightsIcon />,
+        label: 'Competitive Analysis',
+        icon: <TrendingUp size={18} />,
         href: '/geo-competitive-analysis',
       },
       {
         id: 'geo-checker',
-        label: 'GEO Checker',
-        icon: <PublicIcon />,
+        label: 'GEO Monitor',
+        icon: <Search size={18} />,
         href: '/geo-checker',
       },
       {
         id: 'geo-scheduler',
         label: 'GEO Scheduler',
-        icon: <ScheduleIcon />,
+        icon: <Activity size={18} />,
         href: '/geo-scheduler',
       },
       {
         id: 'geo-schedule-manager',
         label: 'Schedule Manager',
-        icon: <AssignmentIcon />,
+        icon: <Settings size={18} />,
         href: '/geo-schedule-manager',
       },
       {
         id: 'geo-history',
-        label: 'GEO History',
-        icon: <AssessmentIcon />,
+        label: 'Analysis History',
+        icon: <BarChart3 size={18} />,
         href: '/geo-analysis-history',
       },
       {
         id: 'geo-runs',
         label: 'GEO Runs',
-        icon: <AssessmentIcon />,
+        icon: <Activity size={18} />,
         href: '/geo-runs',
       },
     ],
   },
   {
     id: 'other-tooling',
-    label: 'Other Tooling',
-    icon: <BuildIcon />,
+    label: 'Advanced Tools',
+    icon: <Wrench size={20} />,
     children: [
       {
         id: 'reports',
-        label: 'Reports',
-        icon: <AssessmentIcon />,
+        label: 'Analytics Reports',
+        icon: <BarChart3 size={18} />,
         href: '/reports',
       },
       {
         id: 'lead-enricher',
-        label: 'Lead Enricher',
-        icon: <InsightsIcon />,
+        label: 'ProspectAI',
+        icon: <TrendingUp size={18} />,
         href: '/lead-enricher',
       },
       {
         id: 'backlink-buddy',
-        label: 'Backlink Buddy',
-        icon: <LinkIcon />,
+        label: 'Autolink',
+        icon: <ExternalLink size={18} />,
         href: '/backlink-buddy',
       },
       {
         id: 'stillbrook',
-        label: 'Stillbrook',
-        icon: <CameraAltIcon />,
+        label: 'Agentic Insight',
+        icon: <Camera size={18} />,
         href: '/stillbrook',
       },
       {
         id: 'saved-stillbrook-searches',
-        label: 'My Saved Searches',
-        icon: <BookmarkAddIcon />,
+        label: 'Saved Searches',
+        icon: <Bookmark size={18} />,
         href: '/my-saved-searches',
       },
       {
         id: 'wiki-scraper',
         label: 'Wiki Scraper',
-        icon: <TravelExploreIcon />,
+        icon: <Search size={18} />,
         href: '/company-info',
       },
       {
         id: 'zoom-backdrop',
         label: 'Zoom Backdrop',
-        icon: <WallpaperIcon />,
+        icon: <Camera size={18} />,
         href: '/zoom',
       },
     ],
   },
   {
     id: 'ramp',
-    label: 'Ramp',
-    icon: <AccountBalanceIcon />,
+    label: 'Financial Tools',
+    icon: <CreditCard size={20} />,
     children: [
       {
         id: 'ramp-expense-sync',
         label: 'Expense Sync',
-        icon: <SyncIcon />,
+        icon: <Activity size={18} />,
         href: '/ramp-expense-sync',
       },
       {
         id: 'ramp-user-mappings',
         label: 'User Mappings',
-        icon: <PeopleIcon />,
+        icon: <Users size={18} />,
         href: '/ramp-user-mappings',
       },
       {
         id: 'ramp-sync-history',
         label: 'Sync History',
-        icon: <HistoryIcon />,
+        icon: <BarChart3 size={18} />,
         href: '/ramp-sync-history',
       },
     ],
   },
 ];
-
-const DRAWER_WIDTH = 280;
 
 export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
   children,
@@ -373,25 +403,51 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
 
     return (
       <React.Fragment key={item.id}>
-        <ListItem disablePadding sx={{ padding: 0, margin: 1 }}>
+        <ListItem disablePadding sx={{ padding: 0, mb: 0.5, mx: 0 }}>
           <ListItemButton
             onClick={hasChildren ? () => handleExpandClick(item.id) : () => router.push(item.href!)}
             sx={{
-              pl: `${paddingLeft}px`,
-              borderRadius: 1.5,
+              pl: `${paddingLeft + 8}px`,
+              pr: 2,
+              py: 1.5,
+              borderRadius: 1,
               mx: 0,
               my: 0,
-              backgroundColor: isActive ? 'primary.main' : 'transparent',
-              color: isActive ? 'primary.contrastText' : 'text.primary',
-              transition: 'all 0.2s ease-in-out',
+              minHeight: 48,
+              background: isActive
+                ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                : 'transparent',
+              color: isActive ? 'white' : 'text.primary',
+              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              position: 'relative',
+              overflow: 'hidden',
+              '&::before': isActive
+                ? {
+                    content: '""',
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background:
+                      'linear-gradient(45deg, rgba(255,255,255,0.1) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.1) 75%, transparent 75%, transparent)',
+                    backgroundSize: '20px 20px',
+                    opacity: 0.3,
+                  }
+                : {},
               '&:hover': {
-                backgroundColor: isActive ? 'primary.dark' : 'action.hover',
-                color: isActive ? 'white' : 'inherit',
+                backgroundColor: isActive ? undefined : alpha('#667eea', 0.08),
+                transform: 'translateX(4px)',
+                boxShadow: isActive
+                  ? '0 8px 25px -8px rgba(102, 126, 234, 0.4)'
+                  : '0 4px 12px -4px rgba(0, 0, 0, 0.1)',
                 '& .MuiListItemText-primary': {
-                  color: isActive ? 'white' : 'text.primary',
+                  color: isActive ? 'white' : '#667eea',
+                  fontWeight: isActive ? 600 : 500,
                 },
                 '& .MuiListItemIcon-root': {
-                  color: isActive ? 'white' : 'text.secondary',
+                  color: isActive ? 'white' : '#667eea',
+                  transform: 'scale(1.1)',
                 },
               },
             }}
@@ -399,37 +455,77 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
             <ListItemIcon
               sx={{
                 padding: 0,
-                minWidth: 40,
-                color: isActive ? 'primary.contrastText' : 'text.secondary',
-                transition: 'color 0.2s ease-in-out',
+                minWidth: 50,
+                color: isActive ? 'white' : 'text.secondary',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
             >
               {item.icon}
             </ListItemIcon>
             <ListItemText
-              primary={item.label}
-              primaryTypographyProps={{
-                fontSize: '0.875rem',
-                fontWeight: 500,
-                color: 'inherit',
-              }}
+              primary={
+                <Box display="flex" alignItems="center" gap={1}>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontSize: '0.875rem',
+                      fontWeight: isActive ? 600 : 500,
+                      color: 'inherit',
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    {item.label}
+                  </Typography>
+                  {/* {item.id === 'ai-wordflow' && (
+                    <Chip
+                      label="AI"
+                      size="small"
+                      sx={{
+                        height: 20,
+                        fontSize: '0.6rem',
+                        fontWeight: 700,
+                        bgcolor: isActive ? alpha('#fff', 0.2) : alpha('#667eea', 0.1),
+                        color: isActive ? 'white' : '#667eea',
+                        border: `1px solid ${isActive ? alpha('#fff', 0.3) : alpha('#667eea', 0.3)}`,
+                        animation: `${floatAnimation} 3s ease-in-out infinite`,
+                        '& .MuiChip-label': {
+                          px: 0.8,
+                        },
+                      }}
+                    />
+                  )} */}
+                </Box>
+              }
             />
             {item.badge && (
               <Badge
                 badgeContent={item.badge}
                 sx={{
                   '& .MuiBadge-badge': {
-                    backgroundColor: tokens.colors.primary[400],
+                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                     color: 'white',
-                    fontSize: '0.75rem',
-                    height: 18,
-                    minWidth: 18,
+                    fontSize: '0.7rem',
+                    fontWeight: 600,
+                    height: 20,
+                    minWidth: 20,
+                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.4)',
                   },
                 }}
               />
             )}
             {hasChildren && (
-              <Box sx={{ ml: 1 }}>{isExpanded ? <ExpandLess /> : <ExpandMore />}</Box>
+              <Box
+                sx={{
+                  ml: 1,
+                  transition: 'transform 0.3s ease',
+                  transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                }}
+              >
+                <ChevronDown size={18} />
+              </Box>
             )}
           </ListItemButton>
         </ListItem>
@@ -446,51 +542,83 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
 
   const drawer = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-        <Typography
-          variant="h6"
-          sx={{
-            fontWeight: 700,
-            color: 'text.primary',
-            fontSize: '1.25rem',
-          }}
-        >
-          Status{' '}
-          <Box
-            component="span"
-            sx={{
-              color: tokens.colors.primary[400],
-              display: 'inline-block',
-              opacity: 0,
-              animation: `${aiPopIn} 700ms cubic-bezier(0.22, 1, 0.36, 1) forwards`,
-              animationDelay: '1.8s',
-              willChange: 'transform, opacity',
-            }}
-          >
-            AI
+      {/* Enhanced Header with Gradient */}
+      <Box
+        sx={{
+          p: 3,
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          borderBottom: 'none',
+          position: 'relative',
+          overflow: 'hidden',
+          '&::before': {
+            content: '""',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background:
+              'url("data:image/svg+xml,%3Csvg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"%3E%3Cg fill="none" fill-rule="evenodd"%3E%3Cg fill="%239C92AC" fill-opacity="0.05"%3E%3Cpath d="m36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")',
+            opacity: 0.1,
+          },
+        }}
+      >
+        <Box position="relative" zIndex={2}>
+          <Box display="flex" alignItems="center" gap={2} mb={1}>
+            <Avatar
+              sx={{
+                width: 40,
+                height: 40,
+                bgcolor: alpha('#fff', 0.2),
+                border: `2px solid ${alpha('#fff', 0.3)}`,
+              }}
+            >
+              <Brain size={20} color="white" />
+            </Avatar>
+            <Box>
+              <Typography
+                variant="h5"
+                sx={{
+                  fontWeight: 800,
+                  color: 'white',
+                  fontSize: '1.5rem',
+                  lineHeight: 1,
+                }}
+              >
+                Status AI
+              </Typography>
+            </Box>
           </Box>
-        </Typography>
+        </Box>
       </Box>
 
-      <Box sx={{ p: 2 }}>
+      {/* Enhanced Search */}
+      <Box sx={{ p: 2, pt: 2 }}>
         <Paper
           component="form"
           sx={{
             display: 'flex',
             alignItems: 'center',
             width: '100%',
-            backgroundColor: 'action.hover',
-            border: 1,
-            borderColor: 'divider',
-            borderRadius: 1,
+            backgroundColor: alpha('#f8fafc', 0.8),
+            border: `1px solid ${alpha('#667eea', 0.2)}`,
+            borderRadius: 2,
             boxShadow: 'none',
+            transition: 'all 0.3s ease',
             '&:hover': {
-              backgroundColor: 'action.selected',
+              backgroundColor: alpha('#667eea', 0.05),
+              borderColor: alpha('#667eea', 0.4),
+              boxShadow: `0 4px 12px -4px ${alpha('#667eea', 0.2)}`,
+            },
+            '&:focus-within': {
+              backgroundColor: 'white',
+              borderColor: '#667eea',
+              boxShadow: `0 4px 12px -4px ${alpha('#667eea', 0.3)}`,
             },
           }}
         >
-          <IconButton sx={{ p: '6px' }} aria-label="search">
-            <SearchIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+          <IconButton sx={{ p: '8px' }} aria-label="search">
+            <Search size={18} color="#667eea" />
           </IconButton>
           <InputBase
             sx={{
@@ -498,12 +626,14 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
               flex: 1,
               fontSize: '0.875rem',
               color: 'text.primary',
+              fontWeight: 500,
               '& input::placeholder': {
                 color: 'text.secondary',
-                opacity: 1,
+                opacity: 0.8,
+                fontWeight: 400,
               },
             }}
-            placeholder="Search..."
+            placeholder="Search tools and features..."
             value={searchValue}
             onChange={e => setSearchValue(e.target.value)}
             inputProps={{ 'aria-label': 'search' }}
@@ -511,23 +641,33 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
         </Paper>
       </Box>
 
-      <Box sx={{ flex: 1, overflow: 'auto' }}>
-        <List sx={{ paddingLeft: 0, paddingRight: 2 }}>
-          {navigationItems.map(item => renderNavigationItem(item))}
-        </List>
+      {/* Navigation with better spacing */}
+      <Box sx={{ flex: 1, overflow: 'auto', px: 0.25 }}>
+        <List sx={{ py: 1 }}>{navigationItems.map(item => renderNavigationItem(item))}</List>
       </Box>
 
-      <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
+      {/* Enhanced User Profile Section */}
+      <Box
+        sx={{
+          p: 2,
+          borderTop: `1px solid ${alpha('#e5e7eb', 0.5)}`,
+          background: alpha('#f8fafc', 0.5),
+        }}
+      >
         <ListItem disablePadding>
           <ListItemButton
             onClick={handleProfileClick}
             sx={{
-              borderRadius: 1,
+              borderRadius: 2,
+              p: 1.5,
+              transition: 'all 0.3s ease',
               '&:hover': {
-                backgroundColor: 'action.hover',
-                // Ensure text colors have enough contrast on hover
+                backgroundColor: alpha('#667eea', 0.08),
+                transform: 'translateY(-2px)',
+                boxShadow: `0 4px 12px -4px ${alpha('#667eea', 0.3)}`,
                 '& .MuiListItemText-primary': {
-                  color: 'text.primary',
+                  color: '#667eea',
+                  fontWeight: 600,
                 },
                 '& .MuiListItemText-secondary': {
                   color: 'text.secondary',
@@ -535,29 +675,55 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
               },
             }}
           >
-            <ListItemIcon sx={{ minWidth: 40 }}>
+            <ListItemIcon sx={{ minWidth: 48 }}>
               <Avatar
                 sx={{
-                  width: 32,
-                  height: 32,
-                  backgroundColor: tokens.colors.primary[400],
-                  fontSize: '0.875rem',
+                  width: 40,
+                  height: 40,
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  fontSize: '1rem',
+                  fontWeight: 600,
+                  border: `2px solid ${alpha('#667eea', 0.2)}`,
+                  boxShadow: `0 4px 12px -4px ${alpha('#667eea', 0.4)}`,
                 }}
               >
-                {user?.username ? user.username.charAt(0).toUpperCase() : '?'}
+                {user?.username ? user.username.charAt(0).toUpperCase() : <User size={18} />}
               </Avatar>
             </ListItemIcon>
             <ListItemText
-              primary={user?.username || 'Unknown User'}
+              primary={
+                <Box display="flex" alignItems="center" gap={1}>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontSize: '0.875rem',
+                      fontWeight: 600,
+                      color: 'text.primary',
+                    }}
+                  >
+                    {user?.username || 'Unknown User'}
+                  </Typography>
+                  <Chip
+                    label="Pro"
+                    size="small"
+                    sx={{
+                      height: 16,
+                      fontSize: '0.6rem',
+                      fontWeight: 700,
+                      bgcolor: alpha('#10b981', 0.1),
+                      color: '#10b981',
+                      '& .MuiChip-label': {
+                        px: 0.6,
+                      },
+                    }}
+                  />
+                </Box>
+              }
               secondary={user?.email || 'No email'}
-              primaryTypographyProps={{
-                fontSize: '0.875rem',
-                fontWeight: 500,
-                color: 'text.primary',
-              }}
               secondaryTypographyProps={{
                 fontSize: '0.75rem',
                 color: 'text.secondary',
+                fontWeight: 400,
               }}
             />
           </ListItemButton>
@@ -575,11 +741,12 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
           ml: { md: `${DRAWER_WIDTH}px` },
           backgroundColor: 'background.paper',
           color: 'text.primary',
-          boxShadow: tokens.shadows[1],
-          borderBottom: `1px solid ${tokens.colors.grey[200]}`,
+          boxShadow: `0 1px 3px 0 ${alpha('#000', 0.1)}`,
+          borderBottom: `1px solid ${alpha('#e5e7eb', 0.8)}`,
+          backdropFilter: 'blur(8px)',
         }}
       >
-        <Toolbar sx={{ minHeight: 64 }}>
+        <Toolbar sx={{ minHeight: 72, px: 3 }}>
           <IconButton
             color="inherit"
             aria-label="open drawer"
@@ -593,33 +760,69 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
           <Box sx={{ flex: 1 }}>
             {breadcrumbs.length > 0 ? (
               <Breadcrumbs
-                separator={<ChevronRightIcon fontSize="small" />}
+                separator={<ChevronRight size={16} color="#6b7280" />}
                 aria-label="breadcrumb"
-                sx={{ mb: 0.5 }}
+                sx={{ mb: 1 }}
               >
                 <Link
                   underline="hover"
                   color="inherit"
                   href="/"
-                  sx={{ display: 'flex', alignItems: 'center' }}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    color: '#6b7280',
+                    fontSize: '0.875rem',
+                    fontWeight: 500,
+                    '&:hover': {
+                      color: '#667eea',
+                    },
+                  }}
                 >
-                  <HomeIcon sx={{ mr: 0.5, fontSize: 16 }} />
+                  <Home size={16} />
                   Home
                 </Link>
-                {breadcrumbs.map((crumb, index) => (
-                  <Link
-                    key={index}
-                    underline="hover"
-                    color={index === breadcrumbs.length - 1 ? 'text.primary' : 'inherit'}
-                    href={crumb.href}
-                    sx={{ fontSize: '0.875rem' }}
-                  >
-                    {crumb.label}
-                  </Link>
-                ))}
+                {breadcrumbs.map((crumb, index) => {
+                  const IconComponent = crumb.icon;
+                  return (
+                    <Link
+                      key={index}
+                      underline="hover"
+                      color={index === breadcrumbs.length - 1 ? 'text.primary' : 'inherit'}
+                      href={crumb.href}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 0.5,
+                        fontSize: '0.875rem',
+                        fontWeight: index === breadcrumbs.length - 1 ? 600 : 500,
+                        color: index === breadcrumbs.length - 1 ? '#667eea' : '#6b7280',
+                        '&:hover': {
+                          color: '#667eea',
+                        },
+                      }}
+                    >
+                      {IconComponent && <IconComponent size={16} />}
+                      {crumb.label}
+                    </Link>
+                  );
+                })}
               </Breadcrumbs>
             ) : null}
-            <Typography variant="h5" component="h1" sx={{ fontWeight: 600 }}>
+            <Typography
+              variant="h4"
+              component="h1"
+              sx={{
+                fontWeight: 700,
+                fontSize: '1.75rem',
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                backgroundClip: 'text',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                lineHeight: 1.2,
+              }}
+            >
               {title}
             </Typography>
           </Box>
@@ -628,15 +831,46 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2 }}>{actions}</Box>
           )}
 
-          <IconButton color="inherit" sx={{ mr: 1 }}>
-            <Badge badgeContent={4} color="error">
-              <NotificationsIcon />
-            </Badge>
-          </IconButton>
+          <Stack direction="row" spacing={1}>
+            <IconButton
+              color="inherit"
+              sx={{
+                color: 'text.secondary',
+                '&:hover': {
+                  backgroundColor: alpha('#667eea', 0.08),
+                  color: '#667eea',
+                },
+              }}
+            >
+              <Badge
+                badgeContent={3}
+                sx={{
+                  '& .MuiBadge-badge': {
+                    background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                    color: 'white',
+                    fontSize: '0.7rem',
+                    fontWeight: 600,
+                    boxShadow: '0 2px 8px rgba(239, 68, 68, 0.4)',
+                  },
+                }}
+              >
+                <Bell size={20} />
+              </Badge>
+            </IconButton>
 
-          <IconButton color="inherit">
-            <HelpIcon />
-          </IconButton>
+            <IconButton
+              color="inherit"
+              sx={{
+                color: 'text.secondary',
+                '&:hover': {
+                  backgroundColor: alpha('#667eea', 0.08),
+                  color: '#667eea',
+                },
+              }}
+            >
+              <HelpCircle size={20} />
+            </IconButton>
+          </Stack>
         </Toolbar>
       </AppBar>
 
@@ -653,7 +887,8 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
               boxSizing: 'border-box',
               width: DRAWER_WIDTH,
               backgroundColor: 'background.paper',
-              borderRight: `1px solid ${tokens.colors.grey[200]}`,
+              borderRight: `1px solid ${alpha('#e5e7eb', 0.8)}`,
+              boxShadow: `2px 0 8px 0 ${alpha('#000', 0.05)}`,
             },
           }}
         >
@@ -684,7 +919,7 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
             mt: 1.5,
             minWidth: 200,
             borderRadius: 2,
-            boxShadow: tokens.shadows[4],
+            boxShadow: `0 10px 25px -5px ${alpha('#000', 0.1)}`,
           },
         }}
       >
