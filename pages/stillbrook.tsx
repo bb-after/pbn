@@ -1497,11 +1497,11 @@ function StillbrookContent() {
     console.log(`🧹 Cleaning up ${existingControls.length} existing controls`);
     existingControls.forEach(control => control.remove());
 
-    const elements = doc.querySelectorAll('[data-rpos]');
-    console.log(`🎯 Found ${elements.length} elements with data-rpos attribute`);
+    const elements = doc.querySelectorAll('.MjjYud');
+    console.log(`🎯 Found ${elements.length} elements with MjjYud class`);
 
     if (elements.length === 0) {
-      console.log('⚠️ No elements with data-rpos found! Checking for any divs...');
+      console.log('⚠️ No elements with MjjYud class found! Checking for any divs...');
       const allDivs = doc.querySelectorAll('div');
       console.log(`📦 Found ${allDivs.length} total div elements in iframe`);
 
@@ -1522,7 +1522,7 @@ function StillbrookContent() {
       console.log(`✨ Processing element ${index}:`, {
         tagName: el.tagName,
         className: el.className,
-        dataRpos: el.getAttribute('data-rpos'),
+        hasTargetClass: el.classList.contains('MjjYud'),
         innerHTML: el.innerHTML.substring(0, 100) + '...',
       });
 
@@ -1536,7 +1536,7 @@ function StillbrookContent() {
       el.style.cursor = 'pointer';
 
       // Add a visible indicator that this element is interactive
-      el.style.boxShadow = 'inset 0 0 0 1px rgba(33, 150, 243, 0.3)';
+      //el.style.boxShadow = 'inset 0 0 0 1px rgba(33, 150, 243, 0.3)';
       // el.style.backgroundColor = 'rgba(33, 150, 243, 0.05)';
 
       console.log(`🎨 Applied styles to element ${index}`);
@@ -1546,7 +1546,7 @@ function StillbrookContent() {
       overlay.className = 'stillbrook-controls';
       overlay.style.cssText = `
         position: absolute;
-        top: 50%;
+        top: 20%;
         left: 50%;
         transform: translate(-50%, -50%);
         z-index: 10000;
@@ -1649,6 +1649,7 @@ function StillbrookContent() {
         console.log(`🐭 Mouse entered element ${index}`, { interactiveMode });
         if (!interactiveMode) return;
         el.style.boxShadow = 'inset 0 0 0 2px #2196f3';
+        el.style.opacity = '0.8';
         overlay.style.display = 'flex';
         console.log(`👁️ Showing overlay for element ${index}`);
       });
@@ -1660,12 +1661,13 @@ function StillbrookContent() {
           el.classList.contains('negative-result-highlight') ||
           el.classList.contains('positive-result-highlight');
         if (!hasHighlight) {
-          el.style.boxShadow = 'inset 0 0 0 1px rgba(33, 150, 243, 0.3)';
+          el.style.boxShadow = ''; //inset 0 0 0 1px rgba(33, 150, 243, 0.3)';
           // el.style.backgroundColor = 'rgba(33, 150, 243, 0.05)';
         } else {
           // Keep existing highlight styles but remove hover effect
           el.style.boxShadow = el.style.boxShadow.replace('inset 0 0 0 2px #2196f3', '');
         }
+        el.style.opacity = '';
         overlay.style.display = 'none';
         console.log(`👁️ Hiding overlay for element ${index}`);
       });
@@ -1694,7 +1696,7 @@ function StillbrookContent() {
   const removeHighlight = (element: HTMLElement, doc?: Document) => {
     element.classList.remove('positive-result-highlight', 'negative-result-highlight');
     element.style.border = '';
-    element.style.boxShadow = 'inset 0 0 0 1px rgba(33, 150, 243, 0.3)';
+    element.style.boxShadow = ''; //inset 0 0 0 1px rgba(33, 150, 243, 0.3)';
   };
 
   const cleanupInteractiveMode = () => {
@@ -1705,7 +1707,7 @@ function StillbrookContent() {
     ) as NodeListOf<HTMLIFrameElement>;
     iframes.forEach(iframe => {
       if (iframe.contentDocument) {
-        const elements = iframe.contentDocument.querySelectorAll('[data-rpos]');
+        const elements = iframe.contentDocument.querySelectorAll('.MjjYud');
         console.log(`🧽 Cleaning ${elements.length} elements in iframe`);
         elements.forEach(element => {
           const el = element as HTMLElement;
