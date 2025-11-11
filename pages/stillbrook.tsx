@@ -1681,6 +1681,10 @@ function StillbrookContent() {
   const addHighlight = (element: HTMLElement, type: 'positive' | 'negative') => {
     const className =
       type === 'positive' ? 'positive-result-highlight' : 'negative-result-highlight';
+    const oppositeClass =
+      type === 'positive' ? 'negative-result-highlight' : 'positive-result-highlight';
+
+    element.classList.remove(oppositeClass);
     element.classList.add(className);
 
     // Add the appropriate highlight styles

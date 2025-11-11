@@ -25,11 +25,12 @@ interface RunSearchResult {
 }
 
 const sentimentAnalyzer = new Sentiment();
+const NEGATIVE_SENTIMENT_THRESHOLD = -2;
+const POSITIVE_SENTIMENT_THRESHOLD = 2;
 
 export async function runSearch({ user, request, startTime }: RunSearchParams): Promise<RunSearchResult> {
   console.log('Running search for:', request);
-  debugger;
-    const {
+  const {
     keyword,
     url,
     urls = [],
@@ -241,14 +242,8 @@ export async function runSearch({ user, request, startTime }: RunSearchParams): 
         matchedResults: [],
         results: organicResults,
         totalResults: organicResults.length,
-        htmlPreview: generateCombinedPagePreview(
-          organicResults,
-          new Set(),
-          new Set(),
-          keyword,
-          searchType === 'isch'
-        ),
-        page2HtmlPreview: includePage2 ? '' : undefined,
+        htmlPreview,
+        page2HtmlPreview: includePage2 ? page2HtmlPreview || undefined : undefined,
         noMatches: true,
         searchType: 'combined',
       },
@@ -417,7 +412,7 @@ export function processHighlightMatches(params: HighlightMatchParams) {
         return false;
       }
       const resultSentiment = sentimentAnalyzer.analyze(textToAnalyze);
-      return resultSentiment.score < 0;
+      return resultSentiment.score <= NEGATIVE_SENTIMENT_THRESHOLD;
     });
 
     negativeMatches = [...negativeMatches, ...sentimentMatches];
@@ -466,7 +461,7 @@ export function processHighlightMatches(params: HighlightMatchParams) {
         return false;
       }
       const resultSentiment = sentimentAnalyzer.analyze(textToAnalyze);
-      return resultSentiment.score > 0;
+      return resultSentiment.score >= POSITIVE_SENTIMENT_THRESHOLD;
     });
 
     positiveMatches = [...positiveMatches, ...sentimentMatches];

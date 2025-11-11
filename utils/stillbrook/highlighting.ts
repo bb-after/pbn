@@ -88,6 +88,8 @@ const GLOBAL_HIGHLIGHT_CSS = `
 
 const RESULT_CONTAINER_CLASS = 'MjjYud';
 const EXCLUDED_CONTAINER_WRAPPER_CLASS = 'ULSxyf';
+const NEGATIVE_HIGHLIGHT_CLASS = 'negative-result-highlight';
+const POSITIVE_HIGHLIGHT_CLASS = 'positive-result-highlight';
 
 function ensureHighlightStylesInjected(html: string): string {
   if (html.includes('stillbrook-highlight-styles')) {
@@ -130,7 +132,7 @@ export function addCombinedHighlighting(
       highlightedHtml,
       negativeMatches,
       '#f44336',
-      'negative-result-highlight',
+      NEGATIVE_HIGHLIGHT_CLASS,
       isImageSearch,
       searchTypeParam,
       negativeKeywords
@@ -143,7 +145,7 @@ export function addCombinedHighlighting(
       highlightedHtml,
       positiveMatches,
       '#4caf50',
-      'positive-result-highlight',
+      POSITIVE_HIGHLIGHT_CLASS,
       isImageSearch,
       searchTypeParam,
       positiveKeywords
@@ -756,13 +758,46 @@ function addClassToContainerHtml(
   }
 
   const originalTag = tagMatch[0];
-  const updatedTag = injectClassIntoTag(originalTag, className);
+  const hasNegative = originalTag.includes(NEGATIVE_HIGHLIGHT_CLASS);
+  const hasPositive = originalTag.includes(POSITIVE_HIGHLIGHT_CLASS);
+
+  if (className === POSITIVE_HIGHLIGHT_CLASS && hasNegative) {
+    return { html: containerHtml, applied: true };
+  }
+
+  let updatedTag = originalTag;
+
+  if (className === NEGATIVE_HIGHLIGHT_CLASS && hasPositive) {
+    updatedTag = removeClassFromTag(updatedTag, POSITIVE_HIGHLIGHT_CLASS);
+  }
+
+  updatedTag = injectClassIntoTag(updatedTag, className);
 
   if (updatedTag === originalTag) {
-    return { html: containerHtml, applied: false };
+    return { html: containerHtml, applied: originalTag.includes(className) };
   }
 
   return { html: containerHtml.replace(originalTag, updatedTag), applied: true };
+}
+
+function removeClassFromTag(tag: string, className: string): string {
+  const classAttrRegex = /class=["']([^"']*)["']/i;
+  const match = tag.match(classAttrRegex);
+
+  if (!match) {
+    return tag;
+  }
+
+  const remainingClasses = match[1]
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter(existingClass => existingClass !== className);
+
+  if (remainingClasses.length === 0) {
+    return tag.replace(classAttrRegex, '').replace(/\s+>/, '>');
+  }
+
+  return tag.replace(classAttrRegex, `class="${remainingClasses.join(' ')}"`);
 }
 
 function injectClassIntoTag(tag: string, className: string): string {
