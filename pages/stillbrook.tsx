@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import {
   TextField,
@@ -40,6 +40,10 @@ import ClientDropdown from '../components/ClientDropdown';
 import Image from 'next/image';
 import googleDomainsData from '../google-domains.json';
 import html2canvas from 'html2canvas';
+import {
+  EXCLUDED_CONTAINER_WRAPPER_CLASS,
+  getHighlightSelectors,
+} from '../utils/stillbrook/selectors';
 
 interface SerpApiResult {
   position: number;
@@ -87,7 +91,7 @@ const SEARCH_TYPES: SearchType[] = [
   // { value: 'lcl', name: 'Local', description: 'Google Local API' },
   { value: 'vid', name: 'Videos', description: 'Google Videos API' },
   { value: 'nws', name: 'News', description: 'Google News API' },
-  { value: 'shop', name: 'Shopping', description: 'Google Shopping API' },
+  // { value: 'shop', name: 'Shopping', description: 'Google Shopping API' },
 ];
 
 // Common Google search languages
@@ -395,6 +399,10 @@ function StillbrookContent() {
   const [isUpdatingSearch, setIsUpdatingSearch] = useState(false);
   const [showUpdateOptions, setShowUpdateOptions] = useState(false);
   const [includePage2, setIncludePage2] = useState(false);
+
+  const highlightSelectors = useMemo(() => getHighlightSelectors(searchType || ''), [searchType]);
+  const containerClass = highlightSelectors.containerClass;
+  const excludedWrapperClass = EXCLUDED_CONTAINER_WRAPPER_CLASS;
 
   // Interactive highlighting state
   const [interactiveMode, setInteractiveMode] = useState(false);
@@ -1496,12 +1504,99 @@ function StillbrookContent() {
     const existingControls = doc.querySelectorAll('.stillbrook-controls');
     console.log(`🧹 Cleaning up ${existingControls.length} existing controls`);
     existingControls.forEach(control => control.remove());
+    // Get elements by class, data attributes, and additional classes
+    const classCandidates = Array.from(
+      doc.querySelectorAll(`div.${containerClass}`) as NodeListOf<HTMLElement>
+    );
 
-    const elements = doc.querySelectorAll('.MjjYud');
-    console.log(`🎯 Found ${elements.length} elements with MjjYud class`);
+    const dataAttributeCandidates = highlightSelectors.dataAttributes
+      ? highlightSelectors.dataAttributes.flatMap(dataAttr => {
+          console.log(`🔍 Searching for elements with data attribute: ${dataAttr}`);
+          // First try divs, then try any element if no divs found
+          let elements = Array.from(
+            doc.querySelectorAll(`div[${dataAttr}]`) as NodeListOf<HTMLElement>
+          );
+          if (elements.length === 0) {
+            console.log(`📦 No divs with ${dataAttr}, trying any element...`);
+            elements = Array.from(doc.querySelectorAll(`[${dataAttr}]`) as NodeListOf<HTMLElement>);
+          }
+          console.log(`🎯 Found ${elements.length} elements with ${dataAttr}`);
+          return elements;
+        })
+      : [];
+
+    const additionalClassCandidates = highlightSelectors.additionalClasses
+      ? highlightSelectors.additionalClasses.flatMap(className => {
+          console.log(`🔍 Searching for elements with class: ${className}`);
+          // First try divs, then try any element if no divs found
+          let elements = Array.from(
+            doc.querySelectorAll(`div.${className}`) as NodeListOf<HTMLElement>
+          );
+          if (elements.length === 0) {
+            console.log(`📦 No divs with class ${className}, trying any element...`);
+            elements = Array.from(doc.querySelectorAll(`.${className}`) as NodeListOf<HTMLElement>);
+          }
+          console.log(`🎯 Found ${elements.length} elements with class ${className}`);
+          return elements;
+        })
+      : [];
+
+    // Apply exclusion filter only to classCandidates, not to data attributes or additional classes
+    const filteredClassCandidates = classCandidates.filter(
+      el => !el.closest(`.${excludedWrapperClass}`)
+    );
+
+    // Combine all candidates (only main class candidates are filtered by excluded wrapper)
+    const candidateElements = [
+      ...new Set([
+        ...filteredClassCandidates,
+        ...dataAttributeCandidates,
+        ...additionalClassCandidates,
+      ]),
+    ];
+
+    // Apply text content filter to all elements
+    const elements = candidateElements.filter(el => el.textContent?.trim());
+
+    console.log(
+      `🎯 Found ${elements.length} eligible elements (${classCandidates.length} by main class, ${dataAttributeCandidates.length} by data attributes, ${additionalClassCandidates.length} by additional classes, ${candidateElements.length} total after dedup)`
+    );
+
+    // Let's check what data-news-doc-id elements exist in the document
+    console.log(`🔍 Checking all elements with data-news-doc-id in document:`);
+    const allNewsDocElements = doc.querySelectorAll('[data-news-doc-id]');
+    console.log(`📊 Total [data-news-doc-id] elements in document: ${allNewsDocElements.length}`);
+    Array.from(allNewsDocElements).forEach((el, index) => {
+      console.log(`🗞️ data-news-doc-id element ${index}:`, {
+        tagName: el.tagName,
+        className: el.className,
+        id: el.id,
+        dataNewsDocId: el.getAttribute('data-news-doc-id'),
+        textContent: el.textContent?.substring(0, 50) + '...',
+        hasContent: !!el.textContent?.trim(),
+        isInExcludedWrapper: !!el.closest(`.${excludedWrapperClass}`),
+      });
+    });
+
+    // Let's also check what additional class elements exist
+    console.log(`🔍 Checking all elements with b2Rnsc class in document:`);
+    const allB2RnscElements = doc.querySelectorAll('.b2Rnsc');
+    console.log(`📊 Total .b2Rnsc elements in document: ${allB2RnscElements.length}`);
+    Array.from(allB2RnscElements).forEach((el, index) => {
+      console.log(`🎯 b2Rnsc element ${index}:`, {
+        tagName: el.tagName,
+        className: el.className,
+        id: el.id,
+        textContent: el.textContent?.substring(0, 50) + '...',
+        hasContent: !!el.textContent?.trim(),
+        isInExcludedWrapper: !!el.closest(`.${excludedWrapperClass}`),
+      });
+    });
 
     if (elements.length === 0) {
-      console.log('⚠️ No elements with MjjYud class found! Checking for any divs...');
+      console.log(
+        `⚠️ No eligible elements found (searched for ${containerClass} class, data attributes, and additional classes)! Checking for any divs...`
+      );
       const allDivs = doc.querySelectorAll('div');
       console.log(`📦 Found ${allDivs.length} total div elements in iframe`);
 
@@ -1517,12 +1612,11 @@ function StillbrookContent() {
         });
     }
 
-    elements.forEach((element, index) => {
-      const el = element as HTMLElement;
+    elements.forEach((el, index) => {
       console.log(`✨ Processing element ${index}:`, {
         tagName: el.tagName,
         className: el.className,
-        hasTargetClass: el.classList.contains('MjjYud'),
+        hasTargetClass: el.classList.contains(containerClass),
         innerHTML: el.innerHTML.substring(0, 100) + '...',
       });
 
@@ -1711,9 +1805,30 @@ function StillbrookContent() {
     ) as NodeListOf<HTMLIFrameElement>;
     iframes.forEach(iframe => {
       if (iframe.contentDocument) {
-        const elements = iframe.contentDocument.querySelectorAll('.MjjYud');
-        console.log(`🧽 Cleaning ${elements.length} elements in iframe`);
-        elements.forEach(element => {
+        // Get cleanup elements by class, data attributes, and additional classes
+        const classElements = iframe.contentDocument.querySelectorAll(`div.${containerClass}`);
+
+        const dataAttributeElements = highlightSelectors.dataAttributes
+          ? highlightSelectors.dataAttributes.flatMap(dataAttr =>
+              Array.from(iframe.contentDocument!.querySelectorAll(`div[${dataAttr}]`))
+            )
+          : [];
+
+        const additionalClassElements = highlightSelectors.additionalClasses
+          ? highlightSelectors.additionalClasses.flatMap(className =>
+              Array.from(iframe.contentDocument!.querySelectorAll(`.${className}`))
+            )
+          : [];
+
+        const cleanupElements = [
+          ...new Set([
+            ...Array.from(classElements),
+            ...dataAttributeElements,
+            ...additionalClassElements,
+          ]),
+        ];
+        console.log(`🧽 Cleaning ${cleanupElements.length} elements in iframe`);
+        cleanupElements.forEach(element => {
           const el = element as HTMLElement;
 
           // Remove interactive styles
@@ -2333,8 +2448,8 @@ function StillbrookContent() {
                         : ''}
                     </Alert>
 
-                    {/* Download CTA Section - Above the fold */}
-                    <IntercomCard>
+                    {/* Download CTA Section - Sticky */}
+                    <IntercomCard sx={{ position: 'sticky', top: 0, zIndex: 10 }}>
                       <Stack spacing={2}>
                         <Typography variant="h6" sx={{ fontWeight: 600, color: 'primary.main' }}>
                           📸 Your Screenshot is Ready!
@@ -2401,20 +2516,6 @@ function StillbrookContent() {
                             }}
                           >
                             {isGeneratingImage ? 'Generating...' : 'Download PNG'}
-                          </Button>
-
-                          {/* Download HTML */}
-                          <Button
-                            variant="outlined"
-                            onClick={handleDownloadHTML}
-                            startIcon={<CodeIcon />}
-                            sx={{
-                              borderRadius: 1,
-                              textTransform: 'none',
-                              fontWeight: 500,
-                            }}
-                          >
-                            Download HTML
                           </Button>
 
                           {/* Save Search */}
