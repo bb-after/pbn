@@ -1,3 +1,10 @@
+import {
+  DEFAULT_HIGHLIGHT_SELECTORS,
+  EXCLUDED_CONTAINER_WRAPPER_CLASS,
+  HighlightSelectors,
+  getHighlightSelectors,
+} from './selectors';
+
 export interface SerpApiResult {
   position: number;
   title: string;
@@ -86,10 +93,10 @@ const GLOBAL_HIGHLIGHT_CSS = `
 </style>
 `;
 
-const RESULT_CONTAINER_CLASS = 'MjjYud';
-const EXCLUDED_CONTAINER_WRAPPER_CLASS = 'ULSxyf';
-const NEGATIVE_HIGHLIGHT_CLASS = 'negative-result-highlight';
-const POSITIVE_HIGHLIGHT_CLASS = 'positive-result-highlight';
+export const NEGATIVE_HIGHLIGHT_CLASS = 'negative-result-highlight';
+export const POSITIVE_HIGHLIGHT_CLASS = 'positive-result-highlight';
+
+export { EXCLUDED_CONTAINER_WRAPPER_CLASS };
 
 function ensureHighlightStylesInjected(html: string): string {
   if (html.includes('stillbrook-highlight-styles')) {
@@ -117,10 +124,10 @@ export function addCombinedHighlighting(
   console.log('HTML length:', rawHtml?.length || 'undefined');
   console.log('isImageSearch:', isImageSearch);
   console.log('searchTypeParam:', searchTypeParam);
-  console.log(
-    'First few negative matches:',
-    negativeMatches.slice(0, 2).map(match => ({ title: match.title, link: match.link }))
-  );
+  // console.log(
+  //   'First few negative matches:',
+  //   negativeMatches.slice(0, 2).map(match => ({ title: match.title, link: match.link }))
+  // );
 
   const { negativeKeywords = [], positiveKeywords = [] } = highlightOptions ?? {};
 
@@ -325,7 +332,14 @@ function applyHighlighting(
       }
     });
   } else {
-    highlightedHtml = applyEnhancedWebSearchHighlighting(highlightedHtml, matches, color, className, keywords);
+    highlightedHtml = applyEnhancedWebSearchHighlighting(
+      highlightedHtml,
+      matches,
+      color,
+      className,
+      keywords,
+      searchTypeParam
+    );
     return highlightedHtml;
   }
 
@@ -335,170 +349,54 @@ function applyHighlighting(
 function applyEnhancedWebSearchHighlighting(
   html: string,
   matches: SerpApiResult[],
-  color: string,
+  _color: string,
   className: string,
-  keywords?: string[]
+  keywords?: string[],
+  searchTypeParam?: string
 ): string {
   let highlightedHtml = html;
 
-  console.log(`🚀 Using enhanced position-based highlighting for ${matches.length} matches`);
+  const selectors = getHighlightSelectors(searchTypeParam);
+  const containerClass = selectors.containerClass ?? DEFAULT_HIGHLIGHT_SELECTORS.containerClass;
+  const linkClass = selectors.linkClass ?? DEFAULT_HIGHLIGHT_SELECTORS.linkClass;
+
+  console.log(`🚀 Using enhanced highlighting for ${matches.length} matches`, {
+    searchTypeParam,
+    containerClass,
+    linkClass,
+  });
 
   matches.forEach((result, index) => {
     try {
-      console.log(`🎯 Processing result ${index + 1} - Position: ${result.position}, Link: ${result.link}`);
+      if (!result?.link) {
+        console.warn(`Result ${index + 1} is missing a link. Skipping URL-based highlighting.`);
+        return;
+      }
 
-      const linkExistsInHtml = highlightedHtml.includes(result.link);
-      const linkExistsPartial = highlightedHtml.includes(result.link.substring(0, 50));
-      console.log(`🔗 Link exists in HTML: ${linkExistsInHtml}, Partial exists: ${linkExistsPartial}`);
+      const candidateLinks = new Set<string>();
+      candidateLinks.add(result.link);
 
       const resultData = result as { redirect_link?: string };
       if (typeof resultData.redirect_link === 'string') {
-        const redirectLink = resultData.redirect_link;
-        const redirectExists = highlightedHtml.includes(redirectLink);
-        console.log(
-          `🔀 Redirect link exists: ${redirectExists}, Redirect: ${redirectLink.substring(0, 100)}...`
-        );
-        if (!linkExistsInHtml && redirectExists) {
-          result = { ...result, link: redirectLink };
-        }
+        candidateLinks.add(resultData.redirect_link);
       }
-
-      const urlDomain = result.link.match(/https?:\/\/([^\/]+)/)?.[1] || '';
-      const domainExists = urlDomain && highlightedHtml.includes(urlDomain);
-      console.log(`🌐 Domain exists in HTML: ${domainExists}, Domain: ${urlDomain}`);
 
       let highlightAdded = false;
 
-      const escapedLink = escapeForRegex(result.link);
+      for (const candidateLink of candidateLinks) {
+        const attempt = highlightUsingStrategies({
+          html: highlightedHtml,
+          className,
+          selectors,
+          result,
+          candidateLink,
+          matchIndex: index,
+        });
 
-      const positionBasedPatterns = [
-        new RegExp(`(<div[^>]*class="[^"]*${RESULT_CONTAINER_CLASS}[^"]*"[^>]*>[\\s\\S]*?</div>)`, 'gi'),
-        new RegExp(`(<[^>]*data-result-index="${result.position - 1}"[^>]*>[\\s\\S]*?</[^>]*>)`, 'gi'),
-        new RegExp(`(<div[^>]*>[\\s\\S]*?href="${escapedLink}"[\\s\\S]*?</div>)`, 'gi'),
-        new RegExp(`(<article[^>]*>[\\s\\S]*?href="${escapedLink}"[\\s\\S]*?</article>)`, 'gi'),
-        new RegExp(`(<li[^>]*>[\\s\\S]*?href="${escapedLink}"[\\s\\S]*?</li>)`, 'gi'),
-        new RegExp(`(<section[^>]*>[\\s\\S]*?href="${escapedLink}"[\\s\\S]*?</section>)`, 'gi'),
-        new RegExp(`(<[^>]+>[\\s\\S]*?href="${escapedLink}"[\\s\\S]*?</[^>]+>)`, 'gi'),
-        new RegExp(`([\\s\\S]{0,200}href="${escapedLink}"[\\s\\S]{0,200})`, 'gi'),
-        urlDomain ? new RegExp(`([\\s\\S]{0,300}${escapeForRegex(urlDomain)}[\\s\\S]{0,300})`, 'gi') : null,
-      ].filter(Boolean) as RegExp[];
-
-      for (let patternIndex = 0; patternIndex < positionBasedPatterns.length && !highlightAdded; patternIndex++) {
-        const pattern = positionBasedPatterns[patternIndex];
-        pattern.lastIndex = 0;
-
-        let patternMatch: RegExpExecArray | null;
-        while (!highlightAdded && (patternMatch = pattern.exec(highlightedHtml))) {
-          const matchStart = patternMatch.index;
-          const matchEnd = matchStart + patternMatch[0].length;
-
-          console.log(
-            `🔍 Pattern ${patternIndex + 1} found match for result ${index + 1}`
-          );
-
-          const updateResult = applyClassToContainerAtOffset(highlightedHtml, matchStart, className, matchEnd);
-          if (updateResult.success) {
-            highlightedHtml = updateResult.html;
-              highlightAdded = true;
-              console.log(
-              `✅ Applied class-based highlight to result ${index + 1} using pattern ${patternIndex + 1}`
-              );
-          }
-        }
-      }
-
-      if (!highlightAdded && result.title) {
-        console.log(`🔍 Trying content-based targeting for result ${index + 1}`);
-        const titleText = escapeForRegex(result.title).substring(0, 50);
-
-        const contentPattern = new RegExp(
-          `(<div[^>]*class="[^"]*${RESULT_CONTAINER_CLASS}[^"]*"[^>]*>[\s\S]*?${titleText}[\s\S]*?</div>)`,
-          'gi'
-        );
-
-        let contentMatch: RegExpExecArray | null;
-        while (!highlightAdded && (contentMatch = contentPattern.exec(highlightedHtml))) {
-          const matchStart = contentMatch.index;
-          const matchEnd = matchStart + contentMatch[0].length;
-
-          const updateResult = applyClassToContainerAtOffset(highlightedHtml, matchStart, className, matchEnd);
-          if (updateResult.success) {
-            highlightedHtml = updateResult.html;
-            highlightAdded = true;
-            console.log(`✅ Applied content-based class highlight to result ${index + 1}`);
-          }
-        }
-      }
-
-      if (!highlightAdded) {
-        console.log(`🔄 Trying reverse DOM traversal for result ${index + 1}`);
-        const linkPattern = new RegExp(`<a[^>]*href="${escapedLink}"[^>]*>([\s\S]*?)</a>`, 'gi');
-        const linkMatches = highlightedHtml.match(linkPattern);
-
-        if (linkMatches && linkMatches.length > 0) {
-          const containerPattern = new RegExp(
-            `(<div[^>]*class="[^"]*${RESULT_CONTAINER_CLASS}[^"]*"[^>]*>[\s\S]*?${escapedLink}[\s\S]*?</div>)`,
-            'gi'
-          );
-
-          let containerMatch: RegExpExecArray | null;
-          while (!highlightAdded && (containerMatch = containerPattern.exec(highlightedHtml))) {
-            const matchStart = containerMatch.index;
-            const matchEnd = matchStart + containerMatch[0].length;
-
-            const updateResult = applyClassToContainerAtOffset(highlightedHtml, matchStart, className, matchEnd);
-            if (updateResult.success) {
-              highlightedHtml = updateResult.html;
-                  highlightAdded = true;
-              console.log(`✅ Applied reverse DOM class highlight to result ${index + 1}`);
-            }
-          }
-        }
-      }
-
-      if (!highlightAdded && result.displayed_link) {
-        console.log(`🌐 Trying domain-based targeting for result ${index + 1}`);
-        try {
-          const url = new URL(result.link);
-          const domain = escapeForRegex(url.hostname);
-
-          const domainPattern = new RegExp(
-            `(<div[^>]*class="[^"]*${RESULT_CONTAINER_CLASS}[^"]*"[^>]*>[\s\S]*?${domain}[\s\S]*?href="${escapedLink}"[\s\S]*?</div>)`,
-            'gi'
-          );
-
-          let domainMatch: RegExpExecArray | null;
-          while (!highlightAdded && (domainMatch = domainPattern.exec(highlightedHtml))) {
-            const matchStart = domainMatch.index;
-            const matchEnd = matchStart + domainMatch[0].length;
-
-            const updateResult = applyClassToContainerAtOffset(highlightedHtml, matchStart, className, matchEnd);
-            if (updateResult.success) {
-              highlightedHtml = updateResult.html;
-              highlightAdded = true;
-              console.log(`✅ Applied domain-based class highlight to result ${index + 1}`);
-            }
-          }
-        } catch (error) {
-          console.log(`Failed to parse URL for domain targeting: ${result.link}`);
-        }
-      }
-
-      if (!highlightAdded) {
-        console.log(`🚨 Using fallback link highlighting for result ${index + 1}`);
-        const linkPattern = new RegExp(`(<a[^>]*href="${escapedLink}"[^>]*>[\s\S]*?</a>)`, 'gi');
-
-        let linkMatch: RegExpExecArray | null;
-        while (!highlightAdded && (linkMatch = linkPattern.exec(highlightedHtml))) {
-          const matchStart = linkMatch.index;
-          const matchEnd = matchStart + linkMatch[0].length;
-
-          const updateResult = applyClassToContainerAtOffset(highlightedHtml, matchStart, className, matchEnd);
-          if (updateResult.success) {
-            highlightedHtml = updateResult.html;
+        if (attempt.success) {
+          highlightedHtml = attempt.html;
           highlightAdded = true;
-            console.log(`⚠️ Applied fallback class highlight to result ${index + 1}`);
-          }
+          break;
         }
       }
 
@@ -509,6 +407,9 @@ function applyEnhancedWebSearchHighlighting(
           title: result.title?.substring(0, 50) + '...',
           link: result.link,
           displayed_link: result.displayed_link,
+          searchTypeParam,
+          containerClass,
+          linkClass,
         });
       }
     } catch (error) {
@@ -517,7 +418,7 @@ function applyEnhancedWebSearchHighlighting(
   });
 
   if (keywords && keywords.length > 0) {
-    highlightedHtml = highlightAdditionalKeywordMatches(highlightedHtml, keywords, className, color);
+    highlightedHtml = highlightAdditionalKeywordMatches(highlightedHtml, keywords, className, selectors);
   }
 
   return highlightedHtml;
@@ -527,7 +428,7 @@ function highlightAdditionalKeywordMatches(
   html: string,
   keywords: string[],
   className: string,
-  _color: string
+  selectors: HighlightSelectors
 ): string {
   const normalizedKeywords = keywords
     .map(keyword => keyword?.trim().toLowerCase())
@@ -538,7 +439,7 @@ function highlightAdditionalKeywordMatches(
   }
 
   let updatedHtml = html;
-  const containerBounds = findAllResultContainerBounds(updatedHtml);
+  const containerBounds = findAllResultContainerBounds(updatedHtml, selectors.containerClass, selectors.dataAttributes, selectors.additionalClasses);
 
   for (let i = containerBounds.length - 1; i >= 0; i--) {
     const { start, end } = containerBounds[i];
@@ -565,7 +466,7 @@ function highlightAdditionalKeywordMatches(
       continue;
     }
 
-    const updated = addClassToContainerHtml(containerHtml, className);
+    const updated = addClassToContainerHtml(containerHtml, className, selectors.containerClass, selectors.dataAttributes, selectors.additionalClasses);
     if (!updated.applied) {
       continue;
     }
@@ -600,14 +501,17 @@ function applyClassToContainerAtOffset(
   html: string,
   offset: number,
   className: string,
-  searchWindowEnd?: number
+  containerClass: string,
+  searchWindowEnd?: number,
+  dataAttributes?: string[],
+  additionalClasses?: string[]
 ): { html: string; success: boolean } {
-  const containerStart = findContainerStartNearOffset(html, offset, searchWindowEnd);
+  const containerStart = findContainerStartNearOffset(html, offset, containerClass, searchWindowEnd, dataAttributes, additionalClasses);
   if (containerStart === -1) {
     return { html, success: false };
   }
 
-  const bounds = findContainerBounds(html, containerStart);
+  const bounds = findContainerBounds(html, containerStart, containerClass);
   if (!bounds) {
     return { html, success: false };
   }
@@ -624,7 +528,7 @@ function applyClassToContainerAtOffset(
     return { html, success: false };
   }
 
-  const updated = addClassToContainerHtml(containerHtml, className);
+  const updated = addClassToContainerHtml(containerHtml, className, containerClass, dataAttributes, additionalClasses);
   if (!updated.applied) {
     return { html, success: false };
   }
@@ -633,10 +537,17 @@ function applyClassToContainerAtOffset(
   return { html: updatedHtml, success: true };
 }
 
-function findAllResultContainerBounds(html: string): Array<{ start: number; end: number }> {
+function findAllResultContainerBounds(
+  html: string,
+  containerClass: string,
+  dataAttributes?: string[],
+  additionalClasses?: string[]
+): Array<{ start: number; end: number }> {
   const bounds: Array<{ start: number; end: number }> = [];
+  
+  // Find containers by class
   const containerRegex = new RegExp(
-    `<div[^>]*class="[^"]*${RESULT_CONTAINER_CLASS}[^"]*"[^>]*>`,
+    `<div[^>]*class="[^"]*${containerClass}[^"]*"[^>]*>`,
     'gi'
   );
   let match: RegExpExecArray | null;
@@ -648,16 +559,67 @@ function findAllResultContainerBounds(html: string): Array<{ start: number; end:
     }
   }
 
+  // Find containers by data attributes
+  if (dataAttributes && dataAttributes.length > 0) {
+    dataAttributes.forEach(dataAttr => {
+      const dataAttrRegex = new RegExp(
+        `<div[^>]*${dataAttr}="[^"]*"[^>]*>`,
+        'gi'
+      );
+      let dataMatch: RegExpExecArray | null;
+
+      while ((dataMatch = dataAttrRegex.exec(html)) !== null) {
+        const containerBounds = findMatchingDivBounds(html, dataMatch.index);
+        if (containerBounds) {
+          // Check if this bound is already included to avoid duplicates
+          const isDuplicate = bounds.some(
+            existing => existing.start === containerBounds.start && existing.end === containerBounds.end
+          );
+          if (!isDuplicate) {
+            bounds.push(containerBounds);
+          }
+        }
+      }
+    });
+  }
+
+  // Find containers by additional classes
+  if (additionalClasses && additionalClasses.length > 0) {
+    additionalClasses.forEach(className => {
+      const classRegex = new RegExp(
+        `<[^>]*class="[^"]*${className}[^"]*"[^>]*>`,
+        'gi'
+      );
+      let classMatch: RegExpExecArray | null;
+
+      while ((classMatch = classRegex.exec(html)) !== null) {
+        const containerBounds = findMatchingElementBounds(html, classMatch.index);
+        if (containerBounds) {
+          // Check if this bound is already included to avoid duplicates
+          const isDuplicate = bounds.some(
+            existing => existing.start === containerBounds.start && existing.end === containerBounds.end
+          );
+          if (!isDuplicate) {
+            bounds.push(containerBounds);
+          }
+        }
+      }
+    });
+  }
+
   return bounds;
 }
 
 function findContainerStartNearOffset(
   html: string,
   offset: number,
-  searchWindowEnd?: number
+  containerClass: string,
+  searchWindowEnd?: number,
+  dataAttributes?: string[],
+  additionalClasses?: string[]
 ): number {
   const containerRegex = new RegExp(
-    `<div[^>]*class="[^"]*${RESULT_CONTAINER_CLASS}[^"]*"[^>]*>`,
+    `<div[^>]*class="[^"]*${containerClass}[^"]*"[^>]*>`,
     'gi'
   );
 
@@ -669,12 +631,64 @@ function findContainerStartNearOffset(
     }
   }
 
-  return findContainerStartBeforeOffset(html, offset);
+  // Try data attributes if available
+  if (dataAttributes && dataAttributes.length > 0) {
+    for (const dataAttr of dataAttributes) {
+      const dataAttrRegex = new RegExp(
+        `<div[^>]*${dataAttr}="[^"]*"[^>]*>`,
+        'gi'
+      );
+      
+      if (searchWindowEnd !== undefined) {
+        dataAttrRegex.lastIndex = offset;
+        const forwardMatch = dataAttrRegex.exec(html);
+        if (forwardMatch && forwardMatch.index <= searchWindowEnd) {
+          return forwardMatch.index;
+        }
+      }
+      
+      const beforeMatch = findContainerStartBeforeOffset(html, offset, containerClass, dataAttr);
+      if (beforeMatch !== -1) {
+        return beforeMatch;
+      }
+    }
+  }
+
+  // Try additional classes if available
+  if (additionalClasses && additionalClasses.length > 0) {
+    for (const className of additionalClasses) {
+      const classRegex = new RegExp(
+        `<[^>]*class="[^"]*${className}[^"]*"[^>]*>`,
+        'gi'
+      );
+      
+      if (searchWindowEnd !== undefined) {
+        classRegex.lastIndex = offset;
+        const forwardMatch = classRegex.exec(html);
+        if (forwardMatch && forwardMatch.index <= searchWindowEnd) {
+          return forwardMatch.index;
+        }
+      }
+      
+      const beforeMatch = findContainerStartBeforeOffset(html, offset, containerClass, className);
+      if (beforeMatch !== -1) {
+        return beforeMatch;
+      }
+    }
+  }
+
+  return findContainerStartBeforeOffset(html, offset, containerClass);
 }
 
-function findContainerStartBeforeOffset(html: string, offset: number): number {
+function findContainerStartBeforeOffset(
+  html: string,
+  offset: number,
+  containerClass: string,
+  fallbackSelector?: string
+): number {
+  // Try by class first
   const containerRegex = new RegExp(
-    `<div[^>]*class="[^"]*${RESULT_CONTAINER_CLASS}[^"]*"[^>]*>`,
+    `<div[^>]*class="[^"]*${containerClass}[^"]*"[^>]*>`,
     'gi'
   );
   let match: RegExpExecArray | null;
@@ -684,12 +698,39 @@ function findContainerStartBeforeOffset(html: string, offset: number): number {
     candidateIndex = match.index;
   }
 
+  // Try by fallback selector if provided and no class match found
+  // This could be a data attribute or an additional class
+  if (candidateIndex === -1 && fallbackSelector) {
+    let fallbackRegex: RegExp;
+    
+    if (fallbackSelector.startsWith('data-')) {
+      // It's a data attribute
+      fallbackRegex = new RegExp(
+        `<div[^>]*${fallbackSelector}="[^"]*"[^>]*>`,
+        'gi'
+      );
+    } else {
+      // It's a class
+      fallbackRegex = new RegExp(
+        `<[^>]*class="[^"]*${fallbackSelector}[^"]*"[^>]*>`,
+        'gi'
+      );
+    }
+    
+    let fallbackMatch: RegExpExecArray | null;
+
+    while ((fallbackMatch = fallbackRegex.exec(html)) !== null && fallbackMatch.index <= offset) {
+      candidateIndex = fallbackMatch.index;
+    }
+  }
+
   return candidateIndex;
 }
 
 function findContainerBounds(
   html: string,
-  containerStart: number
+  containerStart: number,
+  _containerClass: string
 ): { start: number; end: number } | null {
   return findMatchingDivBounds(html, containerStart);
 }
@@ -699,6 +740,39 @@ function findMatchingDivBounds(
   startIndex: number
 ): { start: number; end: number } | null {
   const tagRegex = /<\/?div\b[^>]*>/gi;
+  tagRegex.lastIndex = startIndex;
+
+  let depth = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = tagRegex.exec(html)) !== null) {
+    if (match.index < startIndex) {
+      continue;
+    }
+
+    const isOpening = !match[0].startsWith('</');
+    depth += isOpening ? 1 : -1;
+
+    if (depth === 0) {
+      return { start: startIndex, end: match.index + match[0].length };
+    }
+  }
+
+  return null;
+}
+
+function findMatchingElementBounds(
+  html: string,
+  startIndex: number
+): { start: number; end: number } | null {
+  // First try to find the tag name of the starting element
+  const openingTagMatch = html.slice(startIndex).match(/<([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/);
+  if (!openingTagMatch) {
+    return null;
+  }
+
+  const tagName = openingTagMatch[1];
+  const tagRegex = new RegExp(`<\\/?${tagName}\\b[^>]*>`, 'gi');
   tagRegex.lastIndex = startIndex;
 
   let depth = 0;
@@ -745,13 +819,40 @@ function findEnclosingDivBounds(
 
 function addClassToContainerHtml(
   containerHtml: string,
-  className: string
+  className: string,
+  containerClass: string,
+  dataAttributes?: string[],
+  additionalClasses?: string[]
 ): { html: string; applied: boolean } {
   const containerTagRegex = new RegExp(
-    `<div[^>]*class="[^"]*${RESULT_CONTAINER_CLASS}[^"]*"[^>]*>`,
+    `<div[^>]*class="[^"]*${containerClass}[^"]*"[^>]*>`,
     'i'
   );
-  const tagMatch = containerHtml.match(containerTagRegex);
+  let tagMatch = containerHtml.match(containerTagRegex);
+
+  // If no class match, try data attributes
+  if (!tagMatch && dataAttributes && dataAttributes.length > 0) {
+    for (const dataAttr of dataAttributes) {
+      const dataAttrRegex = new RegExp(
+        `<div[^>]*${dataAttr}="[^"]*"[^>]*>`,
+        'i'
+      );
+      tagMatch = containerHtml.match(dataAttrRegex);
+      if (tagMatch) break;
+    }
+  }
+
+  // If no match yet, try additional classes
+  if (!tagMatch && additionalClasses && additionalClasses.length > 0) {
+    for (const additionalClass of additionalClasses) {
+      const classRegex = new RegExp(
+        `<[^>]*class="[^"]*${additionalClass}[^"]*"[^>]*>`,
+        'i'
+      );
+      tagMatch = containerHtml.match(classRegex);
+      if (tagMatch) break;
+    }
+  }
 
   if (!tagMatch) {
     return { html: containerHtml, applied: false };
@@ -827,6 +928,147 @@ function escapeForRegex(value: string): string {
 function containerHasMeaningfulContent(containerHtml: string): boolean {
   const text = normalizeHtmlText(containerHtml);
   return Boolean(text && text.trim().length > 0);
+}
+
+interface HighlightStrategyParams {
+  html: string;
+  className: string;
+  selectors: HighlightSelectors;
+  result: SerpApiResult;
+  candidateLink: string;
+  matchIndex: number;
+}
+
+function highlightUsingStrategies(params: HighlightStrategyParams): { html: string; success: boolean } {
+  const { html, className, selectors, result, candidateLink, matchIndex } = params;
+  const { containerClass } = selectors;
+
+  let workingHtml = html;
+
+  const linkClassAttempt = highlightByLinkSelector(workingHtml, candidateLink, className, selectors);
+  if (linkClassAttempt.success) {
+    console.log(`✅ Applied class-based highlight to result ${matchIndex + 1} via link selector`);
+    return linkClassAttempt;
+  }
+
+  const escapedLink = escapeForRegex(candidateLink);
+
+  const hrefPattern = new RegExp(`<a\\b[^>]*href=["']${escapedLink}["'][^>]*>`, 'gi');
+  let hrefMatch: RegExpExecArray | null;
+  while ((hrefMatch = hrefPattern.exec(workingHtml)) !== null) {
+    const updateResult = applyClassToContainerAtOffset(
+      workingHtml,
+      hrefMatch.index,
+      className,
+      containerClass,
+      undefined,
+      selectors.dataAttributes,
+      selectors.additionalClasses
+    );
+
+    if (updateResult.success) {
+      console.log(`✅ Applied class-based highlight to result ${matchIndex + 1} via href match`);
+      return updateResult;
+    }
+  }
+
+  if (Number.isFinite(result.position)) {
+    const positionIndex = result.position - 1;
+    const dataIndexPattern = new RegExp(`<[^>]*data-result-index="${positionIndex}"[^>]*>`, 'gi');
+    let dataMatch: RegExpExecArray | null;
+    while ((dataMatch = dataIndexPattern.exec(workingHtml)) !== null) {
+      const updateResult = applyClassToContainerAtOffset(
+        workingHtml,
+        dataMatch.index,
+        className,
+        containerClass,
+        dataMatch.index + dataMatch[0].length,
+        selectors.dataAttributes,
+        selectors.additionalClasses
+      );
+
+      if (updateResult.success) {
+        console.log(
+          `✅ Applied class-based highlight to result ${matchIndex + 1} via data-result-index targeting`
+        );
+        return updateResult;
+      }
+    }
+  }
+
+  try {
+    const domain = new URL(candidateLink).hostname.replace(/^www\./, '');
+    if (domain) {
+      const escapedDomain = escapeForRegex(domain);
+      const domainPattern = new RegExp(
+        `(<div[^>]*class="[^"]*${containerClass}[^"]*"[^>]*>[\\s\\S]*?${escapedDomain}[\\s\\S]*?href=["']${escapedLink}["'][\\s\\S]*?<\/div>)`,
+        'gi'
+      );
+
+      let domainMatch: RegExpExecArray | null;
+      while ((domainMatch = domainPattern.exec(workingHtml)) !== null) {
+        const updateResult = applyClassToContainerAtOffset(
+          workingHtml,
+          domainMatch.index,
+          className,
+          containerClass,
+          domainMatch.index + domainMatch[0].length,
+          selectors.dataAttributes,
+          selectors.additionalClasses
+        );
+
+        if (updateResult.success) {
+          console.log(`✅ Applied class-based highlight to result ${matchIndex + 1} via domain targeting`);
+          return updateResult;
+        }
+      }
+    }
+  } catch (error) {
+    console.log(`Failed to parse URL for domain targeting: ${candidateLink}`);
+  }
+
+  return { html, success: false };
+}
+
+function highlightByLinkSelector(
+  html: string,
+  candidateLink: string,
+  className: string,
+  selectors: HighlightSelectors
+): { html: string; success: boolean } {
+  const { containerClass, linkClass } = selectors;
+
+  if (!linkClass) {
+    return { html, success: false };
+  }
+
+  const escapedLink = escapeForRegex(candidateLink);
+  const anchorPattern = new RegExp(
+    `<a\\b(?=[^>]*href=["']${escapedLink}["'])(?=[^>]*class=["'][^"']*${linkClass}[^"']*["'])[^>]*>`,
+    'gi'
+  );
+
+  let anchorMatch: RegExpExecArray | null;
+  let workingHtml = html;
+
+  while ((anchorMatch = anchorPattern.exec(workingHtml)) !== null) {
+    const updateResult = applyClassToContainerAtOffset(
+      workingHtml,
+      anchorMatch.index,
+      className,
+      containerClass,
+      undefined,
+      selectors.dataAttributes,
+      selectors.additionalClasses
+    );
+
+    if (updateResult.success) {
+      console.log(`✅ Applied class-based highlight via link class ${linkClass}`);
+      return updateResult;
+    }
+  }
+
+  return { html, success: false };
 }
 
 
