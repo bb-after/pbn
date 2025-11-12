@@ -562,14 +562,27 @@ function findAllResultContainerBounds(
   // Find containers by data attributes
   if (dataAttributes && dataAttributes.length > 0) {
     dataAttributes.forEach(dataAttr => {
-      const dataAttrRegex = new RegExp(
-        `<div[^>]*${dataAttr}="[^"]*"[^>]*>`,
-        'gi'
-      );
+      let dataAttrRegex: RegExp;
+      
+      // Check if the data attribute already includes a value (like 'data-attrid="images universal"')
+      if (dataAttr.includes('=')) {
+        // Use the attribute as-is for exact matching
+        dataAttrRegex = new RegExp(
+          `<[^>]*${dataAttr}[^>]*>`,
+          'gi'
+        );
+      } else {
+        // Traditional data attribute without value
+        dataAttrRegex = new RegExp(
+          `<div[^>]*${dataAttr}="[^"]*"[^>]*>`,
+          'gi'
+        );
+      }
+      
       let dataMatch: RegExpExecArray | null;
 
       while ((dataMatch = dataAttrRegex.exec(html)) !== null) {
-        const containerBounds = findMatchingDivBounds(html, dataMatch.index);
+        const containerBounds = findMatchingElementBounds(html, dataMatch.index);
         if (containerBounds) {
           // Check if this bound is already included to avoid duplicates
           const isDuplicate = bounds.some(
@@ -634,10 +647,23 @@ function findContainerStartNearOffset(
   // Try data attributes if available
   if (dataAttributes && dataAttributes.length > 0) {
     for (const dataAttr of dataAttributes) {
-      const dataAttrRegex = new RegExp(
-        `<div[^>]*${dataAttr}="[^"]*"[^>]*>`,
-        'gi'
-      );
+      let dataAttrRegex: RegExp;
+      
+      // Check if the data attribute already includes a value (like 'data-attrid="images universal"')
+      if (dataAttr.includes('=')) {
+        // Use the attribute as-is for exact matching, escape any regex special characters
+        const escapedDataAttr = dataAttr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        dataAttrRegex = new RegExp(
+          `<[^>]*${escapedDataAttr}[^>]*>`,
+          'gi'
+        );
+      } else {
+        // Traditional data attribute without value
+        dataAttrRegex = new RegExp(
+          `<div[^>]*${dataAttr}="[^"]*"[^>]*>`,
+          'gi'
+        );
+      }
       
       if (searchWindowEnd !== undefined) {
         dataAttrRegex.lastIndex = offset;
@@ -704,11 +730,21 @@ function findContainerStartBeforeOffset(
     let fallbackRegex: RegExp;
     
     if (fallbackSelector.startsWith('data-')) {
-      // It's a data attribute
-      fallbackRegex = new RegExp(
-        `<div[^>]*${fallbackSelector}="[^"]*"[^>]*>`,
-        'gi'
-      );
+      // Check if the data attribute already includes a value (like 'data-attrid="images universal"')
+      if (fallbackSelector.includes('=')) {
+        // Use the attribute as-is for exact matching, escape any regex special characters
+        const escapedDataAttr = fallbackSelector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        fallbackRegex = new RegExp(
+          `<[^>]*${escapedDataAttr}[^>]*>`,
+          'gi'
+        );
+      } else {
+        // Traditional data attribute without value
+        fallbackRegex = new RegExp(
+          `<div[^>]*${fallbackSelector}="[^"]*"[^>]*>`,
+          'gi'
+        );
+      }
     } else {
       // It's a class
       fallbackRegex = new RegExp(
@@ -833,10 +869,23 @@ function addClassToContainerHtml(
   // If no class match, try data attributes
   if (!tagMatch && dataAttributes && dataAttributes.length > 0) {
     for (const dataAttr of dataAttributes) {
-      const dataAttrRegex = new RegExp(
-        `<div[^>]*${dataAttr}="[^"]*"[^>]*>`,
-        'i'
-      );
+      let dataAttrRegex: RegExp;
+      
+      // Check if the data attribute already includes a value (like 'data-attrid="images universal"')
+      if (dataAttr.includes('=')) {
+        // Use the attribute as-is for exact matching, escape any regex special characters
+        const escapedDataAttr = dataAttr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        dataAttrRegex = new RegExp(
+          `<[^>]*${escapedDataAttr}[^>]*>`,
+          'i'
+        );
+      } else {
+        // Traditional data attribute without value
+        dataAttrRegex = new RegExp(
+          `<div[^>]*${dataAttr}="[^"]*"[^>]*>`,
+          'i'
+        );
+      }
       tagMatch = containerHtml.match(dataAttrRegex);
       if (tagMatch) break;
     }
