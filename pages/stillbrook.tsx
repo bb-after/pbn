@@ -37,6 +37,7 @@ import { IntercomLayout, ToastProvider, IntercomCard, IntercomButton } from '../
 import UnauthorizedAccess from '../components/UnauthorizedAccess';
 import useValidateUserToken from '../hooks/useValidateUserToken';
 import ClientDropdown from '../components/ClientDropdown';
+import SearchCriteriaDisplay from '../components/SearchCriteriaDisplay';
 import Image from 'next/image';
 import googleDomainsData from '../google-domains.json';
 import html2canvas from 'html2canvas';
@@ -2447,6 +2448,27 @@ function StillbrookContent() {
                         ? ` out of ${result.totalResults} total results`
                         : ''}
                     </Alert>
+
+                    {/* Search Criteria Display */}
+                    <IntercomCard>
+                      <SearchCriteriaDisplay
+                        searchQuery={keyword}
+                        searchType={searchType}
+                        urls={urls}
+                        keywords={keywords}
+                        positiveUrls={positiveUrls}
+                        positiveKeywords={positiveKeywords}
+                        location={location}
+                        language={language}
+                        googleDomain={googleDomain}
+                        enableNegativeUrls={enableNegativeUrls}
+                        enableNegativeSentiment={enableNegativeSentiment}
+                        enableNegativeKeywords={enableNegativeKeywords}
+                        enablePositiveUrls={enablePositiveUrls}
+                        enablePositiveSentiment={enablePositiveSentiment}
+                        enablePositiveKeywords={enablePositiveKeywords}
+                      />
+                    </IntercomCard>
 
                     {/* Download CTA Section - Sticky */}
                     <IntercomCard sx={{ position: 'sticky', top: 0, zIndex: 10 }}>
