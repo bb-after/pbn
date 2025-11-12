@@ -28,6 +28,7 @@ import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
 import BookmarkAddIcon from '@mui/icons-material/BookmarkAdd';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import LocationTypeahead from '../components/LocationTypeahead';
 import EditIcon from '@mui/icons-material/Edit';
 import EditOffIcon from '@mui/icons-material/EditOff';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -2325,16 +2326,13 @@ function StillbrookContent() {
                     />
                   )}
 
-                  {/* Geographic Location - Same style as other inputs */}
-                  <TextField
-                    fullWidth
-                    label="Geographic Location (Optional)"
-                    type="text"
+                  {/* Geographic Location with typeahead */}
+                  <LocationTypeahead
                     value={location}
-                    onChange={e => setLocation(e.target.value)}
+                    onChange={setLocation}
+                    label="Geographic Location (Optional)"
                     placeholder="e.g. New York, NY or London, UK (will default to your current location)"
-                    variant="outlined"
-                    helperText="Examples: 'New York, NY', 'London, UK', 'Los Angeles, California'"
+                    helperText="Start typing to search for locations"
                   />
 
                   <FormControlLabel
