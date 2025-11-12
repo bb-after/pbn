@@ -45,6 +45,7 @@ import {
   EXCLUDED_CONTAINER_WRAPPER_CLASS,
   getHighlightSelectors,
 } from '../utils/stillbrook/selectors';
+import { ArrowBack } from '@mui/icons-material';
 
 interface SerpApiResult {
   position: number;
@@ -90,7 +91,7 @@ const SEARCH_TYPES: SearchType[] = [
   { value: '', name: 'Web Search', description: 'Regular Google Search' },
   { value: 'isch', name: 'Images', description: 'Google Images API' },
   // { value: 'lcl', name: 'Local', description: 'Google Local API' },
-  { value: 'vid', name: 'Videos', description: 'Google Videos API' },
+  // { value: 'vid', name: 'Videos', description: 'Google Videos API' },
   { value: 'nws', name: 'News', description: 'Google News API' },
   // { value: 'shop', name: 'Shopping', description: 'Google Shopping API' },
 ];
@@ -1563,34 +1564,38 @@ function StillbrookContent() {
       `🎯 Found ${elements.length} eligible elements (${classCandidates.length} by main class, ${dataAttributeCandidates.length} by data attributes, ${additionalClassCandidates.length} by additional classes, ${candidateElements.length} total after dedup)`
     );
 
-    // Let's check what data-news-doc-id elements exist in the document
-    console.log(`🔍 Checking all elements with data-news-doc-id in document:`);
-    const allNewsDocElements = doc.querySelectorAll('[data-news-doc-id]');
-    console.log(`📊 Total [data-news-doc-id] elements in document: ${allNewsDocElements.length}`);
-    Array.from(allNewsDocElements).forEach((el, index) => {
-      console.log(`🗞️ data-news-doc-id element ${index}:`, {
-        tagName: el.tagName,
-        className: el.className,
-        id: el.id,
-        dataNewsDocId: el.getAttribute('data-news-doc-id'),
-        textContent: el.textContent?.substring(0, 50) + '...',
-        hasContent: !!el.textContent?.trim(),
-        isInExcludedWrapper: !!el.closest(`.${excludedWrapperClass}`),
+    // Inspect elements matched via data attributes
+    highlightSelectors.dataAttributes?.forEach(dataAttr => {
+      console.log(`🔍 Checking all elements with ${dataAttr} in document:`);
+      const dataAttrElements = doc.querySelectorAll(`[${dataAttr}]`);
+      console.log(`📊 Total [${dataAttr}] elements in document: ${dataAttrElements.length}`);
+      Array.from(dataAttrElements).forEach((el, index) => {
+        console.log(`🗞️ ${dataAttr} element ${index}:`, {
+          tagName: el.tagName,
+          className: el.className,
+          id: el.id,
+          attributeValue: el.getAttribute(dataAttr),
+          textContent: el.textContent?.substring(0, 50) + '...',
+          hasContent: !!el.textContent?.trim(),
+          isInExcludedWrapper: !!el.closest(`.${excludedWrapperClass}`),
+        });
       });
     });
 
-    // Let's also check what additional class elements exist
-    console.log(`🔍 Checking all elements with b2Rnsc class in document:`);
-    const allB2RnscElements = doc.querySelectorAll('.b2Rnsc');
-    console.log(`📊 Total .b2Rnsc elements in document: ${allB2RnscElements.length}`);
-    Array.from(allB2RnscElements).forEach((el, index) => {
-      console.log(`🎯 b2Rnsc element ${index}:`, {
-        tagName: el.tagName,
-        className: el.className,
-        id: el.id,
-        textContent: el.textContent?.substring(0, 50) + '...',
-        hasContent: !!el.textContent?.trim(),
-        isInExcludedWrapper: !!el.closest(`.${excludedWrapperClass}`),
+    // Inspect elements matched via additional classes
+    highlightSelectors.additionalClasses?.forEach(className => {
+      console.log(`🔍 Checking all elements with ${className} class in document:`);
+      const classElements = doc.querySelectorAll(`.${className}`);
+      console.log(`📊 Total .${className} elements in document: ${classElements.length}`);
+      Array.from(classElements).forEach((el, index) => {
+        console.log(`🎯 ${className} element ${index}:`, {
+          tagName: el.tagName,
+          className: el.className,
+          id: el.id,
+          textContent: el.textContent?.substring(0, 50) + '...',
+          hasContent: !!el.textContent?.trim(),
+          isInExcludedWrapper: !!el.closest(`.${excludedWrapperClass}`),
+        });
       });
     });
 
@@ -1649,9 +1654,10 @@ function StillbrookContent() {
         gap: 8px;
         padding: 8px 12px;
         border-radius: 6px;
-        font-size: 12px;
+        font-size: 16px;
         font-family: Arial, sans-serif;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        background-color: #000000;
         pointer-events: auto;
       `;
 
@@ -1674,7 +1680,7 @@ function StillbrookContent() {
           padding: 6px 12px;
           border-radius: 4px;
           cursor: pointer;
-          font-size: 12px;
+          font-size: 16px;
           font-weight: 500;
           pointer-events: auto;
         `;
@@ -1698,7 +1704,7 @@ function StillbrookContent() {
           padding: 6px 12px;
           border-radius: 4px;
           cursor: pointer;
-          font-size: 12px;
+          font-size: 16px;
           font-weight: 500;
           pointer-events: auto;
         `;
@@ -1719,7 +1725,7 @@ function StillbrookContent() {
           padding: 6px 12px;
           border-radius: 4px;
           cursor: pointer;
-          font-size: 12px;
+          font-size: 16px;
           font-weight: 500;
           pointer-events: auto;
         `;
@@ -1745,6 +1751,7 @@ function StillbrookContent() {
         if (!interactiveMode) return;
         el.style.boxShadow = 'inset 0 0 0 2px #2196f3';
         el.style.opacity = '0.8';
+        // el.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
         overlay.style.display = 'flex';
         console.log(`👁️ Showing overlay for element ${index}`);
       });
@@ -1752,16 +1759,19 @@ function StillbrookContent() {
       el.addEventListener('mouseleave', () => {
         console.log(`🐭 Mouse left element ${index}`, { interactiveMode });
         if (!interactiveMode) return;
-        const hasHighlight =
-          el.classList.contains('negative-result-highlight') ||
-          el.classList.contains('positive-result-highlight');
-        if (!hasHighlight) {
-          el.style.boxShadow = ''; //inset 0 0 0 1px rgba(33, 150, 243, 0.3)';
-          // el.style.backgroundColor = 'rgba(33, 150, 243, 0.05)';
-        } else {
-          // Keep existing highlight styles but remove hover effect
-          el.style.boxShadow = el.style.boxShadow.replace('inset 0 0 0 2px #2196f3', '');
-        }
+        // const hasHighlight =
+        //   el.classList.contains('negative-result-highlight') ||
+        // el.classList.contains('positive-result-highlight');
+        // el.style.backgroundColor = '';
+
+        // if (!hasHighlight) {
+        el.style.boxShadow = ''; //inset 0 0 0 1px rgba(33, 150, 243, 0.3)';
+        // el.style.backgroundColor = 'rgba(33, 150, 243, 0.05)';
+        // el.style.backgroundColor = '';
+        // } else {
+        //   // Keep existing highlight styles but remove hover effect
+        //   el.style.boxShadow = el.style.boxShadow.replace('inset 0 0 0 2px #2196f3', '');
+        // }
         el.style.opacity = '';
         overlay.style.display = 'none';
         console.log(`👁️ Hiding overlay for element ${index}`);
@@ -2039,7 +2049,7 @@ function StillbrookContent() {
       title="Stillbrook - Screenshot Generator"
       breadcrumbs={[{ label: 'Stillbrook' }]}
     >
-      <IntercomCard>
+      <IntercomCard sx={{ overflow: 'visible' }}>
         <Box
           p={3}
           sx={{
@@ -2451,6 +2461,9 @@ function StillbrookContent() {
 
                     {/* Search Criteria Display */}
                     <IntercomCard>
+                      <Typography variant="h6" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                        📸 Your Screenshot is Ready!
+                      </Typography>
                       <SearchCriteriaDisplay
                         searchQuery={keyword}
                         searchType={searchType}
@@ -2471,16 +2484,15 @@ function StillbrookContent() {
                     </IntercomCard>
 
                     {/* Download CTA Section - Sticky */}
-                    <IntercomCard sx={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                    <IntercomCard
+                      sx={{
+                        position: 'sticky',
+                        top: 65,
+                        zIndex: 10,
+                        overflow: 'visible',
+                      }}
+                    >
                       <Stack spacing={2}>
-                        <Typography variant="h6" sx={{ fontWeight: 600, color: 'primary.main' }}>
-                          📸 Your Screenshot is Ready!
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Download your screenshot or HTML version below. The preview is read-only
-                          to ensure clean screenshots.
-                        </Typography>
-
                         {/* Action Buttons */}
                         <Box
                           sx={{
@@ -2495,7 +2507,7 @@ function StillbrookContent() {
                           <Button
                             variant="outlined"
                             onClick={handleRunAnotherSearch}
-                            startIcon={<RefreshIcon />}
+                            startIcon={<ArrowBack />}
                             sx={{
                               borderRadius: 1,
                               textTransform: 'none',
@@ -2553,23 +2565,12 @@ function StillbrookContent() {
                           >
                             Save Search
                           </Button>
-                        </Box>
-
-                        {/* Interactive Mode Status Message */}
-                        {interactiveMode && (
-                          <Box
-                            sx={{
-                              mb: 3,
-                              p: 1.5,
-                              // backgroundColor: '#fff3cd',
-                              border: '1px solid #ffeaa7',
-                              borderRadius: 1,
-                              textAlign: 'center',
-                            }}
-                          >
+                          {/* Interactive Mode Status Message */}
+                          {interactiveMode && (
                             <Typography
                               variant="body2"
                               sx={{
+                                marginTop: 1,
                                 fontWeight: 500,
                                 color: '#856404',
                               }}
@@ -2577,8 +2578,8 @@ function StillbrookContent() {
                               💡 <strong>Edit Mode Active:</strong> Hover over search results below
                               to add green (good) or red (bad) highlighting
                             </Typography>
-                          </Box>
-                        )}
+                          )}
+                        </Box>
                       </Stack>
                     </IntercomCard>
 

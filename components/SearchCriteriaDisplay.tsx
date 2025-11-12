@@ -73,9 +73,9 @@ const SearchCriteriaDisplay = ({
 
   return (
     <Box sx={{ mb: 2 }}>
-      <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, color: 'text.primary' }}>
+      {/* <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, color: 'text.primary' }}>
         🔍 Search Criteria
-      </Typography>
+      </Typography> */}
 
       <Box sx={{ mb: 2 }}>
         <Typography variant="body2" sx={{ mb: 1 }}>
