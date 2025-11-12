@@ -79,7 +79,7 @@ const SearchCriteriaDisplay = ({
 
       <Box sx={{ mb: 2 }}>
         <Typography variant="body2" sx={{ mb: 1 }}>
-          <strong>Query:</strong> "{searchQuery}"
+          <strong>Query:</strong> &quot;{searchQuery}&quot;
         </Typography>
 
         {searchType && (
