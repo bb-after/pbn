@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/router';
+import { GetServerSideProps } from 'next';
+import { requireServerAuth, AuthUser } from '../utils/serverAuth';
 import {
   TextField,
   RadioGroup,
@@ -35,8 +37,6 @@ import DownloadIcon from '@mui/icons-material/Download';
 import CodeIcon from '@mui/icons-material/Code';
 import SaveIcon from '@mui/icons-material/Save';
 import { IntercomLayout, ToastProvider, IntercomCard, IntercomButton } from '../components/ui';
-import UnauthorizedAccess from '../components/UnauthorizedAccess';
-import useAuth from '../hooks/useAuth';
 import ClientDropdown from '../components/ClientDropdown';
 import SearchCriteriaDisplay from '../components/SearchCriteriaDisplay';
 import Image from 'next/image';
@@ -352,8 +352,11 @@ function KeywordInputSection({
   );
 }
 
-function StillbrookContent() {
-  const { isValidUser, token } = useAuth('/login');
+interface StillbrookProps {
+  user: AuthUser;
+}
+
+function StillbrookContent({ user }: StillbrookProps) {
   const router = useRouter();
   const [keyword, setKeyword] = useState('');
   const [url, setUrl] = useState('');
@@ -464,17 +467,15 @@ function StillbrookContent() {
   useEffect(() => {
     const loadSearchId = router.query.loadSearch as string;
 
-    if (loadSearchId && token && !isLoadedSearch) {
+    if (loadSearchId && !isLoadedSearch) {
       loadSavedSearch(loadSearchId);
     }
-  }, [router.query, token, isLoadedSearch]);
+  }, [router.query, isLoadedSearch]);
 
   const loadSavedSearch = async (searchId: string) => {
     try {
       const response = await fetch('/api/saved-searches', {
-        headers: {
-          ...(token ? { 'x-auth-token': token } : {}),
-        },
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -716,8 +717,8 @@ function StillbrookContent() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { 'x-auth-token': token } : {}),
         },
+        credentials: 'include',
         body: JSON.stringify(formData),
         signal: controller.signal,
       });
@@ -1362,8 +1363,8 @@ function StillbrookContent() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { 'x-auth-token': token } : {}),
         },
+        credentials: 'include',
         body: JSON.stringify(searchData),
       });
 
@@ -1447,8 +1448,8 @@ function StillbrookContent() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { 'x-auth-token': token } : {}),
         },
+        credentials: 'include',
         body: JSON.stringify(searchData),
       });
 
@@ -1937,9 +1938,6 @@ function StillbrookContent() {
     handleOpenSaveModal();
   };
 
-  if (!isValidUser) {
-    return <UnauthorizedAccess />;
-  }
 
   // Logo animation overlay
   if (showLogoOverlay) {
@@ -2880,10 +2878,14 @@ function StillbrookContent() {
   );
 }
 
-export default function StillbrookPage() {
+export default function StillbrookPage({ user }: StillbrookProps) {
   return (
     <ToastProvider>
-      <StillbrookContent />
+      <StillbrookContent user={user} />
     </ToastProvider>
   );
 }
+
+export const getServerSideProps: GetServerSideProps = async (context) => {
+  return await requireServerAuth(context);
+};
