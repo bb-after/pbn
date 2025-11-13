@@ -26,7 +26,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import { IntercomLayout, ToastProvider, IntercomCard, IntercomButton } from '../components/ui';
 import UnauthorizedAccess from '../components/UnauthorizedAccess';
-import useValidateUserToken from '../hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import { useRouter } from 'next/router';
 
 interface SavedSearch {
@@ -61,7 +61,7 @@ interface Client {
 }
 
 function MySavedSearchesContent() {
-  const { isValidUser, token } = useValidateUserToken();
+  const { isValidUser, token } = useAuth('/login');
   const router = useRouter();
   const [searches, setSearches] = useState<SavedSearch[]>([]);
   const [clients, setClients] = useState<Client[]>([]);

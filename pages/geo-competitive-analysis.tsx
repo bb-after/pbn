@@ -17,7 +17,7 @@ import {
 } from '@mui/material';
 import { IntercomLayout, ToastProvider, IntercomCard } from '../components/ui';
 import UnauthorizedAccess from '../components/UnauthorizedAccess';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import ClientDropdown from '../components/ClientDropdown';
 import axios from 'axios';
 
@@ -32,7 +32,7 @@ export default function GeoCompetitiveAnalysisPage() {
 }
 
 function GeoCompetitiveAnalysis() {
-  const { token } = useValidateUserToken();
+  const { token } = useAuth('/login');
   const [step, setStep] = useState(1);
   const [analysisType, setAnalysisType] = useState<AnalysisType>('brand');
   const [clientName, setClientName] = useState('');

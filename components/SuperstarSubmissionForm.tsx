@@ -18,7 +18,7 @@ import {
 import CopyToClipboardButton from "./CopyToClipboardButton"; // Replace with the correct path to your component
 import router from "next/router";
 import superstarSites from "pages/api/superstar-sites";
-import useValidateUserToken from "hooks/useValidateUserToken";
+import useAuth from '../hooks/useAuth';
 
 const Editor = dynamic(
   () => import("react-draft-wysiwyg").then((module) => module.Editor),
@@ -94,7 +94,7 @@ const SuperstarSubmissionForm: React.FC<SuperstarFormProps> = ({
     superStarSiteId || undefined
   );
   const [tagInput, setTagInput] = useState<string>(""); // Single string for comma-separated tags
-  const { token } = useValidateUserToken();
+  const { token } = useAuth('/login');
 
   useEffect(() => {
     const fetchSuperstarSites = async () => {

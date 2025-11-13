@@ -36,7 +36,7 @@ import CodeIcon from '@mui/icons-material/Code';
 import SaveIcon from '@mui/icons-material/Save';
 import { IntercomLayout, ToastProvider, IntercomCard, IntercomButton } from '../components/ui';
 import UnauthorizedAccess from '../components/UnauthorizedAccess';
-import useValidateUserToken from '../hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import ClientDropdown from '../components/ClientDropdown';
 import SearchCriteriaDisplay from '../components/SearchCriteriaDisplay';
 import Image from 'next/image';
@@ -353,7 +353,7 @@ function KeywordInputSection({
 }
 
 function StillbrookContent() {
-  const { isValidUser, token } = useValidateUserToken();
+  const { isValidUser, token } = useAuth('/login');
   const router = useRouter();
   const [keyword, setKeyword] = useState('');
   const [url, setUrl] = useState('');

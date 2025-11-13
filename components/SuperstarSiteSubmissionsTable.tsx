@@ -20,7 +20,7 @@ import {
   Snackbar,
   FormControl,
 } from '@mui/material';
-import useValidateUserToken from '../hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import Image from 'next/image';
 import { useRouter } from 'next/router';
 import UnauthorizedAccess from './UnauthorizedAccess';
@@ -351,7 +351,7 @@ const SuperstarSiteSubmissionsTable = () => {
     return { __html: htmlContent };
   };
 
-  const { isLoading, isValidUser } = useValidateUserToken();
+  const { isLoading, isValidUser } = useAuth('/login');
 
   if (isLoading) {
     return (

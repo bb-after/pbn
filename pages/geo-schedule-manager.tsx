@@ -1,12 +1,12 @@
 import React from 'react';
 import { IntercomLayout } from '../components/ui';
 import GeoScheduleManager from '../components/GeoScheduleManager';
-import useValidateUserToken from '../hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import UnauthorizedAccess from '../components/UnauthorizedAccess';
 import { Box, CircularProgress } from '@mui/material';
 
 export default function GeoScheduleManagerPage() {
-  const { isLoading, isValidUser } = useValidateUserToken();
+  const { isLoading, isValidUser } = useAuth('/login');
 
   // Show loading while checking authentication
   if (isLoading) {

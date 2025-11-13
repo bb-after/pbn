@@ -39,7 +39,7 @@ import {
   IntercomButton,
 } from '../components/ui';
 import UnauthorizedAccess from 'components/UnauthorizedAccess';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import axios from 'axios';
 import { useRouter } from 'next/router';
 import Image from 'next/image';
@@ -96,7 +96,7 @@ type ListType = 'company' | 'individual' | 'blp';
 
 function LeadEnricherContent() {
   const router = useRouter();
-  const { isValidUser, token, user } = useValidateUserToken();
+  const { isValidUser, token, user } = useAuth('/login');
   const [listType, setListType] = useState<ListType>('company');
   const [csvData, setCsvData] = useState<CSVRow[]>([]);
   const [individualCsvData, setIndividualCsvData] = useState<IndividualCSVRow[]>([]);

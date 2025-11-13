@@ -33,7 +33,7 @@ import {
   Schedule as ScheduleIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/router';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import UnauthorizedAccess from 'components/UnauthorizedAccess';
 import {
   useToast,
@@ -67,7 +67,7 @@ interface RecentActivity {
 
 function DashboardContent() {
   const router = useRouter();
-  const { isValidUser, isLoading, user } = useValidateUserToken();
+  const { isValidUser, isLoading, user } = useAuth('/login');
   const { showError, showSuccess } = useToast();
 
   // Dashboard state

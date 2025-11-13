@@ -42,7 +42,7 @@ import {
   DarkMode as DarkModeIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/router';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import axios from 'axios';
 import UnauthorizedAccess from 'components/UnauthorizedAccess';
 import {
@@ -73,7 +73,7 @@ interface UserProfile {
 
 function ProfilePageContent() {
   const router = useRouter();
-  const { isValidUser, isLoading, user } = useValidateUserToken();
+  const { isValidUser, isLoading, user } = useAuth('/login');
   const { showError, showSuccess } = useToast();
   const { setMode } = useThemeMode();
 
@@ -137,7 +137,7 @@ function ProfilePageContent() {
       console.error('Error fetching profile:', error);
       // Fallback to basic user data from token validation if API fails
       const profileData: UserProfile = {
-        id: user?.id || '',
+        id: user?.id?.toString() || '',
         name: user?.username || '',
         email: user?.email || '',
         role: user?.role || 'staff',

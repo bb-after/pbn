@@ -47,7 +47,7 @@ import {
   useToast,
 } from '../../../components/ui';
 import { useRouter } from 'next/router';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../../../hooks/useAuth';
 import axios from 'axios';
 import DOMPurify from 'dompurify';
 import ReactionPicker from 'components/ReactionPicker';
@@ -135,7 +135,7 @@ const getEmbeddableGoogleDocUrl = (
 function ApprovalRequestDetailContent() {
   const router = useRouter();
   const { id } = router.query;
-  const { isValidUser, user, token } = useValidateUserToken();
+  const { isValidUser, user, token } = useAuth('/login');
   const { showSuccess, showError } = useToast();
 
   // All hooks must be called at the top, before any conditional returns

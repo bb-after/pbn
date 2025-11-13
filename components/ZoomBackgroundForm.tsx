@@ -12,7 +12,7 @@ import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import { Link } from "@mui/material";
 import { useZoomBackground } from "../hooks/useZoomBackground"; // Make sure the path is correct
 import { useRouter } from "next/router";
-import useValidateUserToken from "../hooks/useValidateUserToken";
+import useAuth from '../hooks/useAuth';
 
 type BackgroundStyle =
   | "goldenGate"
@@ -50,7 +50,7 @@ function ZoomBackgroundForm({
 
   const router = useRouter();
   const { query } = router;
-  const { token } = useValidateUserToken();
+  const { token } = useAuth('/login');
 
   useEffect(() => {
     const BACKGROUND_STYLES = {
@@ -304,7 +304,7 @@ function ZoomBackgroundDisplay({
   const [isSetting, setIsSetting] = useState(false);
   const [message, setMessage] = useState<ReactNode | null>(null);
   const { setZoomBackground } = useZoomBackground();
-  const { token } = useValidateUserToken();
+  const { token } = useAuth('/login');
 
   const logAction = async (
     action: "download" | "set_as_background" | "set_as_background_failed"
@@ -474,7 +474,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [currentClientName, setCurrentClientName] = useState<string>("");
-  const { token } = useValidateUserToken();
+  const { token } = useAuth('/login');
   const handleSubmit = async ({
     company,
     clientName,

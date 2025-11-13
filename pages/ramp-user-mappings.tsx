@@ -33,7 +33,7 @@ import {
   Link as LinkIcon,
 } from '@mui/icons-material';
 import { IntercomLayout } from '../components/layout/IntercomLayout';
-import useValidateUserToken from '../hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import UnauthorizedAccess from '../components/UnauthorizedAccess';
 
 interface User {
@@ -53,7 +53,7 @@ interface UserMapping {
 }
 
 const RampUserMappings: React.FC = () => {
-  const { token } = useValidateUserToken();
+  const { token } = useAuth('/login');
   const [users, setUsers] = useState<User[]>([]);
   const [mappings, setMappings] = useState<UserMapping[]>([]);
   const [loading, setLoading] = useState(true);

@@ -30,7 +30,7 @@ import {
   Pause as PauseIcon,
   History as HistoryIcon,
 } from '@mui/icons-material';
-import useValidateUserToken from '../hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import axios from 'axios';
 
 interface ScheduledAnalysis {
@@ -57,7 +57,7 @@ interface ScheduledAnalysis {
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export default function GeoScheduleManager() {
-  const { token, isLoading } = useValidateUserToken();
+  const { token, isLoading } = useAuth('/login');
   const [schedules, setSchedules] = useState<ScheduledAnalysis[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

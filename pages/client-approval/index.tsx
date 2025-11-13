@@ -38,7 +38,7 @@ import {
 import LayoutContainer from '../../components/LayoutContainer';
 import StyledHeader from '../../components/StyledHeader';
 import { useRouter } from 'next/router';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../../hooks/useAuth';
 import axios from 'axios';
 import UnauthorizedAccess from 'components/UnauthorizedAccess';
 import {
@@ -80,7 +80,7 @@ interface ApprovalRequest {
 
 function ClientApprovalPageContent() {
   const router = useRouter();
-  const { isValidUser, isLoading, user } = useValidateUserToken();
+  const { isValidUser, isLoading, user } = useAuth('/login');
   const { admin: isAdminMode } = router.query;
   const { showError, showSuccess } = useToast();
 

@@ -19,14 +19,14 @@ import {
   DarkMode as DarkModeIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/router';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import UnauthorizedAccess from 'components/UnauthorizedAccess';
 import { useToast, IntercomLayout, IntercomCard, ToastProvider } from 'components/ui';
 import { useThemeMode } from '../contexts/ThemeContext';
 
 function SettingsPageContent() {
   const router = useRouter();
-  const { isValidUser, isLoading, user } = useValidateUserToken();
+  const { isValidUser, isLoading, user } = useAuth('/login');
   const { showError, showSuccess } = useToast();
   const { mode, setMode } = useThemeMode();
 

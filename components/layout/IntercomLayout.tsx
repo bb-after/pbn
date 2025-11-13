@@ -1,6 +1,6 @@
 import React, { useState, ReactNode, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import useValidateUserToken from '../../hooks/useValidateUserToken';
+import useAuth from '../../hooks/useAuth';
 import {
   Box,
   Drawer,
@@ -314,7 +314,7 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
 }) => {
   const theme = useTheme();
   const router = useRouter();
-  const { user } = useValidateUserToken();
+  const { user, logout } = useAuth('/login');
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -705,7 +705,14 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
           Settings
         </MenuItem>
         <Divider />
-        <MenuItem onClick={handleProfileClose}>Logout</MenuItem>
+        <MenuItem 
+          onClick={() => {
+            handleProfileClose();
+            logout();
+          }}
+        >
+          Logout
+        </MenuItem>
       </Menu>
     </Box>
   );

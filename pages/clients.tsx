@@ -51,7 +51,7 @@ import {
   IntercomCard,
   IntercomInput,
 } from '../components/ui';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import Link from 'next/link';
 import UnauthorizedAccess from 'components/UnauthorizedAccess';
 
@@ -101,7 +101,7 @@ const headCells: HeadCell[] = [
 
 export default function ClientsPage() {
   const router = useRouter();
-  const { isValidUser } = useValidateUserToken();
+  const { isValidUser } = useAuth('/login');
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [order, setOrder] = useState<Order>('asc');

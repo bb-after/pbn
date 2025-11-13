@@ -30,7 +30,7 @@ import {
 // Using native HTML date inputs instead of MUI X DatePicker to avoid module resolution issues
 import axios from 'axios';
 import { IntercomLayout } from '../components/ui';
-import useValidateUserToken from '../hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import ClientDropdown from '../components/ClientDropdown';
 import UnauthorizedAccess from '../components/UnauthorizedAccess';
 import { formatSuperstarContent } from '../utils/formatSuperstarContent';
@@ -58,7 +58,7 @@ interface PaginationInfo {
 }
 
 export default function GeoAnalysisHistory() {
-  const { token, user, isValidUser, isLoading } = useValidateUserToken();
+  const { token, user, isValidUser, isLoading } = useAuth('/login');
   const [analyses, setAnalyses] = useState<AnalysisHistory[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { TextField, Button, FormControl, Select, MenuItem } from '@mui/material';
 import router from 'next/router';
-import useValidateUserToken from '../hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import ClientDropdown from './ClientDropdown';
 
 const SuperstarPostCaptureForm: React.FC = () => {
@@ -10,7 +10,7 @@ const SuperstarPostCaptureForm: React.FC = () => {
   const [clientId, setClientId] = useState<number | null>(null); // State for client ID
   const [categories, setCategories] = useState(''); // State for categories/keywords
   const [isSubmissionSuccessful, setIsSubmissionSuccessful] = useState(false);
-  const { token } = useValidateUserToken(); // Get the user token using custom hook
+  const { token } = useAuth('/login'); // Get the user token using custom hook
 
   const [selectedUser, setSelectedUser] = useState(''); // State to hold selected user
 
