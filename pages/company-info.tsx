@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { Typography, Box, CircularProgress, Alert } from '@mui/material';
 import CompanyInfoPage from '../components/CompanyInfoPage';
 import { IntercomLayout, ThemeProvider, ToastProvider, IntercomCard } from '../components/ui';
-import useValidateUserToken from '../hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import UnauthorizedAccess from '../components/UnauthorizedAccess';
 
 function CompanyInfoContent() {
-  const { isValidUser, isLoading } = useValidateUserToken();
+  const { isValidUser, isLoading } = useAuth('/login');
 
   if (isLoading) {
     return (

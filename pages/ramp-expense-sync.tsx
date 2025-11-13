@@ -37,7 +37,7 @@ import { useRouter } from 'next/router';
 import { IntercomLayout } from '../components/layout/IntercomLayout';
 import { ContentCopy, CallSplit } from '@mui/icons-material';
 import { IconButton, Tooltip } from '@mui/material';
-import useValidateUserToken from '../hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import UnauthorizedAccess from '../components/UnauthorizedAccess';
 import { findBestClientMatch, autoMapClients } from '../utils/rampClientMapping';
 
@@ -83,7 +83,7 @@ interface AuthStatus {
 
 const RampExpenseSync: React.FC = () => {
   const router = useRouter();
-  const { token } = useValidateUserToken();
+  const { token } = useAuth('/login');
   const [users, setUsers] = useState<User[]>([]);
   const [mappedUsers, setMappedUsers] = useState<User[]>([]);
   const [selectedUser, setSelectedUser] = useState<string>('');

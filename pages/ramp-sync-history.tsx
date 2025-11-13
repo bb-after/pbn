@@ -36,7 +36,7 @@ import {
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { IntercomLayout } from '../components/layout/IntercomLayout';
-import useValidateUserToken from '../hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import UnauthorizedAccess from '../components/UnauthorizedAccess';
 
 interface SyncLog {
@@ -92,7 +92,7 @@ const formatCurrency = (amount: number | string): string => {
 };
 
 const RampSyncHistory: React.FC = () => {
-  const { token } = useValidateUserToken();
+  const { token } = useAuth('/login');
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
   const [summary, setSummary] = useState<SyncSummary | null>(null);
   const [loading, setLoading] = useState(true);

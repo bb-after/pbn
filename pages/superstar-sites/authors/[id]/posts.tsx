@@ -30,7 +30,7 @@ import PersonIcon from '@mui/icons-material/Person';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import LayoutContainer from '../../../../components/LayoutContainer';
 import StyledHeader from '../../../../components/StyledHeader';
-import useValidateUserToken from '../../../../hooks/useValidateUserToken';
+import useAuth from '../../../../hooks/useAuth';
 import Link from 'next/link';
 
 interface Author {
@@ -62,7 +62,7 @@ const AuthorPosts: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   
-  const { isLoading: isValidating, isValidUser } = useValidateUserToken();
+  const { isLoading: isValidating, isValidUser } = useAuth('/login');
 
   useEffect(() => {
     const fetchAuthorPosts = async () => {

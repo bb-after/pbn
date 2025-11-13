@@ -18,7 +18,7 @@ import {
   Switch,
 } from '@mui/material';
 import GeoAnalysisForm, { GeoAnalysisFormData } from './GeoAnalysisForm';
-import useValidateUserToken from '../hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import axios from 'axios';
 
 interface ScheduleData {
@@ -52,7 +52,7 @@ const DAY_OF_WEEK_OPTIONS = [
 ];
 
 export default function GeoScheduler() {
-  const { token } = useValidateUserToken();
+  const { token } = useAuth('/login');
   const router = useRouter();
   const [formData, setFormData] = useState<GeoScheduleFormData>({
     clientName: '',

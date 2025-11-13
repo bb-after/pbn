@@ -30,7 +30,7 @@ import {
   IntercomButton,
 } from '../../components/ui';
 import UnauthorizedAccess from '../../components/UnauthorizedAccess';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../../hooks/useAuth';
 import { handleWPLogin } from '../../utils/handle-wp-login';
 import { colors } from '../../utils/colors';
 import debounce from 'lodash/debounce';
@@ -72,7 +72,7 @@ function SuperstarSitesPage() {
   const [selectedClientId, setSelectedClientId] = useState<string>('');
 
   const router = useRouter();
-  const { isLoading: isAuthLoading, isValidUser } = useValidateUserToken();
+  const { isLoading: isAuthLoading, isValidUser } = useAuth('/login');
   const [active, setActive] = useState<string>('1');
 
   // Debounced search handler

@@ -16,7 +16,7 @@ import {
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { IntercomLayout, IntercomCard, ToastProvider } from '../components/ui';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import UnauthorizedAccess from '../components/UnauthorizedAccess';
 import axios from 'axios';
 
@@ -29,7 +29,7 @@ export default function GeoRunsPage() {
 }
 
 function GeoRuns() {
-  const { token } = useValidateUserToken();
+  const { token } = useAuth('/login');
   const [runs, setRuns] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);

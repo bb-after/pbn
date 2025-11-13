@@ -15,7 +15,7 @@ import {
 import Autocomplete from '@mui/material/Autocomplete';
 import IndustryMappingSelector from '../../../components/IndustryMappingSelector';
 import RegionMappingSelector from '../../../components/RegionMappingSelector';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../../../hooks/useAuth';
 import {
   IntercomLayout,
   ThemeProvider,
@@ -71,7 +71,7 @@ function EditSitePage() {
   const [selectedIndustries, setSelectedIndustries] = useState<Industry[]>([]);
   const [selectedRegions, setSelectedRegions] = useState<Region[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const { isLoading: isAuthLoading, isValidUser } = useValidateUserToken();
+  const { isLoading: isAuthLoading, isValidUser } = useAuth('/login');
 
   // Helper function to flatten nested regions for Autocomplete
   const flattenRegions = (regions: Region[]): Region[] => {

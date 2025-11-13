@@ -1,11 +1,11 @@
 import React from 'react';
 import { IntercomLayout } from '../components/ui';
 import GeoChecker from '../components/GeoChecker';
-import useValidateUserToken from '../hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import UnauthorizedAccess from '../components/UnauthorizedAccess';
 
 export default function GeoCheckerPage() {
-  const { token } = useValidateUserToken();
+  const { token } = useAuth('/login');
 
   if (!token) {
     return <UnauthorizedAccess />;

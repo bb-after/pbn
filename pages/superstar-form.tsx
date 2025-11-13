@@ -21,7 +21,7 @@ import ClientDropdown from 'components/ClientDropdown';
 import axios from 'axios';
 import dynamic from 'next/dynamic';
 import { colors } from '../utils/colors';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import { useRouter } from 'next/router';
 import UnauthorizedAccess from 'components/UnauthorizedAccess';
 import { IntercomLayout, ToastProvider, IntercomCard } from '../components/ui';
@@ -64,7 +64,7 @@ const SuperstarFormPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [contentMode, setContentMode] = useState<'generate' | 'paste'>('paste');
   const [generating, setGenerating] = useState(false);
-  const { token } = useValidateUserToken();
+  const { token, isLoading, isValidUser } = useAuth('/login');
   const [authors, setAuthors] = useState<
     {
       id: number;
@@ -242,7 +242,19 @@ const SuperstarFormPage: React.FC = () => {
     }
   };
 
-  if (!token) {
+  if (isLoading) {
+    return (
+      <IntercomLayout title="Loading...">
+        <IntercomCard>
+          <Box p={3} display="flex" justifyContent="center">
+            <CircularProgress />
+          </Box>
+        </IntercomCard>
+      </IntercomLayout>
+    );
+  }
+
+  if (!isValidUser) {
     return <UnauthorizedAccess />;
   }
 

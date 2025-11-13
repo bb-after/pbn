@@ -2,13 +2,13 @@ import React from 'react';
 import { Box, Typography } from '@mui/material';
 import SuperstarPostCaptureForm from '../components/SuperstarPostCaptureForm';
 import { IntercomLayout, ToastProvider, IntercomCard } from '../components/ui';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import UnauthorizedAccess from 'components/UnauthorizedAccess';
 
 const pageTitle = 'Capture Superstar Article Submission';
 
 function SuperstarCapturePage() {
-  const { token } = useValidateUserToken();
+  const { token } = useAuth('/login');
 
   if (!token) {
     return <UnauthorizedAccess />;

@@ -28,7 +28,7 @@ import {
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { IntercomLayout, IntercomCard, ToastProvider } from '../components/ui';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import UnauthorizedAccess from '../components/UnauthorizedAccess';
 import axios from 'axios';
 
@@ -54,7 +54,7 @@ interface GeoCheckResult {
 }
 
 function GeoCheckHistory() {
-  const { token } = useValidateUserToken();
+  const { token } = useAuth('/login');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<GeoCheckResult[]>([]);
   const [pagination, setPagination] = useState({ total: 0, limit: 25, offset: 0, hasMore: false });

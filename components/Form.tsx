@@ -14,7 +14,7 @@ import FinalLoadingStateComponent from './FinalLoadingState';
 import ArticleForm from './ArticleForm';
 import { insertBacklinks, getBacklinkArray, parseTitleFromArticle } from '../utils/openai';
 import { sendDataToStatusCrawl } from '../utils/statusCrawl';
-import useValidateUserToken from '../hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import axios from 'axios';
 import { formatPbnjContent } from '../utils/formatPbnjContent';
 
@@ -64,7 +64,7 @@ const Form: React.FC<FormProps> = () => {
     setPbnModalOpen(true);
   };
 
-  const { token } = useValidateUserToken(); // Destructure the returned object
+  const { token } = useAuth('/login'); // Destructure the returned object
 
   const handleRemixModalSubmit = async (iterations: number, remixMode: string) => {
     if (!token) {

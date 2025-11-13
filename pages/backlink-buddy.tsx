@@ -43,7 +43,7 @@ import {
   IntercomButton,
 } from '../components/ui';
 import ClientDropdown from 'components/ClientDropdown';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import dynamic from 'next/dynamic';
 import axios from 'axios';
 import { useRouter } from 'next/router';
@@ -150,7 +150,7 @@ const shuffleArray = <T extends unknown>(array: T[]): T[] => {
 
 function BacklinkBuddyContent() {
   const router = useRouter();
-  const { isValidUser, token } = useValidateUserToken();
+  const { isValidUser, token } = useAuth('/login');
   const [activeStep, setActiveStep] = useState(0);
   const [formData, setFormData] = useState<BacklinkFormData>({
     clientName: '',
