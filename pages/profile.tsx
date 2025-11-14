@@ -42,9 +42,9 @@ import {
   DarkMode as DarkModeIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/router';
-import useAuth from '../hooks/useAuth';
 import axios from 'axios';
-import UnauthorizedAccess from 'components/UnauthorizedAccess';
+import { GetServerSideProps } from 'next';
+import { requireServerAuth, AuthUser } from '../utils/serverAuth';
 import {
   useToast,
   IntercomLayout,
@@ -71,9 +71,12 @@ interface UserProfile {
   is_active?: boolean;
 }
 
-function ProfilePageContent() {
+interface ProfilePageProps {
+  user: AuthUser;
+}
+
+function ProfilePageContent({ user }: ProfilePageProps) {
   const router = useRouter();
-  const { isValidUser, isLoading, user } = useAuth('/login');
   const { showError, showSuccess } = useToast();
   const { setMode } = useThemeMode();
 
@@ -89,10 +92,8 @@ function ProfilePageContent() {
 
   // Load user profile on mount
   useEffect(() => {
-    if (isValidUser && user) {
-      fetchUserProfile();
-    }
-  }, [isValidUser, user]);
+    fetchUserProfile();
+  }, []);
 
   // Fetch user profile data
   const fetchUserProfile = async () => {
@@ -116,7 +117,7 @@ function ProfilePageContent() {
       const userData = response.data;
       const profileData: UserProfile = {
         id: userData.id || '',
-        name: userData.name || userData.username || '',
+        name: userData.name || '',
         email: userData.email || '',
         role: userData.role || 'staff',
         slack_handle: userData.slack_handle || '',
@@ -138,7 +139,7 @@ function ProfilePageContent() {
       // Fallback to basic user data from token validation if API fails
       const profileData: UserProfile = {
         id: user?.id?.toString() || '',
-        name: user?.username || '',
+        name: user?.name || '',
         email: user?.email || '',
         role: user?.role || 'staff',
         theme_preference: 'light',
@@ -241,17 +242,6 @@ function ProfilePageContent() {
       .slice(0, 2);
   };
 
-  if (isLoading) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
-        <CircularProgress />
-      </Box>
-    );
-  }
-
-  if (!isValidUser) {
-    return <UnauthorizedAccess />;
-  }
 
   if (error) {
     return (
@@ -627,10 +617,14 @@ function ProfilePageContent() {
   );
 }
 
-export default function ProfilePage() {
+export default function ProfilePage({ user }: ProfilePageProps) {
   return (
     <ToastProvider>
-      <ProfilePageContent />
+      <ProfilePageContent user={user} />
     </ToastProvider>
   );
 }
+
+export const getServerSideProps: GetServerSideProps = async (context) => {
+  return await requireServerAuth(context);
+};

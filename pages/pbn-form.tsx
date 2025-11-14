@@ -3,17 +3,16 @@ import Form from '../components/Form';
 import Image from 'next/image';
 import { IntercomLayout, ThemeProvider, ToastProvider, IntercomCard } from '../components/ui';
 import { Box, Typography } from '@mui/material';
-import useAuth from '../hooks/useAuth';
-import UnauthorizedAccess from 'components/UnauthorizedAccess';
+import { GetServerSideProps } from 'next';
+import { requireServerAuth, AuthUser } from '../utils/serverAuth';
 
 const pageTitle = 'Create New PBN Post';
 
-function PbnFormPage() {
-  const { token } = useAuth('/login');
+interface PbnFormProps {
+  user: AuthUser;
+}
 
-  if (!token) {
-    return <UnauthorizedAccess />;
-  }
+function PbnFormPage({ user }: PbnFormProps) {
 
   return (
     <IntercomLayout
@@ -43,12 +42,16 @@ function PbnFormPage() {
   );
 }
 
-const CreateNewPbnPost: React.FC = () => {
+const CreateNewPbnPost: React.FC<PbnFormProps> = ({ user }) => {
   return (
     <ToastProvider>
-      <PbnFormPage />
+      <PbnFormPage user={user} />
     </ToastProvider>
   );
 };
 
 export default CreateNewPbnPost;
+
+export const getServerSideProps: GetServerSideProps = async (context) => {
+  return await requireServerAuth(context);
+};
