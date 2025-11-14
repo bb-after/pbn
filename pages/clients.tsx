@@ -51,9 +51,9 @@ import {
   IntercomCard,
   IntercomInput,
 } from '../components/ui';
-import useAuth from '../hooks/useAuth';
 import Link from 'next/link';
-import UnauthorizedAccess from 'components/UnauthorizedAccess';
+import { GetServerSideProps } from 'next';
+import { requireServerAuth, AuthUser } from '../utils/serverAuth';
 
 interface Industry {
   industry_id: number;
@@ -99,9 +99,12 @@ const headCells: HeadCell[] = [
   { id: 'actions', label: 'Actions', numeric: false, sortable: false },
 ];
 
-export default function ClientsPage() {
+interface ClientsPageProps {
+  user: AuthUser;
+}
+
+export default function ClientsPage({ user }: ClientsPageProps) {
   const router = useRouter();
-  const { isValidUser } = useAuth('/login');
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [order, setOrder] = useState<Order>('asc');
@@ -118,12 +121,10 @@ export default function ClientsPage() {
   const [selectedRegionId, setSelectedRegionId] = useState<number | null>(null);
 
   useEffect(() => {
-    if (isValidUser) {
-      fetchClients();
-      fetchIndustries();
-      fetchRegions();
-    }
-  }, [isValidUser, showActiveOnly, selectedIndustryId, selectedRegionId]);
+    fetchClients();
+    fetchIndustries();
+    fetchRegions();
+  }, [showActiveOnly, selectedIndustryId, selectedRegionId]);
 
   const fetchClients = async () => {
     setLoading(true);
@@ -244,9 +245,6 @@ export default function ClientsPage() {
       return order === 'asc' ? comparison : -comparison;
     });
 
-  if (!isValidUser) {
-    return <UnauthorizedAccess />;
-  }
 
   function ClientsPageContent() {
     const actionButton = (
@@ -554,3 +552,7 @@ export default function ClientsPage() {
     </ToastProvider>
   );
 }
+
+export const getServerSideProps: GetServerSideProps = async (context) => {
+  return await requireServerAuth(context);
+};
