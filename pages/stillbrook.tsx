@@ -1034,6 +1034,24 @@ function StillbrookContent({ user }: StillbrookProps) {
     // Wait for DOM to update
     await new Promise(resolve => setTimeout(resolve, 1000));
 
+    // Temporarily hide accessibility elements using CSS injection
+    const hideAccessibilityCSS = `
+      <style id="screenshot-hide-accessibility">
+        h1.bNg8Rb,
+        div.wYq63b,
+        .gyPpGe,
+        [jscontroller="EufiNb"] {
+          display: none !important;
+        }
+      </style>
+    `;
+
+    // Inject CSS to hide accessibility elements
+    const head = iframeDocument.head || iframeDocument.querySelector('head');
+    if (head) {
+      head.insertAdjacentHTML('beforeend', hideAccessibilityCSS);
+    }
+
     // Generate screenshot of the iframe content
     const canvas = await html2canvas(iframeBody, {
       allowTaint: false,
@@ -1044,6 +1062,12 @@ function StillbrookContent({ user }: StillbrookProps) {
       backgroundColor: '#ffffff',
       logging: false,
     });
+
+    // Remove the temporary CSS
+    const injectedStyle = iframeDocument.getElementById('screenshot-hide-accessibility');
+    if (injectedStyle) {
+      injectedStyle.remove();
+    }
 
     console.log(`✅ Canvas created for ${pageLabel || 'page'}: ${canvas.width}x${canvas.height}`);
     return canvas;
@@ -1097,6 +1121,68 @@ function StillbrookContent({ user }: StillbrookProps) {
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = `stillbrook-${pageType}-${keyword.replace(/[^a-zA-Z0-9]/g, '-')}.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  };
+
+  const handleDownloadMainHTML = () => {
+    if (!result?.htmlPreview) return;
+
+    // Try to get the actual iframe content that gets converted to PNG
+    const iframe = document.querySelector('#html-preview iframe') as HTMLIFrameElement;
+    let actualIframeHTML = '';
+
+    if (iframe && iframe.contentDocument) {
+      try {
+        const iframeDocument = iframe.contentDocument;
+        actualIframeHTML = iframeDocument.documentElement.outerHTML;
+        console.log('✅ Captured actual iframe HTML content');
+      } catch (error) {
+        console.warn('Could not access iframe content, using fallback:', error);
+        actualIframeHTML = result.htmlPreview;
+      }
+    } else {
+      console.warn('Iframe not found, using original HTML preview');
+      actualIframeHTML = result.htmlPreview;
+    }
+
+    // Download the actual content that gets converted to PNG
+    const htmlDocument = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Stillbrook PNG Debug - ${keyword}</title>
+        <meta charset="utf-8">
+        <style>
+          .debug-header { background: #e3f2fd; padding: 15px; margin-bottom: 20px; border-radius: 4px; border-left: 4px solid #1976d2; }
+          .debug-note { font-size: 14px; color: #555; margin-bottom: 10px; }
+        </style>
+      </head>
+      <body>
+        <div class="debug-header">
+          <h3 style="margin: 0 0 10px 0;">🔍 PNG Conversion Debug HTML</h3>
+          <div class="debug-note">
+            <strong>Purpose:</strong> This is the exact HTML content from the iframe that gets converted to PNG.
+          </div>
+          <div class="debug-note">
+            <strong>Search for:</strong> "Accessibility Links", "Skip to main content", or elements with unusual styling.
+          </div>
+          <div class="debug-note">
+            <strong>How to debug:</strong> Right-click → View Source or use DevTools to inspect the full HTML structure.
+          </div>
+        </div>
+        <hr>
+        ${actualIframeHTML}
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([htmlDocument], { type: 'text/html' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `stillbrook-png-debug-${keyword.replace(/[^a-zA-Z0-9]/g, '-')}.html`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1938,7 +2024,6 @@ function StillbrookContent({ user }: StillbrookProps) {
     handleOpenSaveModal();
   };
 
-
   // Logo animation overlay
   if (showLogoOverlay) {
     return (
@@ -2526,7 +2611,15 @@ function StillbrookContent({ user }: StillbrookProps) {
                           >
                             {interactiveMode ? 'Done' : 'Edit'}
                           </Button>
-
+                          {/* Download HTML */}
+                          <Button
+                            variant="outlined"
+                            onClick={handleDownloadMainHTML}
+                            disabled={isGeneratingImage}
+                            startIcon={<DownloadIcon />}
+                          >
+                            Download HTML
+                          </Button>
                           {/* Download PNG */}
                           <Button
                             variant="contained"
@@ -2886,6 +2979,6 @@ export default function StillbrookPage({ user }: StillbrookProps) {
   );
 }
 
-export const getServerSideProps: GetServerSideProps = async (context) => {
+export const getServerSideProps: GetServerSideProps = async context => {
   return await requireServerAuth(context);
 };
