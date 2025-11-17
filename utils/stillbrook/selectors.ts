@@ -8,7 +8,7 @@ export interface HighlightSelectors {
 export const DEFAULT_HIGHLIGHT_SELECTORS: HighlightSelectors = {
   containerClass: 'MjjYud',
   linkClass: 'zReHs',
-  dataAttributes: ['data-news-doc-id'], // Support for news doc IDs
+  dataAttributes: ['data-rpos'], // Regular Google search results
   additionalClasses: ['b2Rnsc', 'related-question-pair'], // Additional classes like qR29te
 };
 

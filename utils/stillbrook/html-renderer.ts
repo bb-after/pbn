@@ -1,4 +1,5 @@
 import puppeteer, { Page } from 'puppeteer';
+import { getHighlightSelectors } from './selectors';
 
 export interface HtmlRenderOptions {
   viewport?: {
@@ -174,10 +175,51 @@ function getSelectorsToWaitFor(url: string, configuredSelectors?: string[]): str
   }
 
   if (isGoogleSearchResult(url)) {
-    return ['[data-rpos]'];
+    // Extract search type from URL
+    const searchType = extractSearchTypeFromUrl(url);
+    const selectors = getHighlightSelectors(searchType);
+    
+    // Build selectors array from the highlight selectors configuration
+    const waitForSelectors: string[] = [];
+    
+    // Add data attribute selectors
+    if (selectors.dataAttributes && selectors.dataAttributes.length > 0) {
+      selectors.dataAttributes.forEach(attr => {
+        if (attr) { // Only add non-empty attributes
+          waitForSelectors.push(`[${attr}]`);
+        }
+      });
+    }
+    
+    // Add container class selector as fallback
+    if (selectors.containerClass) {
+      waitForSelectors.push(`.${selectors.containerClass}`);
+    }
+    
+    // Add link class selector as fallback
+    if (selectors.linkClass) {
+      waitForSelectors.push(`.${selectors.linkClass}`);
+    }
+    
+    console.log(`Search type: ${searchType}, waiting for selectors: ${waitForSelectors.join(', ')}`);
+    return waitForSelectors;
   }
 
   return [];
+}
+
+/**
+ * Extracts the search type (tbm parameter) from a Google search URL
+ */
+function extractSearchTypeFromUrl(url: string): string | undefined {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.searchParams.get('tbm') || undefined;
+  } catch {
+    // If URL parsing fails, try regex fallback
+    const tbmMatch = url.match(/[?&]tbm=([^&]*)/);
+    return tbmMatch ? tbmMatch[1] : undefined;
+  }
 }
 
 async function waitForDynamicSelectorsIfNeeded(
