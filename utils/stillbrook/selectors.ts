@@ -9,14 +9,14 @@ export const DEFAULT_HIGHLIGHT_SELECTORS: HighlightSelectors = {
   containerClass: 'MjjYud',
   linkClass: 'zReHs',
   dataAttributes: ['data-rpos'], // Regular Google search results
-  additionalClasses: ['b2Rnsc', 'related-question-pair'], // Additional classes like qR29te
-};
+  additionalClasses: ['b2Rnsc', 'related-question-pair', 'sHEJob'], // Additional classes like qR29te
+};//sHEJob = video results
 
 export const NEWS_HIGHLIGHT_SELECTORS: HighlightSelectors = {
   containerClass: 'SoaBEf',
   linkClass: 'WlydOe',
   dataAttributes: ['data-news-doc-id'], // Support for news doc IDs
-  additionalClasses: ['qR29te', 'related-question-pair'], // Additional classes like qR29te
+  additionalClasses: ['qR29te', 'related-question-pair', 'sHEJob'], // Additional classes like qR29te
 };
 
 export const IMAGE_HIGHLIGHT_SELECTORS: HighlightSelectors = {
