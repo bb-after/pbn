@@ -96,6 +96,7 @@ describe('html-renderer', () => {
         timeout: 30000,
       });
 
+      // Should wait for regular search selectors (data-rpos) for a basic SerpAPI URL
       expect(mockPage.waitForSelector).toHaveBeenCalledWith('[data-rpos]', { timeout: 12000 });
       expect(mockPage.$$eval).toHaveBeenCalledWith('[data-rpos]', expect.any(Function));
 
@@ -127,7 +128,7 @@ describe('html-renderer', () => {
       });
     });
 
-    it('should handle Google Images search with lazy loading', async () => {
+    it('should handle Google Images search with lazy loading and correct selectors', async () => {
       const googleImagesUrl = 'https://serpapi.com/searches/test/test.html?tbm=isch';
       
       mockPage.evaluate.mockResolvedValue(undefined);
@@ -137,6 +138,8 @@ describe('html-renderer', () => {
         scrollDelay: 100
       });
 
+      // Should use image-specific selectors
+      expect(mockPage.waitForSelector).toHaveBeenCalledWith('[data-ref-docid]', { timeout: 12000 });
       expect(mockPage.evaluate).toHaveBeenCalledWith(expect.any(Function));
     }, 15000);
 
@@ -257,6 +260,118 @@ describe('html-renderer', () => {
       expect(result).toBe(mockRenderedHtml);
       consoleErrorSpy.mockRestore();
     }, 15000);
+  });
+
+  describe('dynamic selector detection', () => {
+    it('should use regular search selectors for standard URLs', async () => {
+      const regularUrl = 'https://serpapi.com/searches/test/test.html';
+      
+      await renderHtmlWithBrowser(regularUrl, { imageLoadDelay: 10 });
+
+      expect(mockPage.waitForSelector).toHaveBeenCalledWith('[data-rpos]', { timeout: 12000 });
+    });
+
+    it('should use news selectors for Google News searches', async () => {
+      const newsUrl = 'https://serpapi.com/searches/test/test.html';
+      
+      await renderHtmlWithBrowser(newsUrl, { imageLoadDelay: 10, searchType: 'nws' });
+
+      expect(mockPage.waitForSelector).toHaveBeenCalledWith('[data-news-doc-id]', { timeout: 12000 });
+    });
+
+    it('should use image selectors for Google Images searches', async () => {
+      const imagesUrl = 'https://serpapi.com/searches/test/test.html';
+      
+      await renderHtmlWithBrowser(imagesUrl, { imageLoadDelay: 10, searchType: 'isch' });
+
+      expect(mockPage.waitForSelector).toHaveBeenCalledWith('[data-ref-docid]', { timeout: 12000 });
+    });
+
+    it('should use video selectors for Google Video searches', async () => {
+      const videoUrl = 'https://serpapi.com/searches/test/test.html';
+      
+      await renderHtmlWithBrowser(videoUrl, { imageLoadDelay: 10, searchType: 'vid' });
+
+      expect(mockPage.waitForSelector).toHaveBeenCalledWith('.pKB8Bc', { timeout: 12000 });
+    });
+
+    it('should use explicit search types when provided', async () => {
+      const testCases = [
+        { searchType: 'nws', expectedSelector: '[data-news-doc-id]' },
+        { searchType: 'isch', expectedSelector: '[data-ref-docid]' },
+        { searchType: 'vid', expectedSelector: '.pKB8Bc' },
+        { searchType: undefined, expectedSelector: '[data-rpos]' }, // Should fall back to default
+      ];
+
+      for (const testCase of testCases) {
+        // Reset mocks for each test
+        mockPage.waitForSelector.mockClear();
+        mockPage.$$eval.mockClear();
+        mockBrowser.newPage.mockClear();
+        mockBrowser.close.mockClear();
+        mockPuppeteer.launch.mockClear();
+
+        const url = 'https://serpapi.com/searches/test/test.html';
+        await renderHtmlWithBrowser(url, { imageLoadDelay: 10, searchType: testCase.searchType });
+
+        if (testCase.expectedSelector) {
+          expect(mockPage.waitForSelector).toHaveBeenCalledWith(testCase.expectedSelector, { timeout: 12000 });
+        }
+      }
+    });
+
+    it('should handle direct Google URLs with tbm parameters', async () => {
+      const directGoogleUrls = [
+        { url: 'https://www.google.com/search?q=test&tbm=nws', expectedSelector: '[data-news-doc-id]' },
+        { url: 'https://google.com/search?q=test&tbm=isch', expectedSelector: '[data-ref-docid]' },
+        { url: 'https://google.co.uk/search?q=test&tbm=vid', expectedSelector: '' },
+      ];
+
+      for (const testCase of directGoogleUrls) {
+        // Reset mocks for each test
+        mockPage.waitForSelector.mockClear();
+        mockPage.$$eval.mockClear();
+        mockBrowser.newPage.mockClear();
+        mockBrowser.close.mockClear();
+        mockPuppeteer.launch.mockClear();
+
+        await renderHtmlWithBrowser(testCase.url, { imageLoadDelay: 10 });
+
+        if (testCase.expectedSelector) {
+          expect(mockPage.waitForSelector).toHaveBeenCalledWith(testCase.expectedSelector, { timeout: 12000 });
+        }
+      }
+    });
+
+    it('should use fallback selectors when selector detection fails', async () => {
+      const unknownUrl = 'https://serpapi.com/searches/test/test.html?unknown=param';
+      
+      await renderHtmlWithBrowser(unknownUrl, { imageLoadDelay: 10 });
+
+      // Should fall back to regular search selectors
+      expect(mockPage.waitForSelector).toHaveBeenCalledWith('[data-rpos]', { timeout: 12000 });
+    });
+
+    it('should handle malformed URLs gracefully', async () => {
+      const malformedUrl = 'not-a-valid-url';
+      
+      // Should not throw an error, should use fallback selectors or no selectors
+      await expect(renderHtmlWithBrowser(malformedUrl, { imageLoadDelay: 10 })).resolves.toBeDefined();
+    });
+
+    it('should prioritize configured selectors over search type detection', async () => {
+      const customSelectors = ['.custom-selector', '[data-custom]'];
+      const newsUrl = 'https://serpapi.com/searches/test/test.html';
+      
+      await renderHtmlWithBrowser(newsUrl, { 
+        waitForSelectors: customSelectors,
+        searchType: 'nws',
+        imageLoadDelay: 10 
+      });
+
+      // Should use configured selectors instead of search type selectors
+      expect(mockPage.waitForSelector).toHaveBeenCalledWith('.custom-selector', { timeout: 12000 });
+    });
   });
 
   describe('edge cases', () => {

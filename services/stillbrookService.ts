@@ -182,7 +182,7 @@ export async function runSearch({ user, request, startTime }: RunSearchParams): 
     const page1PositiveMatches = filterMatchesForResults(uniquePositiveMatches, organicResults);
 
     if (rawHtmlUrl) {
-      const renderedHtml = await renderHtmlWithBrowser(rawHtmlUrl);
+      const renderedHtml = await renderHtmlWithBrowser(rawHtmlUrl, { searchType });
       htmlPreview = addCombinedHighlighting(
         renderedHtml,
         page1NegativeMatches,
@@ -196,7 +196,7 @@ export async function runSearch({ user, request, startTime }: RunSearchParams): 
     if (includePage2 && additionalPages.length > 0) {
       const [page2] = additionalPages;
       if (page2?.rawHtmlUrl) {
-        const page2RenderedHtml = await renderHtmlWithBrowser(page2.rawHtmlUrl);
+        const page2RenderedHtml = await renderHtmlWithBrowser(page2.rawHtmlUrl, { searchType });
         const page2NegativeMatches = filterMatchesForResults(uniqueNegativeMatches, page2.organicResults);
         const page2PositiveMatches = filterMatchesForResults(uniquePositiveMatches, page2.organicResults);
 
