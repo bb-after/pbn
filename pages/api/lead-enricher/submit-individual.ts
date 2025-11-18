@@ -1,6 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import mysql from 'mysql2/promise';
 import { google } from 'googleapis';
+import jwt from 'jsonwebtoken';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-change-in-production';
 
 interface IndividualCSVRowData {
   URL: string;
@@ -15,7 +18,6 @@ interface IndividualCSVRowData {
 
 interface RequestBody {
   data: IndividualCSVRowData[];
-  userToken: string;
   fieldMapping?: { [key: string]: string }; // Original CSV header -> Our field name
   csvHeaders?: string[]; // Original CSV headers in order
 }
@@ -51,21 +53,25 @@ const getGoogleSheetsClient = async () => {
   return google.sheets({ version: 'v4', auth });
 };
 
-// Get user ID and name from token
-const getUserFromToken = async (
-  userToken: string
-): Promise<{ id: number; name: string } | null> => {
-  const connection = await pool.getConnection();
-
+// Authenticate user from JWT token
+const authenticateUser = async (req: NextApiRequest): Promise<{ id: number; name: string; email: string } | null> => {
   try {
-    const [rows] = await connection.execute('SELECT id, name FROM users WHERE user_token = ?', [
-      userToken,
-    ]);
+    const token = req.cookies.auth_token;
+    
+    if (!token) {
+      return null;
+    }
 
-    const users = rows as any[];
-    return users.length > 0 ? { id: users[0].id, name: users[0].name } : null;
-  } finally {
-    connection.release();
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    
+    return {
+      id: decoded.id,
+      name: decoded.name,
+      email: decoded.email
+    };
+  } catch (error) {
+    console.error('JWT verification failed:', error);
+    return null;
   }
 };
 
@@ -297,15 +303,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { data, userToken, fieldMapping, csvHeaders }: RequestBody = req.body;
+    const { data, fieldMapping, csvHeaders }: RequestBody = req.body;
 
     // Validate required fields
     if (!data || !Array.isArray(data) || data.length === 0) {
       return res.status(400).json({ message: 'No data provided' });
-    }
-
-    if (!userToken) {
-      return res.status(400).json({ message: 'User token is required' });
     }
 
     // Validate data structure
@@ -334,10 +336,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    // Get user ID and name from token (submitter info)
-    const userInfo = await getUserFromToken(userToken);
+    // Authenticate user from JWT token
+    const userInfo = await authenticateUser(req);
     if (!userInfo) {
-      return res.status(401).json({ message: 'Invalid user token' });
+      return res.status(401).json({ message: 'Authentication required' });
     }
 
     // Save submission to database
