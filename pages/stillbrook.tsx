@@ -1751,13 +1751,15 @@ function StillbrookContent({ user }: StillbrookProps) {
 
       const hasNegativeHighlight = el.classList.contains('negative-result-highlight');
       const hasPositiveHighlight = el.classList.contains('positive-result-highlight');
+      const hasNeutralHighlight = el.classList.contains('neutral-result-highlight');
 
       console.log(`🏷️ Element ${index} highlight status:`, {
         hasNegativeHighlight,
         hasPositiveHighlight,
+        hasNeutralHighlight,
       });
 
-      if (hasNegativeHighlight || hasPositiveHighlight) {
+      if (hasNegativeHighlight || hasPositiveHighlight || hasNeutralHighlight) {
         // Show remove button
         const removeBtn = doc.createElement('button');
         removeBtn.textContent = '✕ Remove';
@@ -1825,7 +1827,29 @@ function StillbrookContent({ user }: StillbrookProps) {
           setTimeout(() => setupInteractiveHighlighting(iframe), 100);
         };
 
+        const addNeutralBtn = doc.createElement('button');
+        addNeutralBtn.textContent = '+ Neutral';
+        addNeutralBtn.style.cssText = `
+          background: #f59e0b;
+          color: white;
+          border: none;
+          padding: 6px 12px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 16px;
+          font-weight: 500;
+          pointer-events: auto;
+        `;
+        addNeutralBtn.onclick = e => {
+          console.log(`🟡 Neutral button clicked for element ${index}`);
+          e.stopPropagation();
+          addHighlight(el, 'neutral');
+          // Refresh the controls
+          setTimeout(() => setupInteractiveHighlighting(iframe), 100);
+        };
+
         overlay.appendChild(addPositiveBtn);
+        overlay.appendChild(addNeutralBtn);
         overlay.appendChild(addNegativeBtn);
         console.log(`➕ Added positive/negative buttons to element ${index}`);
       }
@@ -1871,27 +1895,30 @@ function StillbrookContent({ user }: StillbrookProps) {
     console.log('✨ Interactive highlighting setup complete!');
   };
 
-  const addHighlight = (element: HTMLElement, type: 'positive' | 'negative') => {
+  const addHighlight = (element: HTMLElement, type: 'positive' | 'negative' | 'neutral') => {
     const className =
-      type === 'positive' ? 'positive-result-highlight' : 'negative-result-highlight';
-    const oppositeClass =
-      type === 'positive' ? 'negative-result-highlight' : 'positive-result-highlight';
-
-    element.classList.remove(oppositeClass);
+      type === 'positive' ? 'positive-result-highlight' : 
+      type === 'negative' ? 'negative-result-highlight' : 'neutral-result-highlight';
+    
+    // Remove all other highlight classes
+    element.classList.remove('positive-result-highlight', 'negative-result-highlight', 'neutral-result-highlight');
     element.classList.add(className);
 
     // Add the appropriate highlight styles
     if (type === 'positive') {
       element.style.border = '2px solid #22c55e';
       element.style.boxShadow = 'inset 0 0 0 2px #22c55e';
-    } else {
+    } else if (type === 'negative') {
       element.style.border = '2px solid #ef4444';
       element.style.boxShadow = 'inset 0 0 0 2px #ef4444';
+    } else if (type === 'neutral') {
+      element.style.border = '2px solid #f59e0b';
+      element.style.boxShadow = 'inset 0 0 0 2px #f59e0b';
     }
   };
 
   const removeHighlight = (element: HTMLElement, doc?: Document) => {
-    element.classList.remove('positive-result-highlight', 'negative-result-highlight');
+    element.classList.remove('positive-result-highlight', 'negative-result-highlight', 'neutral-result-highlight');
     element.style.border = '';
     element.style.boxShadow = ''; //inset 0 0 0 1px rgba(33, 150, 243, 0.3)';
   };
@@ -1940,7 +1967,8 @@ function StillbrookContent({ user }: StillbrookProps) {
           // Reset box shadows and background for non-highlighted elements
           const hasHighlight =
             el.classList.contains('negative-result-highlight') ||
-            el.classList.contains('positive-result-highlight');
+            el.classList.contains('positive-result-highlight') ||
+            el.classList.contains('neutral-result-highlight');
           if (!hasHighlight) {
             el.style.boxShadow = '';
             el.style.backgroundColor = '';
