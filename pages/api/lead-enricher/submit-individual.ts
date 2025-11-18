@@ -12,7 +12,7 @@ interface IndividualCSVRowData {
   firstName: string;
   lastName: string;
   email?: string;
-  linkedinURL?: string;
+  linkedinURL: string;
   OwnerUserId: number;
 }
 
@@ -322,6 +322,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         missingFields.push('negativeURLTitle');
       if (!row.firstName || String(row.firstName).trim() === '') missingFields.push('firstName');
       if (!row.lastName || String(row.lastName).trim() === '') missingFields.push('lastName');
+      if (!row.linkedinURL || String(row.linkedinURL).trim() === '') missingFields.push('linkedinURL');
       if (!row.OwnerUserId || !Number.isInteger(row.OwnerUserId)) missingFields.push('OwnerUserId');
 
       if (missingFields.length > 0) {
