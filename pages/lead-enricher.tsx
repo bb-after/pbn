@@ -59,7 +59,7 @@ interface IndividualCSVRow {
   firstName: string;
   lastName: string;
   email?: string;
-  linkedinURL?: string;
+  linkedinURL: string;
   OwnerUserId?: number;
   rowNumber: number;
 }
@@ -239,7 +239,7 @@ function LeadEnricherContent() {
       type === 'company'
         ? ['Company', 'Keyword', 'URL']
         : type === 'individual'
-          ? ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName']
+          ? ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName', 'linkedinURL']
           : ['companyName']; // BLP required fields - only company name needed
 
     // Note: owner is optional in CSV since it can be set via dropdown
@@ -381,7 +381,7 @@ function LeadEnricherContent() {
             listType === 'company'
               ? ['Company', 'Keyword', 'URL']
               : listType === 'individual'
-                ? ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName']
+                ? ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName', 'linkedinURL']
                 : ['companyName']; // BLP only needs company name
 
           // Auto-match fields
@@ -502,7 +502,7 @@ function LeadEnricherContent() {
       listType === 'company'
         ? ['Company', 'Keyword', 'URL']
         : listType === 'individual'
-          ? ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName']
+          ? ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName', 'linkedinURL']
           : ['companyName']; // BLP only needs company name
 
     // Check if all required fields are mapped
@@ -1064,8 +1064,8 @@ function LeadEnricherContent() {
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
                       Please upload a CSV file with columns for: <strong>URL</strong>,{' '}
                       <strong>keyword</strong>, <strong>negativeURLTitle</strong>,{' '}
-                      <strong>firstName</strong>, <strong>lastName</strong>, <strong>email</strong>{' '}
-                      (optional), <strong>linkedinURL</strong> (optional)
+                      <strong>firstName</strong>, <strong>lastName</strong>, <strong>linkedinURL</strong>, <strong>email</strong>{' '}
+                      (optional)
                     </Typography>
 
                     <input
@@ -1474,7 +1474,7 @@ function LeadEnricherContent() {
                     listType === 'company'
                       ? true // All required for company, including owner
                       : listType === 'individual'
-                        ? !['email', 'linkedinURL'].includes(requiredField) // All except email/linkedin for individual
+                        ? !['email'].includes(requiredField) // All except email for individual
                         : requiredField === 'companyName' || requiredField === 'owner'; // BLP: only companyName required
                   return (
                     <TableRow key={requiredField}>
