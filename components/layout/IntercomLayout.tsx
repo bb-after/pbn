@@ -58,6 +58,7 @@ import {
   History as HistoryIcon,
   CameraAlt as CameraAltIcon,
   BookmarkAdd as BookmarkAddIcon,
+  Settings as ControlPanelIcon,
 } from '@mui/icons-material';
 import { tokens } from '../../theme/intercom-theme';
 import { keyframes } from '@mui/system';
@@ -91,6 +92,12 @@ const navigationItems: NavigationItem[] = [
     label: 'Dashboard',
     icon: <DashboardIcon />,
     href: '/',
+  },
+  {
+    id: 'control-center',
+    label: 'Control Center',
+    icon: <ControlPanelIcon />,
+    href: '/control-center',
   },
   {
     id: 'clients',

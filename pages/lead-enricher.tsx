@@ -269,35 +269,75 @@ function LeadEnricherContent() {
   };
 
   const parseCSV = (csvText: string): any[] => {
-    const lines = csvText.split('\n').filter(line => line.trim() !== '');
-    if (lines.length === 0) return [];
+    if (!csvText.trim()) return [];
 
-    // Parse CSV properly handling quoted fields
-    const parseCSVLine = (line: string): string[] => {
-      // Clean up line - remove carriage returns and fix malformed quotes
-      const cleanLine = line.replace(/\r/g, '').trim();
-
-      // Handle malformed lines that start with quote but aren't properly formatted
-      if (cleanLine.startsWith('"') && !cleanLine.includes('","') && cleanLine.includes(',')) {
-        // This looks like a malformed line, try to split it normally
-        return cleanLine
-          .replace(/^"|"$/g, '')
-          .split(',')
-          .map(val => val.trim());
-      }
-
-      const result: string[] = [];
-      let current = '';
+    // Normalize line endings
+    const normalizedText = csvText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    
+    // Parse CSV with proper handling of quoted fields that span multiple lines
+    const parseCSVContent = (text: string): string[][] => {
+      const result: string[][] = [];
+      const rows: string[] = [];
+      let currentRow = '';
       let inQuotes = false;
       let i = 0;
 
-      while (i < cleanLine.length) {
-        const char = cleanLine[i];
+      while (i < text.length) {
+        const char = text[i];
 
         if (char === '"') {
-          if (inQuotes && cleanLine[i + 1] === '"') {
+          if (inQuotes && text[i + 1] === '"') {
+            // Escaped quote within quoted field
+            currentRow += '"';
+            i += 2;
+          } else {
+            // Toggle quote state
+            inQuotes = !inQuotes;
+            i++;
+          }
+        } else if (char === '\n' && !inQuotes) {
+          // End of row - only when not inside quotes
+          if (currentRow.trim()) {
+            rows.push(currentRow.trim());
+          }
+          currentRow = '';
+          i++;
+        } else {
+          currentRow += char;
+          i++;
+        }
+      }
+
+      // Add the last row if it exists
+      if (currentRow.trim()) {
+        rows.push(currentRow.trim());
+      }
+
+      // Now parse each row into fields
+      rows.forEach(row => {
+        const fields = parseCSVRow(row);
+        if (fields.length > 0) {
+          result.push(fields);
+        }
+      });
+
+      return result;
+    };
+
+    // Parse individual CSV row into fields
+    const parseCSVRow = (row: string): string[] => {
+      const fields: string[] = [];
+      let currentField = '';
+      let inQuotes = false;
+      let i = 0;
+
+      while (i < row.length) {
+        const char = row[i];
+
+        if (char === '"') {
+          if (inQuotes && row[i + 1] === '"') {
             // Escaped quote
-            current += '"';
+            currentField += '"';
             i += 2;
           } else {
             // Toggle quote state
@@ -306,44 +346,69 @@ function LeadEnricherContent() {
           }
         } else if (char === ',' && !inQuotes) {
           // Field separator
-          result.push(current.trim());
-          current = '';
+          fields.push(currentField.trim());
+          currentField = '';
           i++;
         } else {
-          current += char;
+          currentField += char;
           i++;
         }
       }
 
-      // Add last field
-      result.push(current.trim());
-      return result;
+      // Add the last field
+      fields.push(currentField.trim());
+      return fields;
     };
 
-    const headers = parseCSVLine(lines[0]).map(header => header.replace(/"/g, ''));
-    const data = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      const rawLine = lines[i];
-
-      // Skip obviously malformed or empty rows
-      const cleanLine = rawLine.replace(/\r/g, '').trim();
-      if (!cleanLine || cleanLine === '""' || cleanLine.match(/^"+$/)) {
-        console.log(`Skipping malformed row ${i + 1}:`, rawLine);
-        continue;
+    try {
+      const parsedRows = parseCSVContent(normalizedText);
+      
+      if (parsedRows.length === 0) {
+        console.warn('No valid CSV rows found');
+        return [];
       }
 
-      const values = parseCSVLine(rawLine).map(value => value.replace(/"/g, ''));
-      const row: any = {};
+      // First row is headers
+      const headers = parsedRows[0].map(header => 
+        header.replace(/^"|"$/g, '').trim()
+      );
 
-      headers.forEach((header, index) => {
-        row[header] = values[index] || '';
-      });
+      console.log('Parsed CSV headers:', headers);
+      console.log(`Found ${parsedRows.length - 1} data rows`);
 
-      data.push(row);
+      const data = [];
+
+      // Process data rows (skip header row)
+      for (let i = 1; i < parsedRows.length; i++) {
+        const values = parsedRows[i];
+        
+        // Skip empty rows
+        if (values.every(val => !val.trim())) {
+          console.log(`Skipping empty row ${i + 1}`);
+          continue;
+        }
+
+        const row: any = {};
+        
+        // Map values to headers
+        headers.forEach((header, index) => {
+          const value = values[index] || '';
+          // Clean up quoted values
+          row[header] = value.replace(/^"|"$/g, '').trim();
+        });
+
+        // Add row number for debugging
+        row._rowNumber = i + 1;
+        data.push(row);
+      }
+
+      console.log(`Successfully parsed ${data.length} rows from CSV`);
+      return data;
+
+    } catch (error) {
+      console.error('Error parsing CSV:', error);
+      throw new Error('Failed to parse CSV file. Please check the file format.');
     }
-
-    return data;
   };
 
   const handleFileUpload = useCallback(
@@ -373,6 +438,43 @@ function LeadEnricherContent() {
 
           // Get CSV headers
           const headers = Object.keys(parsedData[0]);
+          
+          // Additional validation for common CSV issues
+          const validationWarnings = [];
+          
+          // Check for empty headers
+          const emptyHeaders = headers.filter(h => !h.trim());
+          if (emptyHeaders.length > 0) {
+            validationWarnings.push(`Found ${emptyHeaders.length} empty column header(s). Please ensure all columns have names.`);
+          }
+          
+          // Check for duplicate headers
+          const headerCounts: Record<string, number> = {};
+          headers.forEach(h => {
+            const normalized = h.toLowerCase().trim();
+            headerCounts[normalized] = (headerCounts[normalized] || 0) + 1;
+          });
+          const duplicates = Object.entries(headerCounts).filter(([, count]) => (count as number) > 1);
+          if (duplicates.length > 0) {
+            validationWarnings.push(`Found duplicate column headers: ${duplicates.map(([h]) => h).join(', ')}`);
+          }
+          
+          // Check if we have a reasonable number of rows
+          if (parsedData.length === 0) {
+            validationWarnings.push('No data rows found in CSV file.');
+          } else if (parsedData.length > 10000) {
+            validationWarnings.push(`Large file detected (${parsedData.length} rows). Processing may take longer.`);
+          }
+          
+          // Show warnings if any
+          if (validationWarnings.length > 0) {
+            console.warn('CSV validation warnings:', validationWarnings);
+            // Don't set as error if we have data, just warn
+            if (parsedData.length > 0) {
+              console.log(`CSV parsed successfully with ${parsedData.length} rows, but with warnings:`, validationWarnings);
+            }
+          }
+
           setCsvHeaders(headers);
           setRawCsvData(parsedData);
 
