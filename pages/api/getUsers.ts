@@ -18,7 +18,7 @@ const getUsersHandler = async (req: NextApiRequest, res: NextApiResponse) => {
 
   try {
   
-    let query = 'SELECT users.name, users.user_token, count(*) as `pbn_count` FROM users join pbn_site_submissions on users.user_token = pbn_site_submissions.user_token where users.user_token IS NOT NULL group by pbn_site_submissions.user_token HAVING COUNT(*) > 0 order by name ASC';
+    let query = 'SELECT users.name, users.user_token, count(*) as `pbn_count` FROM users join pbn_site_submissions on users.user_token = pbn_site_submissions.user_token WHERE users.user_token IS NOT NULL AND users.is_active = 1 GROUP BY pbn_site_submissions.user_token HAVING COUNT(*) > 0 ORDER BY name ASC';
     const [rows] = await connection.query(query);  
 
     // Close the MySQL connection

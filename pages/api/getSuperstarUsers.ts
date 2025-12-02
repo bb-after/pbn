@@ -18,7 +18,7 @@ const getSuperstarUsersHandler = async (req: NextApiRequest, res: NextApiRespons
 
   try {
   
-    let query = 'SELECT users.name, users.user_token, count(*) as `superstar_count` FROM users join superstar_site_submissions on users.user_token = superstar_site_submissions.user_token where users.user_token IS NOT NULL and superstar_site_submissions.deleted_at IS NULL group by superstar_site_submissions.user_token HAVING COUNT(*) > 0 order by name ASC';
+    let query = 'SELECT users.name, users.user_token, count(*) as `superstar_count` FROM users join superstar_site_submissions on users.user_token = superstar_site_submissions.user_token WHERE users.user_token IS NOT NULL AND users.is_active = 1 AND superstar_site_submissions.deleted_at IS NULL GROUP BY superstar_site_submissions.user_token HAVING COUNT(*) > 0 ORDER BY name ASC';
     const [rows] = await connection.query(query);  
 
     // Close the MySQL connection

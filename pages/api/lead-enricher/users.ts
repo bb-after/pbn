@@ -26,15 +26,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    // Query to get all users with basic info for assignment dropdown
+    // Query to get all active users with basic info for assignment dropdown
     const query = `
       SELECT 
         id, 
-        name
+        name,
+        email
       FROM 
         users
       WHERE 
-        user_token IS NOT NULL
+        is_active = 1
       ORDER BY 
         name ASC
     `;

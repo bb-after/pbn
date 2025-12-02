@@ -58,7 +58,8 @@ import {
   History as HistoryIcon,
   CameraAlt as CameraAltIcon,
   BookmarkAdd as BookmarkAddIcon,
-  Settings as ControlPanelIcon,
+  AdminPanelSettings as AdminIcon,
+  SupervisorAccount as UserManagementIcon,
 } from '@mui/icons-material';
 import { tokens } from '../../theme/intercom-theme';
 import { keyframes } from '@mui/system';
@@ -92,12 +93,6 @@ const navigationItems: NavigationItem[] = [
     label: 'Dashboard',
     icon: <DashboardIcon />,
     href: '/',
-  },
-  {
-    id: 'control-center',
-    label: 'Control Center',
-    icon: <ControlPanelIcon />,
-    href: '/control-center',
   },
   {
     id: 'clients',
@@ -309,6 +304,12 @@ const navigationItems: NavigationItem[] = [
       },
     ],
   },
+  {
+    id: 'admin',
+    label: 'Admin',
+    icon: <AdminIcon sx={{ color: 'error.main' }} />,
+    href: '/admin',
+  },
 ];
 
 const DRAWER_WIDTH = 280;
@@ -326,13 +327,25 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
 
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  // Filter navigation items based on user role
+  const getFilteredNavigationItems = () => {
+    return navigationItems.filter(item => {
+      // Show admin section only to admin users
+      if (item.id === 'admin') {
+        return user?.role === 'admin';
+      }
+      return true;
+    });
+  };
+
   // Determine which sections should be expanded based on current route
   const getExpandedSectionsFromRoute = () => {
     const currentPath = router.pathname;
     const expandedSections: string[] = [];
+    const filteredItems = getFilteredNavigationItems();
 
     // Check each navigation section to see if current path matches any of its children
-    navigationItems.forEach(item => {
+    filteredItems.forEach(item => {
       if (item.children) {
         const hasMatchingChild = item.children.some(child => child.href === currentPath);
         if (hasMatchingChild) {
@@ -520,7 +533,7 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
 
       <Box sx={{ flex: 1, overflow: 'auto' }}>
         <List sx={{ paddingLeft: 0, paddingRight: 2 }}>
-          {navigationItems.map(item => renderNavigationItem(item))}
+          {getFilteredNavigationItems().map(item => renderNavigationItem(item))}
         </List>
       </Box>
 
@@ -712,7 +725,7 @@ export const IntercomLayout: React.FC<IntercomLayoutProps> = ({
           Settings
         </MenuItem>
         <Divider />
-        <MenuItem 
+        <MenuItem
           onClick={() => {
             handleProfileClose();
             logout();

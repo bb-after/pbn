@@ -16,7 +16,7 @@ const getUserFromToken = async (
   const connection = await mysql.createConnection(dbConfig);
 
   try {
-    const [rows] = await connection.execute('SELECT id, name FROM users WHERE user_token = ?', [
+    const [rows] = await connection.execute('SELECT id, name FROM users WHERE user_token = ? AND is_active = 1', [
       userToken,
     ]);
     const users = rows as any[];
