@@ -24,6 +24,8 @@ import {
 } from '@mui/icons-material';
 import { green, orange, red, blue } from '@mui/material/colors';
 import Head from 'next/head';
+import { IntercomLayout } from '../components/ui';
+import useAuth from '../hooks/useAuth';
 
 interface ProductMetrics {
   name: string;
@@ -314,18 +316,20 @@ const OverviewCard = ({ overview }: { overview: ControlCenterMetrics['overview']
   );
 };
 
-export default function ControlCenter() {
+function ControlCenterContent() {
+  const { isValidUser } = useAuth('/login');
   const [metrics, setMetrics] = useState<ControlCenterMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchMetrics();
-
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchMetrics, 30000);
-    return () => clearInterval(interval);
-  }, []);
+    if (isValidUser) {
+      fetchMetrics();
+      // Refresh every 30 seconds
+      const interval = setInterval(fetchMetrics, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [isValidUser]);
 
   const fetchMetrics = async () => {
     try {
@@ -342,6 +346,10 @@ export default function ControlCenter() {
       setLoading(false);
     }
   };
+
+  if (!isValidUser) {
+    return null;
+  }
 
   return (
     <>
@@ -407,5 +415,13 @@ export default function ControlCenter() {
         </Box>
       </Box>
     </>
+  );
+}
+
+export default function ControlCenter() {
+  return (
+    <IntercomLayout>
+      <ControlCenterContent />
+    </IntercomLayout>
   );
 }

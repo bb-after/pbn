@@ -13,6 +13,17 @@ export async function validateUserToken(req: NextApiRequest) {
   if (jwtToken) {
     try {
       const decoded = jwt.verify(jwtToken, JWT_SECRET) as any;
+      
+      // Check if user is still active in database
+      const [userRows]: [RowDataPacket[], any] = await query(
+        'SELECT is_active FROM users WHERE id = ?', 
+        [decoded.id]
+      );
+      
+      if (userRows.length === 0 || !userRows[0].is_active) {
+        return { isValid: false, user_id: null, username: null, email: null, role: null };
+      }
+      
       return {
         isValid: true,
         user_id: decoded.id,
@@ -41,7 +52,7 @@ export async function validateUserToken(req: NextApiRequest) {
       legacyToken,
     ]);
 
-    if (rows.length === 0) {
+    if (rows.length === 0 || !rows[0].is_active) {
       return { isValid: false, user_id: null, username: null, email: null, role: null };
     }
 
@@ -72,7 +83,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       token,
     ]);
 
-    if (rows.length === 0) {
+    if (rows.length === 0 || !rows[0].is_active) {
       return res.status(404).json({ valid: false });
     }
 
