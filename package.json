@@ -72,6 +72,7 @@
     "jsonwebtoken": "^9.0.2",
     "jspdf": "^3.0.2",
     "lodash": "^4.17.21",
+    "lucide-react": "^0.553.0",
     "mammoth": "^1.9.0",
     "material-icons": "^1.13.9",
     "mysql2": "^3.14.1",
