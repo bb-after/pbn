@@ -43,7 +43,7 @@ import {
   IntercomButton,
 } from '../components/ui';
 import ClientDropdown from 'components/ClientDropdown';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import dynamic from 'next/dynamic';
 import axios from 'axios';
 import { useRouter } from 'next/router';
@@ -278,7 +278,7 @@ const AIProcessingAnimation = ({
 
 function BacklinkBuddyContent() {
   const router = useRouter();
-  const { isValidUser, token } = useValidateUserToken();
+  const { isValidUser, token } = useAuth('/login');
   const [activeStep, setActiveStep] = useState(0);
   const [formData, setFormData] = useState<BacklinkFormData>({
     clientName: '',
@@ -1970,10 +1970,7 @@ function BacklinkBuddyContent() {
   return (
     <IntercomLayout
       title="Autolink Intelligence"
-      breadcrumbs={[
-        { label: 'Advanced Tools', icon: Settings },
-        { label: 'Autolink', icon: ExternalLink },
-      ]}
+      breadcrumbs={[{ label: 'Advanced Tools' }, { label: 'Autolink' }]}
     >
       <AIProcessingAnimation isProcessing={generating} stage={0} />
 

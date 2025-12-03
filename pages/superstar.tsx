@@ -20,7 +20,7 @@ import dynamic from "next/dynamic";
 import { formatSuperstarContent } from "utils/formatSuperstarContent";
 import { colors } from "../utils/colors";
 import router from "next/router";
-import useValidateUserToken from "hooks/useValidateUserToken";
+import useAuth from '../hooks/useAuth';
 
 const ReactQuill = dynamic(() => import("react-quill"), { ssr: false });
 import "react-quill/dist/quill.snow.css"; // Import styles for ReactQuill
@@ -56,7 +56,7 @@ const HomePage = () => {
   >([]);
   const [isLoadingAuthors, setIsLoadingAuthors] = useState(false);
   const [isLoadingSites, setIsLoadingSites] = useState(false);
-  const { isValidUser } = useValidateUserToken();
+  const { isValidUser } = useAuth('/login');
 
   useEffect(() => {
     const fetchSites = async () => {

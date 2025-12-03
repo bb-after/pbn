@@ -18,7 +18,7 @@ const getAllUsersHandler = async (req: NextApiRequest, res: NextApiResponse) => 
 
   try {
   
-    let query = 'SELECT users.name, users.user_token FROM users where users.user_token IS NOT NULL order by name ASC';
+    let query = 'SELECT users.name, users.user_token FROM users WHERE users.user_token IS NOT NULL AND users.is_active = 1 ORDER BY name ASC';
     const [rows] = await connection.query(query);  
 
     // Close the MySQL connection

@@ -30,7 +30,7 @@ import {
   IntercomButton,
 } from '../components/ui';
 import UnauthorizedAccess from '../components/UnauthorizedAccess';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import { handleWPLogin } from '../utils/handle-wp-login';
 import { colors } from '../utils/colors';
 import debounce from 'lodash/debounce';
@@ -60,7 +60,7 @@ function PbnSitesPage() {
   const [active, setActive] = useState<string>('1');
 
   const router = useRouter();
-  const { isLoading: isAuthLoading, isValidUser } = useValidateUserToken();
+  const { isLoading: isAuthLoading, isValidUser } = useAuth('/login');
 
   // Debounced search handler
   const debouncedSetSearch = useCallback(

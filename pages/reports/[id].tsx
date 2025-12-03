@@ -28,7 +28,7 @@ import {
   Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/router';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../../hooks/useAuth';
 import axios from 'axios';
 import UnauthorizedAccess from 'components/UnauthorizedAccess';
 import {
@@ -86,7 +86,7 @@ interface ReportDetail {
 function ReportDetailPageContent() {
   const router = useRouter();
   const { id } = router.query;
-  const { isValidUser, isLoading, user } = useValidateUserToken();
+  const { isValidUser, isLoading, user } = useAuth('/login');
   const { showError, showSuccess } = useToast();
 
   // State for data and loading
@@ -253,7 +253,7 @@ function ReportDetailPageContent() {
     );
   }
 
-  const isOwner = user?.id === report.created_by_id;
+  const isOwner = user?.id?.toString() === report.created_by_id?.toString();
   const canEdit = isAdmin || isOwner;
 
   return (

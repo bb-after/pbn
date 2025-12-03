@@ -27,7 +27,7 @@ import AddIcon from "@mui/icons-material/Add";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import LayoutContainer from "../../../components/LayoutContainer";
 import StyledHeader from "../../../components/StyledHeader";
-import useValidateUserToken from "../../../hooks/useValidateUserToken";
+import useAuth from '../../../hooks/useAuth';
 import Image from "next/image";
 
 interface Author {
@@ -65,7 +65,7 @@ const ManageAuthors: React.FC = () => {
   });
   const [error, setError] = useState("");
 
-  const { isLoading: isValidating, isValidUser } = useValidateUserToken();
+  const { isLoading: isValidating, isValidUser } = useAuth('/login');
 
   useEffect(() => {
     const fetchSiteData = async () => {

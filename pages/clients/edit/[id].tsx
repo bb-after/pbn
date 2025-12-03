@@ -3,7 +3,7 @@ import { Typography, Box, CircularProgress, Grid } from '@mui/material';
 import ClientForm from '../../../components/ClientForm';
 import ClientContactList from '../../../components/ClientContactList';
 import { useRouter } from 'next/router';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../../../hooks/useAuth';
 import axios from 'axios';
 import { IntercomLayout, ThemeProvider, ToastProvider, IntercomCard } from 'components/ui';
 import UnauthorizedAccess from 'components/UnauthorizedAccess';
@@ -19,7 +19,7 @@ interface Client {
 function EditClientPageContent() {
   const router = useRouter();
   const { id } = router.query;
-  const { isValidUser } = useValidateUserToken();
+  const { isValidUser } = useAuth('/login');
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

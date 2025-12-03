@@ -13,7 +13,7 @@ import {
   Grid,
 } from '@mui/material';
 import Autocomplete from '@mui/material/Autocomplete';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../../hooks/useAuth';
 import {
   IntercomLayout,
   ThemeProvider,
@@ -33,7 +33,7 @@ function NewSitePage() {
   const [active, setActive] = useState<string>('1');
   const [customPrompt, setCustomPrompt] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');
-  const { isLoading, isValidUser } = useValidateUserToken();
+  const { isLoading, isValidUser } = useAuth('/login');
 
   const handleSave = async () => {
     if (!domain.startsWith('https://')) {

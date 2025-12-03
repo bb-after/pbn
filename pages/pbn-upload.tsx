@@ -3,13 +3,13 @@ import PbnSubmissionForm from '../components/PbnSubmissionForm';
 import Image from 'next/image';
 import { IntercomLayout, ToastProvider, IntercomCard } from '../components/ui';
 import { Box, Typography } from '@mui/material';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import UnauthorizedAccess from 'components/UnauthorizedAccess';
 
 const pageTitle = 'PBN Manual / Bulk Upload';
 
 function PbnUploadPage() {
-  const { token } = useValidateUserToken();
+  const { token } = useAuth('/login');
 
   if (!token) {
     return <UnauthorizedAccess />;

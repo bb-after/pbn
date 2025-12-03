@@ -24,9 +24,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Paper,
-  alpha,
-  Avatar,
 } from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -35,17 +32,6 @@ import MappingIcon from '@mui/icons-material/AccountTree';
 import BusinessIcon from '@mui/icons-material/Business';
 import PersonIcon from '@mui/icons-material/Person';
 import {
-  TrendingUp,
-  Users,
-  Building2,
-  Database,
-  Sparkles,
-  Zap,
-  Target,
-  Brain,
-  Upload,
-} from 'lucide-react';
-import {
   IntercomLayout,
   ThemeProvider,
   ToastProvider,
@@ -53,7 +39,7 @@ import {
   IntercomButton,
 } from '../components/ui';
 import UnauthorizedAccess from 'components/UnauthorizedAccess';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import axios from 'axios';
 import { useRouter } from 'next/router';
 import Image from 'next/image';
@@ -73,7 +59,7 @@ interface IndividualCSVRow {
   firstName: string;
   lastName: string;
   email?: string;
-  linkedinURL?: string;
+  linkedinURL: string;
   OwnerUserId?: number;
   rowNumber: number;
 }
@@ -110,7 +96,7 @@ type ListType = 'company' | 'individual' | 'blp';
 
 function LeadEnricherContent() {
   const router = useRouter();
-  const { isValidUser, token, user } = useValidateUserToken();
+  const { isValidUser, token, user } = useAuth('/login');
   const [listType, setListType] = useState<ListType>('company');
   const [csvData, setCsvData] = useState<CSVRow[]>([]);
   const [individualCsvData, setIndividualCsvData] = useState<IndividualCSVRow[]>([]);
@@ -253,7 +239,7 @@ function LeadEnricherContent() {
       type === 'company'
         ? ['Company', 'Keyword', 'URL']
         : type === 'individual'
-          ? ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName']
+          ? ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName', 'linkedinURL']
           : ['companyName']; // BLP required fields - only company name needed
 
     // Note: owner is optional in CSV since it can be set via dropdown
@@ -283,35 +269,75 @@ function LeadEnricherContent() {
   };
 
   const parseCSV = (csvText: string): any[] => {
-    const lines = csvText.split('\n').filter(line => line.trim() !== '');
-    if (lines.length === 0) return [];
+    if (!csvText.trim()) return [];
 
-    // Parse CSV properly handling quoted fields
-    const parseCSVLine = (line: string): string[] => {
-      // Clean up line - remove carriage returns and fix malformed quotes
-      const cleanLine = line.replace(/\r/g, '').trim();
-
-      // Handle malformed lines that start with quote but aren't properly formatted
-      if (cleanLine.startsWith('"') && !cleanLine.includes('","') && cleanLine.includes(',')) {
-        // This looks like a malformed line, try to split it normally
-        return cleanLine
-          .replace(/^"|"$/g, '')
-          .split(',')
-          .map(val => val.trim());
-      }
-
-      const result: string[] = [];
-      let current = '';
+    // Normalize line endings
+    const normalizedText = csvText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    
+    // Parse CSV with proper handling of quoted fields that span multiple lines
+    const parseCSVContent = (text: string): string[][] => {
+      const result: string[][] = [];
+      const rows: string[] = [];
+      let currentRow = '';
       let inQuotes = false;
       let i = 0;
 
-      while (i < cleanLine.length) {
-        const char = cleanLine[i];
+      while (i < text.length) {
+        const char = text[i];
 
         if (char === '"') {
-          if (inQuotes && cleanLine[i + 1] === '"') {
+          if (inQuotes && text[i + 1] === '"') {
+            // Escaped quote within quoted field
+            currentRow += '"';
+            i += 2;
+          } else {
+            // Toggle quote state
+            inQuotes = !inQuotes;
+            i++;
+          }
+        } else if (char === '\n' && !inQuotes) {
+          // End of row - only when not inside quotes
+          if (currentRow.trim()) {
+            rows.push(currentRow.trim());
+          }
+          currentRow = '';
+          i++;
+        } else {
+          currentRow += char;
+          i++;
+        }
+      }
+
+      // Add the last row if it exists
+      if (currentRow.trim()) {
+        rows.push(currentRow.trim());
+      }
+
+      // Now parse each row into fields
+      rows.forEach(row => {
+        const fields = parseCSVRow(row);
+        if (fields.length > 0) {
+          result.push(fields);
+        }
+      });
+
+      return result;
+    };
+
+    // Parse individual CSV row into fields
+    const parseCSVRow = (row: string): string[] => {
+      const fields: string[] = [];
+      let currentField = '';
+      let inQuotes = false;
+      let i = 0;
+
+      while (i < row.length) {
+        const char = row[i];
+
+        if (char === '"') {
+          if (inQuotes && row[i + 1] === '"') {
             // Escaped quote
-            current += '"';
+            currentField += '"';
             i += 2;
           } else {
             // Toggle quote state
@@ -320,44 +346,69 @@ function LeadEnricherContent() {
           }
         } else if (char === ',' && !inQuotes) {
           // Field separator
-          result.push(current.trim());
-          current = '';
+          fields.push(currentField.trim());
+          currentField = '';
           i++;
         } else {
-          current += char;
+          currentField += char;
           i++;
         }
       }
 
-      // Add last field
-      result.push(current.trim());
-      return result;
+      // Add the last field
+      fields.push(currentField.trim());
+      return fields;
     };
 
-    const headers = parseCSVLine(lines[0]).map(header => header.replace(/"/g, ''));
-    const data = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      const rawLine = lines[i];
-
-      // Skip obviously malformed or empty rows
-      const cleanLine = rawLine.replace(/\r/g, '').trim();
-      if (!cleanLine || cleanLine === '""' || cleanLine.match(/^"+$/)) {
-        console.log(`Skipping malformed row ${i + 1}:`, rawLine);
-        continue;
+    try {
+      const parsedRows = parseCSVContent(normalizedText);
+      
+      if (parsedRows.length === 0) {
+        console.warn('No valid CSV rows found');
+        return [];
       }
 
-      const values = parseCSVLine(rawLine).map(value => value.replace(/"/g, ''));
-      const row: any = {};
+      // First row is headers
+      const headers = parsedRows[0].map(header => 
+        header.replace(/^"|"$/g, '').trim()
+      );
 
-      headers.forEach((header, index) => {
-        row[header] = values[index] || '';
-      });
+      console.log('Parsed CSV headers:', headers);
+      console.log(`Found ${parsedRows.length - 1} data rows`);
 
-      data.push(row);
+      const data = [];
+
+      // Process data rows (skip header row)
+      for (let i = 1; i < parsedRows.length; i++) {
+        const values = parsedRows[i];
+        
+        // Skip empty rows
+        if (values.every(val => !val.trim())) {
+          console.log(`Skipping empty row ${i + 1}`);
+          continue;
+        }
+
+        const row: any = {};
+        
+        // Map values to headers
+        headers.forEach((header, index) => {
+          const value = values[index] || '';
+          // Clean up quoted values
+          row[header] = value.replace(/^"|"$/g, '').trim();
+        });
+
+        // Add row number for debugging
+        row._rowNumber = i + 1;
+        data.push(row);
+      }
+
+      console.log(`Successfully parsed ${data.length} rows from CSV`);
+      return data;
+
+    } catch (error) {
+      console.error('Error parsing CSV:', error);
+      throw new Error('Failed to parse CSV file. Please check the file format.');
     }
-
-    return data;
   };
 
   const handleFileUpload = useCallback(
@@ -387,6 +438,43 @@ function LeadEnricherContent() {
 
           // Get CSV headers
           const headers = Object.keys(parsedData[0]);
+          
+          // Additional validation for common CSV issues
+          const validationWarnings = [];
+          
+          // Check for empty headers
+          const emptyHeaders = headers.filter(h => !h.trim());
+          if (emptyHeaders.length > 0) {
+            validationWarnings.push(`Found ${emptyHeaders.length} empty column header(s). Please ensure all columns have names.`);
+          }
+          
+          // Check for duplicate headers
+          const headerCounts: Record<string, number> = {};
+          headers.forEach(h => {
+            const normalized = h.toLowerCase().trim();
+            headerCounts[normalized] = (headerCounts[normalized] || 0) + 1;
+          });
+          const duplicates = Object.entries(headerCounts).filter(([, count]) => (count as number) > 1);
+          if (duplicates.length > 0) {
+            validationWarnings.push(`Found duplicate column headers: ${duplicates.map(([h]) => h).join(', ')}`);
+          }
+          
+          // Check if we have a reasonable number of rows
+          if (parsedData.length === 0) {
+            validationWarnings.push('No data rows found in CSV file.');
+          } else if (parsedData.length > 10000) {
+            validationWarnings.push(`Large file detected (${parsedData.length} rows). Processing may take longer.`);
+          }
+          
+          // Show warnings if any
+          if (validationWarnings.length > 0) {
+            console.warn('CSV validation warnings:', validationWarnings);
+            // Don't set as error if we have data, just warn
+            if (parsedData.length > 0) {
+              console.log(`CSV parsed successfully with ${parsedData.length} rows, but with warnings:`, validationWarnings);
+            }
+          }
+
           setCsvHeaders(headers);
           setRawCsvData(parsedData);
 
@@ -395,7 +483,7 @@ function LeadEnricherContent() {
             listType === 'company'
               ? ['Company', 'Keyword', 'URL']
               : listType === 'individual'
-                ? ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName']
+                ? ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName', 'linkedinURL']
                 : ['companyName']; // BLP only needs company name
 
           // Auto-match fields
@@ -516,7 +604,7 @@ function LeadEnricherContent() {
       listType === 'company'
         ? ['Company', 'Keyword', 'URL']
         : listType === 'individual'
-          ? ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName']
+          ? ['URL', 'keyword', 'negativeURLTitle', 'firstName', 'lastName', 'linkedinURL']
           : ['companyName']; // BLP only needs company name
 
     // Check if all required fields are mapped
@@ -647,7 +735,7 @@ function LeadEnricherContent() {
     return (
       <IntercomLayout
         title="Submission Successful"
-        breadcrumbs={[{ label: 'Prospect AI' }, { label: 'Success' }]}
+        breadcrumbs={[{ label: 'Lead Enricher' }, { label: 'Success' }]}
       >
         <IntercomCard>
           <Box p={4} textAlign="center">
@@ -673,669 +761,606 @@ function LeadEnricherContent() {
   }
 
   return (
-    <IntercomLayout
-      title="Prospect AI"
-      breadcrumbs={[
-        { label: 'Advanced Tools', icon: Target },
-        { label: 'ProspectAI', icon: TrendingUp },
-      ]}
-    >
-      {/* Modern Hero Section */}
-      <Box
-        sx={{
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          borderRadius: 3,
-          p: 4,
-          mb: 4,
-          color: 'white',
-          position: 'relative',
-          overflow: 'hidden',
-          '&::before': {
-            content: '""',
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background:
-              'url("data:image/svg+xml,%3Csvg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"%3E%3Cg fill="none" fill-rule="evenodd"%3E%3Cg fill="%239C92AC" fill-opacity="0.08"%3E%3Cpath d="m36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")',
-            opacity: 0.3,
-          },
-        }}
-      >
-        <Box position="relative" zIndex={2}>
-          <Box display="flex" alignItems="center" gap={3} mb={2}>
-            <Avatar
-              sx={{
-                width: 64,
-                height: 64,
-                bgcolor: alpha('#fff', 0.2),
-                border: `3px solid ${alpha('#fff', 0.3)}`,
-              }}
-            >
-              <TrendingUp size={32} color="white" />
-            </Avatar>
-            <Box>
-              <Typography
-                variant="h3"
-                sx={{
-                  fontWeight: 800,
-                  fontSize: { xs: '1.75rem', md: '2.5rem' },
-                  mb: 0.5,
-                  textShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                }}
-              >
-                Prospect AI
-              </Typography>
-              <Typography
-                variant="h6"
-                sx={{
-                  opacity: 0.9,
-                  fontWeight: 400,
-                  fontSize: '1.1rem',
-                }}
-              >
-                AI-powered lead enrichment and data intelligence platform
-              </Typography>
+    <IntercomLayout title="Lead Enricher" breadcrumbs={[{ label: 'Lead Enricher' }]}>
+      <IntercomCard>
+        <Box p={3}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 4 }}>
+            <Box sx={{ height: 120, width: 'auto', position: 'relative', mb: 2 }}>
+              <Image
+                src="/images/sl-lead-enricher-logo.png"
+                alt="Lead Enricher"
+                width={220}
+                height={220}
+              />
             </Box>
-          </Box>
+            <br />
+            <br />
+            <br />
+            <br />
+            <br />
 
-          <Box display="flex" alignItems="center" gap={2} mt={3}>
-            <Box display="flex" alignItems="center" gap={1}>
-              <Database size={20} />
-              <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                Data Enrichment
-              </Typography>
-            </Box>
-            <Box display="flex" alignItems="center" gap={1}>
-              <Users size={20} />
-              <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                Lead Intelligence
-              </Typography>
-            </Box>
-            <Box display="flex" alignItems="center" gap={1}>
-              <Sparkles size={20} />
-              <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                AI-Powered
-              </Typography>
-            </Box>
-            <Box display="flex" alignItems="center" gap={1}>
-              <Brain size={20} />
-              <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                Smart Analysis
-              </Typography>
-            </Box>
-          </Box>
-        </Box>
-      </Box>
-
-      <Card
-        sx={{
-          border: '2px solid',
-          borderColor: alpha('#667eea', 0.15),
-          borderRadius: 3,
-          bgcolor: alpha('#f8fafc', 0.5),
-          boxShadow: `0 8px 32px -8px ${alpha('#667eea', 0.2)}`,
-          backdropFilter: 'blur(8px)',
-          position: 'relative',
-          overflow: 'hidden',
-          '&::before': {
-            content: '""',
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            height: '4px',
-            background: 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)',
-          },
-        }}
-      >
-        <CardContent sx={{ p: 4 }}>
-          <Box sx={{ mb: 4 }}>
-            <Typography
-              variant="h5"
-              sx={{
-                fontWeight: 600,
-                color: '#667eea',
-                mb: 2,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-              }}
-            >
-              <Upload size={24} />
-              Choose Your Data Type
+            <Typography variant="h6" color="text.secondary" textAlign="center" sx={{ mb: 4 }}>
+              Upload your data for enrichment and analysis
             </Typography>
-            <Typography variant="body1" color="text.secondary">
-              Select the type of data you want to enrich and upload your CSV file for AI-powered
-              analysis
+
+            <Typography variant="h5" gutterBottom sx={{ mb: 3, textAlign: 'center' }}>
+              Choose Your List Type
             </Typography>
-          </Box>
 
-          <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12} md={4}>
-              <Card
-                variant="outlined"
-                sx={{
-                  height: '200px',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease',
-                  border: '2px solid',
-                  borderColor: listType === 'company' ? 'primary.main' : 'grey.300',
-                  backgroundColor: listType === 'company' ? 'primary.50' : 'background.paper',
-                  '&:hover': {
-                    borderColor: 'primary.main',
-                    backgroundColor: 'primary.50',
-                    transform: 'translateY(-4px)',
-                    boxShadow: 4,
-                  },
-                }}
-                onClick={() => {
-                  setListType('company');
-                  // Reset form when changing list type
-                  setCsvData([]);
-                  setIndividualCsvData([]);
-                  setBlpCsvData([]);
-                  setValidationErrors([]);
-                  setIsValid(false);
-                  setError(null);
-                  setShowMapping(false);
-                  setFieldMapping({});
-                  setCsvHeaders([]);
-                  setRawCsvData([]);
-                  // Reset file input
-                  const fileInput = document.getElementById('csv-upload') as HTMLInputElement;
-                  if (fileInput) fileInput.value = '';
-                }}
-              >
-                <CardContent
+            <Grid container spacing={3} sx={{ mb: 4 }}>
+              <Grid item xs={12} md={4}>
+                <Card
+                  variant="outlined"
                   sx={{
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    textAlign: 'center',
-                    position: 'relative',
+                    height: '200px',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease',
+                    border: '2px solid',
+                    borderColor: listType === 'company' ? 'primary.main' : 'grey.300',
+                    backgroundColor: listType === 'company' ? 'primary.50' : 'background.paper',
+                    '&:hover': {
+                      borderColor: 'primary.main',
+                      backgroundColor: 'primary.50',
+                      transform: 'translateY(-4px)',
+                      boxShadow: 4,
+                    },
+                  }}
+                  onClick={() => {
+                    setListType('company');
+                    // Reset form when changing list type
+                    setCsvData([]);
+                    setIndividualCsvData([]);
+                    setBlpCsvData([]);
+                    setValidationErrors([]);
+                    setIsValid(false);
+                    setError(null);
+                    setShowMapping(false);
+                    setFieldMapping({});
+                    setCsvHeaders([]);
+                    setRawCsvData([]);
+                    // Reset file input
+                    const fileInput = document.getElementById('csv-upload') as HTMLInputElement;
+                    if (fileInput) fileInput.value = '';
                   }}
                 >
-                  {listType === 'company' && (
-                    <CheckCircleIcon
-                      sx={{
-                        position: 'absolute',
-                        top: 8,
-                        right: 8,
-                        color: 'primary.main',
-                        fontSize: 24,
-                      }}
-                    />
-                  )}
-                  <Building2 size={48} color="#667eea" style={{ marginBottom: 16 }} />
-                  <Typography variant="h6" gutterBottom color="primary.main">
-                    Company Partial List
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
-                    For enriching company data with fields: Company, Keyword, URL
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} md={4}>
-              <Card
-                variant="outlined"
-                sx={{
-                  height: '200px',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease',
-                  border: '2px solid',
-                  borderColor: listType === 'individual' ? 'secondary.main' : 'grey.300',
-                  backgroundColor: listType === 'individual' ? 'secondary.50' : 'background.paper',
-                  '&:hover': {
-                    borderColor: 'secondary.main',
-                    backgroundColor: 'secondary.50',
-                    transform: 'translateY(-4px)',
-                    boxShadow: 4,
-                  },
-                }}
-                onClick={() => {
-                  setListType('individual');
-                  // Reset form when changing list type
-                  setCsvData([]);
-                  setIndividualCsvData([]);
-                  setBlpCsvData([]);
-                  setValidationErrors([]);
-                  setIsValid(false);
-                  setError(null);
-                  setShowMapping(false);
-                  setFieldMapping({});
-                  setCsvHeaders([]);
-                  setRawCsvData([]);
-                  // Reset file input
-                  const fileInput = document.getElementById('csv-upload') as HTMLInputElement;
-                  if (fileInput) fileInput.value = '';
-                }}
-              >
-                <CardContent
-                  sx={{
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    textAlign: 'center',
-                    position: 'relative',
-                  }}
-                >
-                  {listType === 'individual' && (
-                    <CheckCircleIcon
-                      sx={{
-                        position: 'absolute',
-                        top: 8,
-                        right: 8,
-                        color: 'secondary.main',
-                        fontSize: 24,
-                      }}
-                    />
-                  )}
-                  <Users size={48} color="#8b5cf6" style={{ marginBottom: 16 }} />
-                  <Typography variant="h6" gutterBottom color="secondary.main">
-                    Individual Partial List
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
-                    For enriching individual data with personal details, keywords, and URLs
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} md={4}>
-              <Card
-                variant="outlined"
-                sx={{
-                  height: '200px',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease',
-                  border: '2px solid',
-                  borderColor: listType === 'blp' ? 'success.main' : 'grey.300',
-                  backgroundColor: listType === 'blp' ? 'success.50' : 'background.paper',
-                  '&:hover': {
-                    borderColor: 'success.main',
-                    backgroundColor: 'success.50',
-                    transform: 'translateY(-4px)',
-                    boxShadow: 4,
-                  },
-                }}
-                onClick={() => {
-                  setListType('blp');
-                  // Reset form when changing list type
-                  setCsvData([]);
-                  setIndividualCsvData([]);
-                  setBlpCsvData([]);
-                  setValidationErrors([]);
-                  setIsValid(false);
-                  setError(null);
-                  setShowMapping(false);
-                  setFieldMapping({});
-                  setCsvHeaders([]);
-                  setRawCsvData([]);
-                  // Reset file input
-                  const fileInput = document.getElementById('csv-upload') as HTMLInputElement;
-                  if (fileInput) fileInput.value = '';
-                }}
-              >
-                <CardContent
-                  sx={{
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    textAlign: 'center',
-                    position: 'relative',
-                  }}
-                >
-                  {listType === 'blp' && (
-                    <CheckCircleIcon
-                      sx={{
-                        position: 'absolute',
-                        top: 8,
-                        right: 8,
-                        color: 'success.main',
-                        fontSize: 24,
-                      }}
-                    />
-                  )}
-                  <Database size={48} color="#10b981" style={{ marginBottom: 16 }} />
-                  <Typography variant="h6" gutterBottom color="success.main">
-                    BLP Prospected Companies
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
-                    For BLP prospecting - only company name required, other data will be enriched
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-
-          {error && (
-            <Alert severity="error" sx={{ mb: 3 }}>
-              {error}
-            </Alert>
-          )}
-
-          {listType === 'company' ? (
-            csvData.length === 0 ? (
-              <Paper
-                sx={{
-                  p: 4,
-                  border: '2px solid',
-                  borderColor: alpha('#667eea', 0.1),
-                  borderRadius: 3,
-                  bgcolor: alpha('#f8fafc', 0.3),
-                  textAlign: 'center',
-                  mb: 3,
-                  position: 'relative',
-                  '&::before': {
-                    content: '""',
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: '3px',
-                    background: 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)',
-                    borderRadius: '3px 3px 0 0',
-                  },
-                }}
-              >
-                <Box
-                  sx={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: 2,
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    mx: 'auto',
-                    mb: 2,
-                  }}
-                >
-                  <Upload size={32} color="white" />
-                </Box>
-                <Typography variant="h6" gutterBottom sx={{ color: '#667eea', fontWeight: 600 }}>
-                  Upload Company Data
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                  Upload CSV with columns: <Chip label="Company" size="small" sx={{ mx: 0.5 }} />
-                  <Chip label="Keyword" size="small" sx={{ mx: 0.5 }} />
-                  <Chip label="URL" size="small" sx={{ mx: 0.5 }} />
-                </Typography>
-
-                <input
-                  accept=".csv"
-                  style={{ display: 'none' }}
-                  id="csv-upload"
-                  type="file"
-                  onChange={handleFileUpload}
-                  disabled={uploading}
-                />
-                <label htmlFor="csv-upload">
-                  <Button
-                    variant="contained"
-                    component="span"
-                    disabled={uploading}
-                    size="large"
+                  <CardContent
                     sx={{
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                      px: 4,
-                      py: 1.5,
-                      borderRadius: 2,
-                      fontSize: '1rem',
-                      fontWeight: 600,
-                      textTransform: 'none',
-                      boxShadow: `0 8px 25px -8px ${alpha('#667eea', 0.4)}`,
-                      transition: 'all 0.3s ease',
-                      '&:hover': {
-                        transform: 'translateY(-2px)',
-                        boxShadow: `0 12px 30px -8px ${alpha('#667eea', 0.5)}`,
-                        background: 'linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%)',
-                      },
-                      '&:disabled': {
-                        background: alpha('#667eea', 0.3),
-                        color: alpha('#fff', 0.5),
-                        transform: 'none',
-                        boxShadow: 'none',
-                      },
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      textAlign: 'center',
+                      position: 'relative',
                     }}
-                    startIcon={uploading ? <CircularProgress size={20} /> : <Upload size={20} />}
                   >
-                    {uploading ? 'Processing...' : 'Choose CSV File'}
-                  </Button>
-                </label>
-              </Paper>
-            ) : (
-              <Stack spacing={3}>
-                {/* Validation Status */}
-                <Card variant="outlined">
-                  <CardContent>
-                    <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }}>
-                      {isValid ? (
-                        <CheckCircleIcon sx={{ color: 'success.main' }} />
-                      ) : (
-                        <ErrorIcon sx={{ color: 'error.main' }} />
-                      )}
-                      <Typography variant="h6">
-                        Validation {isValid ? 'Passed' : 'Failed'}
-                      </Typography>
-                      <Chip label={`${csvData.length} rows`} color="primary" variant="outlined" />
-                    </Stack>
-
-                    {!isValid && validationErrors.length > 0 && (
-                      <Alert severity="error" sx={{ mb: 2 }}>
-                        <Typography variant="subtitle2" gutterBottom>
-                          The following rows have missing required fields:
-                        </Typography>
-                        {validationErrors.map((error, index) => (
-                          <Typography key={index} variant="body2">
-                            • Row {error.rowNumber}: Missing {error.missingFields.join(', ')}
-                          </Typography>
-                        ))}
-                      </Alert>
+                    {listType === 'company' && (
+                      <CheckCircleIcon
+                        sx={{
+                          position: 'absolute',
+                          top: 8,
+                          right: 8,
+                          color: 'primary.main',
+                          fontSize: 24,
+                        }}
+                      />
                     )}
+                    <BusinessIcon sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
+                    <Typography variant="h6" gutterBottom color="primary.main">
+                      Company Partial List
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
+                      For enriching company data with fields: Company, Keyword, URL
+                    </Typography>
                   </CardContent>
                 </Card>
+              </Grid>
 
-                {/* Data Preview */}
-                <Card variant="outlined">
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>
-                      Data Preview
+              <Grid item xs={12} md={4}>
+                <Card
+                  variant="outlined"
+                  sx={{
+                    height: '200px',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease',
+                    border: '2px solid',
+                    borderColor: listType === 'individual' ? 'secondary.main' : 'grey.300',
+                    backgroundColor:
+                      listType === 'individual' ? 'secondary.50' : 'background.paper',
+                    '&:hover': {
+                      borderColor: 'secondary.main',
+                      backgroundColor: 'secondary.50',
+                      transform: 'translateY(-4px)',
+                      boxShadow: 4,
+                    },
+                  }}
+                  onClick={() => {
+                    setListType('individual');
+                    // Reset form when changing list type
+                    setCsvData([]);
+                    setIndividualCsvData([]);
+                    setBlpCsvData([]);
+                    setValidationErrors([]);
+                    setIsValid(false);
+                    setError(null);
+                    setShowMapping(false);
+                    setFieldMapping({});
+                    setCsvHeaders([]);
+                    setRawCsvData([]);
+                    // Reset file input
+                    const fileInput = document.getElementById('csv-upload') as HTMLInputElement;
+                    if (fileInput) fileInput.value = '';
+                  }}
+                >
+                  <CardContent
+                    sx={{
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      textAlign: 'center',
+                      position: 'relative',
+                    }}
+                  >
+                    {listType === 'individual' && (
+                      <CheckCircleIcon
+                        sx={{
+                          position: 'absolute',
+                          top: 8,
+                          right: 8,
+                          color: 'secondary.main',
+                          fontSize: 24,
+                        }}
+                      />
+                    )}
+                    <PersonIcon sx={{ fontSize: 48, color: 'secondary.main', mb: 2 }} />
+                    <Typography variant="h6" gutterBottom color="secondary.main">
+                      Individual Partial List
                     </Typography>
-                    <TableContainer sx={{ maxHeight: 400 }}>
-                      <Table stickyHeader>
-                        <TableHead>
-                          <TableRow>
-                            <TableCell>Row</TableCell>
-                            <TableCell>Company</TableCell>
-                            <TableCell>Keyword</TableCell>
-                            <TableCell>URL</TableCell>
-                            <TableCell>Owner</TableCell>
-                            <TableCell>Status</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {csvData.slice(0, 10).map((row, index) => {
-                            const hasError = validationErrors.some(
-                              error => error.rowNumber === row.rowNumber
-                            );
-                            return (
-                              <TableRow
-                                key={index}
-                                sx={{
-                                  backgroundColor: hasError ? 'error.light' : 'inherit',
-                                  '&:nth-of-type(odd)': {
-                                    backgroundColor: hasError ? 'error.light' : 'action.hover',
-                                  },
-                                }}
-                              >
-                                <TableCell>{row.rowNumber}</TableCell>
-                                <TableCell>{row.Company}</TableCell>
-                                <TableCell>{row.Keyword}</TableCell>
-                                <TableCell
+                    <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
+                      For enriching individual data with personal details, keywords, and URLs
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <Card
+                  variant="outlined"
+                  sx={{
+                    height: '200px',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease',
+                    border: '2px solid',
+                    borderColor: listType === 'blp' ? 'success.main' : 'grey.300',
+                    backgroundColor: listType === 'blp' ? 'success.50' : 'background.paper',
+                    '&:hover': {
+                      borderColor: 'success.main',
+                      backgroundColor: 'success.50',
+                      transform: 'translateY(-4px)',
+                      boxShadow: 4,
+                    },
+                  }}
+                  onClick={() => {
+                    setListType('blp');
+                    // Reset form when changing list type
+                    setCsvData([]);
+                    setIndividualCsvData([]);
+                    setBlpCsvData([]);
+                    setValidationErrors([]);
+                    setIsValid(false);
+                    setError(null);
+                    setShowMapping(false);
+                    setFieldMapping({});
+                    setCsvHeaders([]);
+                    setRawCsvData([]);
+                    // Reset file input
+                    const fileInput = document.getElementById('csv-upload') as HTMLInputElement;
+                    if (fileInput) fileInput.value = '';
+                  }}
+                >
+                  <CardContent
+                    sx={{
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      textAlign: 'center',
+                      position: 'relative',
+                    }}
+                  >
+                    {listType === 'blp' && (
+                      <CheckCircleIcon
+                        sx={{
+                          position: 'absolute',
+                          top: 8,
+                          right: 8,
+                          color: 'success.main',
+                          fontSize: 24,
+                        }}
+                      />
+                    )}
+                    <BusinessIcon sx={{ fontSize: 48, color: 'success.main', mb: 2 }} />
+                    <Typography variant="h6" gutterBottom color="success.main">
+                      BLP Prospected Companies
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
+                      For BLP prospecting - only company name required, other data will be enriched
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+
+            {error && (
+              <Alert severity="error" sx={{ mb: 3 }}>
+                {error}
+              </Alert>
+            )}
+
+            {listType === 'company' ? (
+              csvData.length === 0 ? (
+                <Card variant="outlined" sx={{ mb: 3 }}>
+                  <CardContent sx={{ p: 4, textAlign: 'center' }}>
+                    <CloudUploadIcon sx={{ fontSize: 80, color: 'text.secondary', mb: 2 }} />
+                    <Typography variant="h6" gutterBottom>
+                      Upload CSV File
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                      Please upload a CSV file with columns for: <strong>Company</strong>,{' '}
+                      <strong>Keyword</strong>, <strong>URL</strong>
+                    </Typography>
+
+                    <input
+                      accept=".csv"
+                      style={{ display: 'none' }}
+                      id="csv-upload"
+                      type="file"
+                      onChange={handleFileUpload}
+                      disabled={uploading}
+                    />
+                    <label htmlFor="csv-upload">
+                      <IntercomButton
+                        variant="primary"
+                        component="span"
+                        leftIcon={uploading ? <CircularProgress size={20} /> : <CloudUploadIcon />}
+                        disabled={uploading}
+                        size="large"
+                      >
+                        {uploading ? 'Processing...' : 'Choose CSV File'}
+                      </IntercomButton>
+                    </label>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Stack spacing={3}>
+                  {/* Validation Status */}
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }}>
+                        {isValid ? (
+                          <CheckCircleIcon sx={{ color: 'success.main' }} />
+                        ) : (
+                          <ErrorIcon sx={{ color: 'error.main' }} />
+                        )}
+                        <Typography variant="h6">
+                          Validation {isValid ? 'Passed' : 'Failed'}
+                        </Typography>
+                        <Chip label={`${csvData.length} rows`} color="primary" variant="outlined" />
+                      </Stack>
+
+                      {!isValid && validationErrors.length > 0 && (
+                        <Alert severity="error" sx={{ mb: 2 }}>
+                          <Typography variant="subtitle2" gutterBottom>
+                            The following rows have missing required fields:
+                          </Typography>
+                          {validationErrors.map((error, index) => (
+                            <Typography key={index} variant="body2">
+                              • Row {error.rowNumber}: Missing {error.missingFields.join(', ')}
+                            </Typography>
+                          ))}
+                        </Alert>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Data Preview */}
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        Data Preview
+                      </Typography>
+                      <TableContainer sx={{ maxHeight: 400 }}>
+                        <Table stickyHeader>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Row</TableCell>
+                              <TableCell>Company</TableCell>
+                              <TableCell>Keyword</TableCell>
+                              <TableCell>URL</TableCell>
+                              <TableCell>Owner</TableCell>
+                              <TableCell>Status</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {csvData.slice(0, 10).map((row, index) => {
+                              const hasError = validationErrors.some(
+                                error => error.rowNumber === row.rowNumber
+                              );
+                              return (
+                                <TableRow
+                                  key={index}
                                   sx={{
-                                    maxWidth: 200,
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap',
+                                    backgroundColor: hasError ? 'error.light' : 'inherit',
+                                    '&:nth-of-type(odd)': {
+                                      backgroundColor: hasError ? 'error.light' : 'action.hover',
+                                    },
                                   }}
                                 >
-                                  {row.URL}
-                                </TableCell>
-                                <TableCell>
-                                  {row.OwnerUserId
-                                    ? users.find(u => u.id === row.OwnerUserId)?.name ||
-                                      'Unknown User'
-                                    : 'No Owner'}
-                                </TableCell>
-                                <TableCell>
-                                  {hasError ? (
-                                    <Chip label="Error" color="error" size="small" />
-                                  ) : (
-                                    <Chip label="Valid" color="success" size="small" />
-                                  )}
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                    {csvData.length > 10 && (
-                      <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                        Showing first 10 rows of {csvData.length} total rows
-                      </Typography>
-                    )}
+                                  <TableCell>{row.rowNumber}</TableCell>
+                                  <TableCell>{row.Company}</TableCell>
+                                  <TableCell>{row.Keyword}</TableCell>
+                                  <TableCell
+                                    sx={{
+                                      maxWidth: 200,
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    {row.URL}
+                                  </TableCell>
+                                  <TableCell>
+                                    {row.OwnerUserId
+                                      ? users.find(u => u.id === row.OwnerUserId)?.name ||
+                                        'Unknown User'
+                                      : 'No Owner'}
+                                  </TableCell>
+                                  <TableCell>
+                                    {hasError ? (
+                                      <Chip label="Error" color="error" size="small" />
+                                    ) : (
+                                      <Chip label="Valid" color="success" size="small" />
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                      {csvData.length > 10 && (
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                          Showing first 10 rows of {csvData.length} total rows
+                        </Typography>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Action Buttons */}
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <IntercomButton variant="secondary" onClick={resetForm} disabled={submitting}>
+                      Upload Different File
+                    </IntercomButton>
+                    <IntercomButton
+                      variant="primary"
+                      onClick={handleSubmit}
+                      disabled={!isValid || submitting}
+                      leftIcon={submitting ? <CircularProgress size={20} /> : undefined}
+                    >
+                      {submitting ? 'Submitting...' : 'Submit for Enrichment'}
+                    </IntercomButton>
+                  </Box>
+                </Stack>
+              )
+            ) : listType === 'individual' ? (
+              individualCsvData.length === 0 ? (
+                <Card variant="outlined" sx={{ mb: 3 }}>
+                  <CardContent sx={{ p: 4, textAlign: 'center' }}>
+                    <CloudUploadIcon sx={{ fontSize: 80, color: 'text.secondary', mb: 2 }} />
+                    <Typography variant="h6" gutterBottom>
+                      Upload CSV File
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                      Please upload a CSV file with columns for: <strong>URL</strong>,{' '}
+                      <strong>keyword</strong>, <strong>negativeURLTitle</strong>,{' '}
+                      <strong>firstName</strong>, <strong>lastName</strong>, <strong>linkedinURL</strong>, <strong>email</strong>{' '}
+                      (optional)
+                    </Typography>
+
+                    <input
+                      accept=".csv"
+                      style={{ display: 'none' }}
+                      id="csv-upload"
+                      type="file"
+                      onChange={handleFileUpload}
+                      disabled={uploading}
+                    />
+                    <label htmlFor="csv-upload">
+                      <IntercomButton
+                        variant="primary"
+                        component="span"
+                        leftIcon={uploading ? <CircularProgress size={20} /> : <CloudUploadIcon />}
+                        disabled={uploading}
+                        size="large"
+                      >
+                        {uploading ? 'Processing...' : 'Choose CSV File'}
+                      </IntercomButton>
+                    </label>
                   </CardContent>
                 </Card>
+              ) : (
+                <Stack spacing={3}>
+                  {/* Validation Status */}
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }}>
+                        {isValid ? (
+                          <CheckCircleIcon sx={{ color: 'success.main' }} />
+                        ) : (
+                          <ErrorIcon sx={{ color: 'error.main' }} />
+                        )}
+                        <Typography variant="h6">
+                          Validation {isValid ? 'Passed' : 'Failed'}
+                        </Typography>
+                        <Chip
+                          label={`${individualCsvData.length} rows`}
+                          color="primary"
+                          variant="outlined"
+                        />
+                      </Stack>
 
-                {/* Action Buttons */}
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <IntercomButton variant="secondary" onClick={resetForm} disabled={submitting}>
-                    Upload Different File
-                  </IntercomButton>
-                  <IntercomButton
-                    variant="primary"
-                    onClick={handleSubmit}
-                    disabled={!isValid || submitting}
-                    leftIcon={submitting ? <CircularProgress size={20} /> : undefined}
-                  >
-                    {submitting ? 'Submitting...' : 'Submit for Enrichment'}
-                  </IntercomButton>
-                </Box>
-              </Stack>
-            )
-          ) : listType === 'individual' ? (
-            individualCsvData.length === 0 ? (
-              <Paper
-                sx={{
-                  p: 4,
-                  border: '2px solid',
-                  borderColor: alpha('#8b5cf6', 0.1),
-                  borderRadius: 3,
-                  bgcolor: alpha('#faf5ff', 0.3),
-                  textAlign: 'center',
-                  mb: 3,
-                  position: 'relative',
-                  '&::before': {
-                    content: '""',
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: '3px',
-                    background: 'linear-gradient(90deg, #8b5cf6 0%, #7c3aed 100%)',
-                    borderRadius: '3px 3px 0 0',
-                  },
-                }}
-              >
-                <Box
-                  sx={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: 2,
-                    background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    mx: 'auto',
-                    mb: 2,
-                  }}
-                >
-                  <Users size={32} color="white" />
-                </Box>
-                <Typography variant="h6" gutterBottom sx={{ color: '#7c3aed', fontWeight: 600 }}>
-                  Upload Individual Data
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 3, lineHeight: 1.6 }}>
-                  Required: <Chip label="URL" size="small" sx={{ mx: 0.5 }} />
-                  <Chip label="keyword" size="small" sx={{ mx: 0.5 }} />
-                  <Chip label="negativeURLTitle" size="small" sx={{ mx: 0.5 }} />
-                  <br />
-                  <Chip label="firstName" size="small" sx={{ mx: 0.5, mt: 1 }} />
-                  <Chip label="lastName" size="small" sx={{ mx: 0.5, mt: 1 }} />
-                  <br />
-                  Optional:{' '}
-                  <Chip label="email" size="small" variant="outlined" sx={{ mx: 0.5, mt: 1 }} />
-                  <Chip
-                    label="linkedinURL"
-                    size="small"
-                    variant="outlined"
-                    sx={{ mx: 0.5, mt: 1 }}
-                  />
-                </Typography>
+                      {!isValid && validationErrors.length > 0 && (
+                        <Alert severity="error" sx={{ mb: 2 }}>
+                          <Typography variant="subtitle2" gutterBottom>
+                            The following rows have missing required fields:
+                          </Typography>
+                          {validationErrors.map((error, index) => (
+                            <Typography key={index} variant="body2">
+                              • Row {error.rowNumber}: Missing {error.missingFields.join(', ')}
+                            </Typography>
+                          ))}
+                        </Alert>
+                      )}
+                    </CardContent>
+                  </Card>
 
-                <input
-                  accept=".csv"
-                  style={{ display: 'none' }}
-                  id="csv-upload"
-                  type="file"
-                  onChange={handleFileUpload}
-                  disabled={uploading}
-                />
-                <label htmlFor="csv-upload">
-                  <Button
-                    variant="contained"
-                    component="span"
+                  {/* Data Preview */}
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        Data Preview
+                      </Typography>
+                      <TableContainer sx={{ maxHeight: 400 }}>
+                        <Table stickyHeader>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Row</TableCell>
+                              <TableCell>URL</TableCell>
+                              <TableCell>Keyword</TableCell>
+                              <TableCell>Negative URL Title</TableCell>
+                              <TableCell>First Name</TableCell>
+                              <TableCell>Last Name</TableCell>
+                              <TableCell>Email</TableCell>
+                              <TableCell>LinkedIn URL</TableCell>
+                              <TableCell>Owner</TableCell>
+                              <TableCell>Status</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {individualCsvData.slice(0, 10).map((row, index) => {
+                              const hasError = validationErrors.some(
+                                error => error.rowNumber === row.rowNumber
+                              );
+                              return (
+                                <TableRow
+                                  key={index}
+                                  sx={{
+                                    backgroundColor: hasError ? 'error.light' : 'inherit',
+                                    '&:nth-of-type(odd)': {
+                                      backgroundColor: hasError ? 'error.light' : 'action.hover',
+                                    },
+                                  }}
+                                >
+                                  <TableCell>{row.rowNumber}</TableCell>
+                                  <TableCell
+                                    sx={{
+                                      maxWidth: 200,
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    {row.URL}
+                                  </TableCell>
+                                  <TableCell>{row.keyword}</TableCell>
+                                  <TableCell>{row.negativeURLTitle}</TableCell>
+                                  <TableCell>{row.firstName}</TableCell>
+                                  <TableCell>{row.lastName}</TableCell>
+                                  <TableCell>{row.email}</TableCell>
+                                  <TableCell>{row.linkedinURL}</TableCell>
+                                  <TableCell>
+                                    {row.OwnerUserId
+                                      ? users.find(u => u.id === row.OwnerUserId)?.name ||
+                                        'Unknown User'
+                                      : 'No Owner'}
+                                  </TableCell>
+                                  <TableCell>
+                                    {hasError ? (
+                                      <Chip label="Error" color="error" size="small" />
+                                    ) : (
+                                      <Chip label="Valid" color="success" size="small" />
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                      {individualCsvData.length > 10 && (
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                          Showing first 10 rows of {individualCsvData.length} total rows
+                        </Typography>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Action Buttons */}
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <IntercomButton variant="secondary" onClick={resetForm} disabled={submitting}>
+                      Upload Different File
+                    </IntercomButton>
+                    <IntercomButton
+                      variant="primary"
+                      onClick={handleSubmit}
+                      disabled={!isValid || submitting}
+                      leftIcon={submitting ? <CircularProgress size={20} /> : undefined}
+                    >
+                      {submitting ? 'Submitting...' : 'Submit for Enrichment'}
+                    </IntercomButton>
+                  </Box>
+                </Stack>
+              )
+            ) : blpCsvData.length === 0 ? (
+              <Card variant="outlined" sx={{ mb: 3 }}>
+                <CardContent sx={{ p: 4, textAlign: 'center' }}>
+                  <CloudUploadIcon sx={{ fontSize: 80, color: 'text.secondary', mb: 2 }} />
+                  <Typography variant="h6" gutterBottom>
+                    Upload CSV File
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    Please upload a CSV file with a column for: <strong>companyName</strong>.{' '}
+                    Additional fields like <strong>website</strong>, <strong>industry</strong>,{' '}
+                    <strong>location</strong>, <strong>employeeCount</strong>,{' '}
+                    <strong>revenue</strong>, <strong>contactName</strong>,{' '}
+                    <strong>contactTitle</strong>, and <strong>contactEmail</strong> are optional
+                    and will be enriched automatically.
+                  </Typography>
+
+                  <input
+                    accept=".csv"
+                    style={{ display: 'none' }}
+                    id="csv-upload"
+                    type="file"
+                    onChange={handleFileUpload}
                     disabled={uploading}
-                    size="large"
-                    sx={{
-                      background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
-                      px: 4,
-                      py: 1.5,
-                      borderRadius: 2,
-                      fontSize: '1rem',
-                      fontWeight: 600,
-                      textTransform: 'none',
-                      boxShadow: `0 8px 25px -8px ${alpha('#8b5cf6', 0.4)}`,
-                      transition: 'all 0.3s ease',
-                      '&:hover': {
-                        transform: 'translateY(-2px)',
-                        boxShadow: `0 12px 30px -8px ${alpha('#8b5cf6', 0.5)}`,
-                      },
-                      '&:disabled': {
-                        background: alpha('#8b5cf6', 0.3),
-                        color: alpha('#fff', 0.5),
-                        transform: 'none',
-                        boxShadow: 'none',
-                      },
-                    }}
-                    startIcon={uploading ? <CircularProgress size={20} /> : <Users size={20} />}
-                  >
-                    {uploading ? 'Processing...' : 'Choose CSV File'}
-                  </Button>
-                </label>
-              </Paper>
+                  />
+                  <label htmlFor="csv-upload">
+                    <IntercomButton
+                      variant="primary"
+                      component="span"
+                      leftIcon={uploading ? <CircularProgress size={20} /> : <CloudUploadIcon />}
+                      disabled={uploading}
+                      size="large"
+                    >
+                      {uploading ? 'Processing...' : 'Choose CSV File'}
+                    </IntercomButton>
+                  </label>
+                </CardContent>
+              </Card>
             ) : (
               <Stack spacing={3}>
                 {/* Validation Status */}
@@ -1351,7 +1376,7 @@ function LeadEnricherContent() {
                         Validation {isValid ? 'Passed' : 'Failed'}
                       </Typography>
                       <Chip
-                        label={`${individualCsvData.length} rows`}
+                        label={`${blpCsvData.length} rows`}
                         color="primary"
                         variant="outlined"
                       />
@@ -1383,19 +1408,21 @@ function LeadEnricherContent() {
                         <TableHead>
                           <TableRow>
                             <TableCell>Row</TableCell>
-                            <TableCell>URL</TableCell>
-                            <TableCell>Keyword</TableCell>
-                            <TableCell>Negative URL Title</TableCell>
-                            <TableCell>First Name</TableCell>
-                            <TableCell>Last Name</TableCell>
-                            <TableCell>Email</TableCell>
-                            <TableCell>LinkedIn URL</TableCell>
+                            <TableCell>Company Name</TableCell>
+                            <TableCell>Website</TableCell>
+                            <TableCell>Industry</TableCell>
+                            <TableCell>Location</TableCell>
+                            <TableCell>Employee Count</TableCell>
+                            <TableCell>Revenue</TableCell>
+                            <TableCell>Contact Name</TableCell>
+                            <TableCell>Contact Title</TableCell>
+                            <TableCell>Contact Email</TableCell>
                             <TableCell>Owner</TableCell>
                             <TableCell>Status</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {individualCsvData.slice(0, 10).map((row, index) => {
+                          {blpCsvData.slice(0, 10).map((row, index) => {
                             const hasError = validationErrors.some(
                               error => error.rowNumber === row.rowNumber
                             );
@@ -1410,6 +1437,7 @@ function LeadEnricherContent() {
                                 }}
                               >
                                 <TableCell>{row.rowNumber}</TableCell>
+                                <TableCell>{row.companyName}</TableCell>
                                 <TableCell
                                   sx={{
                                     maxWidth: 200,
@@ -1418,14 +1446,15 @@ function LeadEnricherContent() {
                                     whiteSpace: 'nowrap',
                                   }}
                                 >
-                                  {row.URL}
+                                  {row.website}
                                 </TableCell>
-                                <TableCell>{row.keyword}</TableCell>
-                                <TableCell>{row.negativeURLTitle}</TableCell>
-                                <TableCell>{row.firstName}</TableCell>
-                                <TableCell>{row.lastName}</TableCell>
-                                <TableCell>{row.email}</TableCell>
-                                <TableCell>{row.linkedinURL}</TableCell>
+                                <TableCell>{row.industry}</TableCell>
+                                <TableCell>{row.location}</TableCell>
+                                <TableCell>{row.employeeCount}</TableCell>
+                                <TableCell>{row.revenue}</TableCell>
+                                <TableCell>{row.contactName}</TableCell>
+                                <TableCell>{row.contactTitle}</TableCell>
+                                <TableCell>{row.contactEmail}</TableCell>
                                 <TableCell>
                                   {row.OwnerUserId
                                     ? users.find(u => u.id === row.OwnerUserId)?.name ||
@@ -1445,9 +1474,9 @@ function LeadEnricherContent() {
                         </TableBody>
                       </Table>
                     </TableContainer>
-                    {individualCsvData.length > 10 && (
+                    {blpCsvData.length > 10 && (
                       <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                        Showing first 10 rows of {individualCsvData.length} total rows
+                        Showing first 10 rows of {blpCsvData.length} total rows
                       </Typography>
                     )}
                   </CardContent>
@@ -1468,235 +1497,10 @@ function LeadEnricherContent() {
                   </IntercomButton>
                 </Box>
               </Stack>
-            )
-          ) : blpCsvData.length === 0 ? (
-            <Paper
-              sx={{
-                p: 4,
-                border: '2px solid',
-                borderColor: alpha('#10b981', 0.1),
-                borderRadius: 3,
-                bgcolor: alpha('#ecfdf5', 0.3),
-                textAlign: 'center',
-                mb: 3,
-                position: 'relative',
-                '&::before': {
-                  content: '""',
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: '3px',
-                  background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
-                  borderRadius: '3px 3px 0 0',
-                },
-              }}
-            >
-              <Box
-                sx={{
-                  width: 64,
-                  height: 64,
-                  borderRadius: 2,
-                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  mx: 'auto',
-                  mb: 2,
-                }}
-              >
-                <Database size={32} color="white" />
-              </Box>
-              <Typography variant="h6" gutterBottom sx={{ color: '#10b981', fontWeight: 600 }}>
-                Upload BLP Prospect Data
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 3, lineHeight: 1.6 }}>
-                Required: <Chip label="companyName" size="small" sx={{ mx: 0.5 }} />
-                <br />
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ mt: 2, display: 'block' }}
-                >
-                  Optional fields (auto-enriched): website, industry, location, employeeCount,
-                  revenue, contactName, contactTitle, contactEmail
-                </Typography>
-              </Typography>
-
-              <input
-                accept=".csv"
-                style={{ display: 'none' }}
-                id="csv-upload"
-                type="file"
-                onChange={handleFileUpload}
-                disabled={uploading}
-              />
-              <label htmlFor="csv-upload">
-                <Button
-                  variant="contained"
-                  component="span"
-                  disabled={uploading}
-                  size="large"
-                  sx={{
-                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                    px: 4,
-                    py: 1.5,
-                    borderRadius: 2,
-                    fontSize: '1rem',
-                    fontWeight: 600,
-                    textTransform: 'none',
-                    boxShadow: `0 8px 25px -8px ${alpha('#10b981', 0.4)}`,
-                    transition: 'all 0.3s ease',
-                    '&:hover': {
-                      transform: 'translateY(-2px)',
-                      boxShadow: `0 12px 30px -8px ${alpha('#10b981', 0.5)}`,
-                    },
-                    '&:disabled': {
-                      background: alpha('#10b981', 0.3),
-                      color: alpha('#fff', 0.5),
-                      transform: 'none',
-                      boxShadow: 'none',
-                    },
-                  }}
-                  startIcon={uploading ? <CircularProgress size={20} /> : <Database size={20} />}
-                >
-                  {uploading ? 'Processing...' : 'Choose CSV File'}
-                </Button>
-              </label>
-            </Paper>
-          ) : (
-            <Stack spacing={3}>
-              {/* Validation Status */}
-              <Card variant="outlined">
-                <CardContent>
-                  <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }}>
-                    {isValid ? (
-                      <CheckCircleIcon sx={{ color: 'success.main' }} />
-                    ) : (
-                      <ErrorIcon sx={{ color: 'error.main' }} />
-                    )}
-                    <Typography variant="h6">Validation {isValid ? 'Passed' : 'Failed'}</Typography>
-                    <Chip label={`${blpCsvData.length} rows`} color="primary" variant="outlined" />
-                  </Stack>
-
-                  {!isValid && validationErrors.length > 0 && (
-                    <Alert severity="error" sx={{ mb: 2 }}>
-                      <Typography variant="subtitle2" gutterBottom>
-                        The following rows have missing required fields:
-                      </Typography>
-                      {validationErrors.map((error, index) => (
-                        <Typography key={index} variant="body2">
-                          • Row {error.rowNumber}: Missing {error.missingFields.join(', ')}
-                        </Typography>
-                      ))}
-                    </Alert>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Data Preview */}
-              <Card variant="outlined">
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Data Preview
-                  </Typography>
-                  <TableContainer sx={{ maxHeight: 400 }}>
-                    <Table stickyHeader>
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Row</TableCell>
-                          <TableCell>Company Name</TableCell>
-                          <TableCell>Website</TableCell>
-                          <TableCell>Industry</TableCell>
-                          <TableCell>Location</TableCell>
-                          <TableCell>Employee Count</TableCell>
-                          <TableCell>Revenue</TableCell>
-                          <TableCell>Contact Name</TableCell>
-                          <TableCell>Contact Title</TableCell>
-                          <TableCell>Contact Email</TableCell>
-                          <TableCell>Owner</TableCell>
-                          <TableCell>Status</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {blpCsvData.slice(0, 10).map((row, index) => {
-                          const hasError = validationErrors.some(
-                            error => error.rowNumber === row.rowNumber
-                          );
-                          return (
-                            <TableRow
-                              key={index}
-                              sx={{
-                                backgroundColor: hasError ? 'error.light' : 'inherit',
-                                '&:nth-of-type(odd)': {
-                                  backgroundColor: hasError ? 'error.light' : 'action.hover',
-                                },
-                              }}
-                            >
-                              <TableCell>{row.rowNumber}</TableCell>
-                              <TableCell>{row.companyName}</TableCell>
-                              <TableCell
-                                sx={{
-                                  maxWidth: 200,
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
-                                {row.website}
-                              </TableCell>
-                              <TableCell>{row.industry}</TableCell>
-                              <TableCell>{row.location}</TableCell>
-                              <TableCell>{row.employeeCount}</TableCell>
-                              <TableCell>{row.revenue}</TableCell>
-                              <TableCell>{row.contactName}</TableCell>
-                              <TableCell>{row.contactTitle}</TableCell>
-                              <TableCell>{row.contactEmail}</TableCell>
-                              <TableCell>
-                                {row.OwnerUserId
-                                  ? users.find(u => u.id === row.OwnerUserId)?.name ||
-                                    'Unknown User'
-                                  : 'No Owner'}
-                              </TableCell>
-                              <TableCell>
-                                {hasError ? (
-                                  <Chip label="Error" color="error" size="small" />
-                                ) : (
-                                  <Chip label="Valid" color="success" size="small" />
-                                )}
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                  {blpCsvData.length > 10 && (
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                      Showing first 10 rows of {blpCsvData.length} total rows
-                    </Typography>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Action Buttons */}
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <IntercomButton variant="secondary" onClick={resetForm} disabled={submitting}>
-                  Upload Different File
-                </IntercomButton>
-                <IntercomButton
-                  variant="primary"
-                  onClick={handleSubmit}
-                  disabled={!isValid || submitting}
-                  leftIcon={submitting ? <CircularProgress size={20} /> : undefined}
-                >
-                  {submitting ? 'Submitting...' : 'Submit for Enrichment'}
-                </IntercomButton>
-              </Box>
-            </Stack>
-          )}
-        </CardContent>
-      </Card>
+            )}
+          </Box>
+        </Box>
+      </IntercomCard>
 
       {/* Field Mapping Modal */}
       <Dialog
@@ -1772,7 +1576,7 @@ function LeadEnricherContent() {
                     listType === 'company'
                       ? true // All required for company, including owner
                       : listType === 'individual'
-                        ? !['email', 'linkedinURL'].includes(requiredField) // All except email/linkedin for individual
+                        ? !['email'].includes(requiredField) // All except email for individual
                         : requiredField === 'companyName' || requiredField === 'owner'; // BLP: only companyName required
                   return (
                     <TableRow key={requiredField}>

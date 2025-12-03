@@ -1,25 +1,58 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { RowDataPacket } from 'mysql2/promise';
 import { query } from 'lib/db';
+import jwt from 'jsonwebtoken';
 
-// Function to validate user token
+const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-change-in-production';
+
+// Function to validate user token (now using JWT cookies)
 export async function validateUserToken(req: NextApiRequest) {
-  const token =
-    (req.headers['x-auth-token'] as string) ||
-    (req.headers.authorization && req.headers.authorization.replace('Bearer ', '')) ||
-    (req.cookies && req.cookies.auth_token);
+  // First try JWT cookie (new method)
+  const jwtToken = req.cookies && req.cookies.auth_token;
+  
+  if (jwtToken) {
+    try {
+      const decoded = jwt.verify(jwtToken, JWT_SECRET) as any;
+      
+      // Check if user is still active in database
+      const [userRows]: [RowDataPacket[], any] = await query(
+        'SELECT is_active FROM users WHERE id = ?', 
+        [decoded.id]
+      );
+      
+      if (userRows.length === 0 || !userRows[0].is_active) {
+        return { isValid: false, user_id: null, username: null, email: null, role: null };
+      }
+      
+      return {
+        isValid: true,
+        user_id: decoded.id,
+        username: decoded.name,
+        email: decoded.email,
+        role: decoded.role || 'staff',
+      };
+    } catch (jwtError) {
+      console.error('JWT validation error:', jwtError);
+      // JWT invalid, fall through to legacy token check
+    }
+  }
 
-  if (!token) {
+  // Legacy token support (for backward compatibility during transition)
+  const legacyToken =
+    (req.headers['x-auth-token'] as string) ||
+    (req.headers.authorization && req.headers.authorization.replace('Bearer ', ''));
+
+  if (!legacyToken) {
     return { isValid: false, user_id: null, username: null, email: null, role: null };
   }
 
   try {
-    // Query the database for the user token
+    // Query the database for the legacy user token
     const [rows]: [RowDataPacket[], any] = await query('SELECT * FROM users WHERE user_token = ?', [
-      token,
+      legacyToken,
     ]);
 
-    if (rows.length === 0) {
+    if (rows.length === 0 || !rows[0].is_active) {
       return { isValid: false, user_id: null, username: null, email: null, role: null };
     }
 
@@ -28,10 +61,10 @@ export async function validateUserToken(req: NextApiRequest) {
       user_id: rows[0].id,
       username: rows[0].name,
       email: rows[0].email,
-      role: rows[0].role || 'staff', // Default to 'staff' if role is not yet set
+      role: rows[0].role || 'staff',
     };
   } catch (error) {
-    console.error('Error validating user token:', error);
+    console.error('Error validating legacy user token:', error);
     return { isValid: false, user_id: null, username: null, email: null, role: null };
   }
 }
@@ -50,7 +83,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       token,
     ]);
 
-    if (rows.length === 0) {
+    if (rows.length === 0 || !rows[0].is_active) {
       return res.status(404).json({ valid: false });
     }
 

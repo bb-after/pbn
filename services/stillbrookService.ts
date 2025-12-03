@@ -24,12 +24,19 @@ interface RunSearchResult {
   auditEntry: StillbrookSubmission;
 }
 
+interface SearchPageResult {
+  organicResults: SerpApiResult[];
+  rawHtmlUrl?: string;
+  serpApiSearchId?: string;
+}
+
 const sentimentAnalyzer = new Sentiment();
+const NEGATIVE_SENTIMENT_THRESHOLD = -2;
+const POSITIVE_SENTIMENT_THRESHOLD = 2;
 
 export async function runSearch({ user, request, startTime }: RunSearchParams): Promise<RunSearchResult> {
   console.log('Running search for:', request);
-  debugger;
-    const {
+  const {
     keyword,
     url,
     urls = [],
@@ -53,12 +60,9 @@ export async function runSearch({ user, request, startTime }: RunSearchParams): 
     countryCode,
   } = request;
 
-  let organicResults: SerpApiResult[] = [];
-  let serpApiSearchId: string | undefined;
-  let rawHtmlUrl: string | undefined;
-
+  let primaryPage: SearchPageResult;
   try {
-    const serpResult = await fetchSerpResults({
+    primaryPage = await fetchSearchPage({
       keyword,
       location,
       googleDomain,
@@ -66,10 +70,6 @@ export async function runSearch({ user, request, startTime }: RunSearchParams): 
       searchType,
       countryCode,
     });
-
-    organicResults = serpResult.results;
-    serpApiSearchId = serpResult.searchMetadata?.id;
-    rawHtmlUrl = serpResult.searchMetadata?.rawHtmlUrl;
   } catch (error) {
     return buildErrorResult(
       error,
@@ -90,7 +90,31 @@ export async function runSearch({ user, request, startTime }: RunSearchParams): 
     );
   }
 
-  if (organicResults.length === 0) {
+  const additionalPages: SearchPageResult[] = [];
+  if (includePage2) {
+    try {
+      const page2 = await fetchSearchPage({
+        keyword,
+        location,
+        googleDomain,
+        language,
+        searchType,
+        countryCode,
+        startPage: 1,
+      });
+      additionalPages.push(page2);
+    } catch (error) {
+      console.warn('Error fetching page 2 results:', error);
+    }
+  }
+
+  const organicResults = primaryPage.organicResults;
+  const combinedOrganicResults = mergeOrganicResults([primaryPage, ...additionalPages]);
+  const serpApiSearchId = primaryPage.serpApiSearchId;
+  const rawHtmlUrl = primaryPage.rawHtmlUrl;
+  const totalResultsCount = combinedOrganicResults.length;
+
+  if (totalResultsCount === 0) {
     const processingTime = Date.now() - startTime;
     const auditEntry = createSubmission(
       user.id,
@@ -131,7 +155,7 @@ export async function runSearch({ user, request, startTime }: RunSearchParams): 
     uniquePositiveMatches,
     allMatches,
   } = processHighlightMatches({
-    organicResults,
+    organicResults: combinedOrganicResults,
     url,
     urls,
     keywords,
@@ -150,55 +174,51 @@ export async function runSearch({ user, request, startTime }: RunSearchParams): 
 
   try {
     const isImageSearch = searchType === 'isch';
-
-    if (includePage2) {
-      const page2Result = await fetchSerpResults({
-        keyword,
-        location,
-        googleDomain,
-        language,
-        searchType,
-        countryCode,
-        startPage: 1,
-      });
-
-      if (page2Result.searchMetadata?.rawHtmlUrl) {
-        const page2RenderedHtml = await renderHtmlWithBrowser(page2Result.searchMetadata.rawHtmlUrl);
-        page2HtmlPreview = addCombinedHighlighting(
-          page2RenderedHtml,
-          uniqueNegativeMatches,
-          uniquePositiveMatches,
-          isImageSearch,
-          searchType,
-          {
-            negativeKeywords: enableNegativeKeywords ? keywords : [],
-            positiveKeywords: enablePositiveKeywords ? positiveKeywords : [],
-          }
-        );
-      }
-    }
+    const highlightOptions = {
+      negativeKeywords: enableNegativeKeywords ? keywords : [],
+      positiveKeywords: enablePositiveKeywords ? positiveKeywords : [],
+    };
+    const page1NegativeMatches = filterMatchesForResults(uniqueNegativeMatches, organicResults);
+    const page1PositiveMatches = filterMatchesForResults(uniquePositiveMatches, organicResults);
 
     if (rawHtmlUrl) {
-      const renderedHtml = await renderHtmlWithBrowser(rawHtmlUrl);
+      const renderedHtml = await renderHtmlWithBrowser(rawHtmlUrl, { searchType });
       htmlPreview = addCombinedHighlighting(
         renderedHtml,
-        uniqueNegativeMatches,
-        uniquePositiveMatches,
-        searchType === 'isch',
+        page1NegativeMatches,
+        page1PositiveMatches,
+        isImageSearch,
         searchType,
-        {
-          negativeKeywords: enableNegativeKeywords ? keywords : [],
-          positiveKeywords: enablePositiveKeywords ? positiveKeywords : [],
-        }
+        highlightOptions
       );
+    }
+
+    if (includePage2 && additionalPages.length > 0) {
+      const [page2] = additionalPages;
+      if (page2?.rawHtmlUrl) {
+        const page2RenderedHtml = await renderHtmlWithBrowser(page2.rawHtmlUrl, { searchType });
+        const page2NegativeMatches = filterMatchesForResults(uniqueNegativeMatches, page2.organicResults);
+        const page2PositiveMatches = filterMatchesForResults(uniquePositiveMatches, page2.organicResults);
+
+        page2HtmlPreview = addCombinedHighlighting(
+          page2RenderedHtml,
+          page2NegativeMatches,
+          page2PositiveMatches,
+          isImageSearch,
+          searchType,
+          highlightOptions
+        );
+      }
     }
   } catch (error) {
     console.warn('Error generating HTML preview:', error);
   }
 
   if (!htmlPreview) {
-    const negativeMatchedIds = new Set(uniqueNegativeMatches.map(result => result.position));
-    const positiveMatchedIds = new Set(uniquePositiveMatches.map(result => result.position));
+    const page1NegativeMatches = filterMatchesForResults(uniqueNegativeMatches, organicResults);
+    const page1PositiveMatches = filterMatchesForResults(uniquePositiveMatches, organicResults);
+    const negativeMatchedIds = new Set(page1NegativeMatches.map(result => result.position));
+    const positiveMatchedIds = new Set(page1PositiveMatches.map(result => result.position));
     const isImageSearch = searchType === 'isch';
     htmlPreview = generateCombinedPagePreview(
       organicResults,
@@ -240,15 +260,9 @@ export async function runSearch({ user, request, startTime }: RunSearchParams): 
       response: {
         matchedResults: [],
         results: organicResults,
-        totalResults: organicResults.length,
-        htmlPreview: generateCombinedPagePreview(
-          organicResults,
-          new Set(),
-          new Set(),
-          keyword,
-          searchType === 'isch'
-        ),
-        page2HtmlPreview: includePage2 ? '' : undefined,
+        totalResults: totalResultsCount,
+        htmlPreview,
+        page2HtmlPreview: includePage2 ? page2HtmlPreview || undefined : undefined,
         noMatches: true,
         searchType: 'combined',
       },
@@ -284,7 +298,7 @@ export async function runSearch({ user, request, startTime }: RunSearchParams): 
     response: {
       matchedResults: allMatches,
       results: organicResults,
-      totalResults: organicResults.length,
+      totalResults: totalResultsCount,
       htmlPreview,
       page2HtmlPreview: includePage2 ? page2HtmlPreview : undefined,
       searchType: undefined,
@@ -292,6 +306,61 @@ export async function runSearch({ user, request, startTime }: RunSearchParams): 
     },
     auditEntry,
   };
+}
+
+async function fetchSearchPage(params: {
+  keyword: string;
+  location?: string;
+  googleDomain?: string;
+  language?: string;
+  searchType?: string;
+  countryCode: string;
+  startPage?: number;
+}): Promise<SearchPageResult> {
+  const { results, searchMetadata } = await fetchSerpResults(params);
+
+  return {
+    organicResults: results,
+    rawHtmlUrl: searchMetadata?.rawHtmlUrl,
+    serpApiSearchId: searchMetadata?.id,
+  };
+}
+
+function mergeOrganicResults(pages: SearchPageResult[]): SerpApiResult[] {
+  return pages.reduce<SerpApiResult[]>((accumulator, page) => {
+    if (page && Array.isArray(page.organicResults) && page.organicResults.length > 0) {
+      accumulator.push(...page.organicResults);
+    }
+    return accumulator;
+  }, []);
+}
+
+function filterMatchesForResults(
+  matches: SerpApiResult[],
+  results: SerpApiResult[]
+): SerpApiResult[] {
+  if (!matches.length || !results.length) {
+    return [];
+  }
+
+  const linkSet = new Set(results.map(result => result.link).filter(Boolean));
+  const positionSet = new Set(
+    results
+      .map(result => result.position)
+      .filter(position => typeof position === 'number' && Number.isFinite(position))
+  );
+
+  return matches.filter(match => {
+    if (match.link && linkSet.has(match.link)) {
+      return true;
+    }
+
+    if (typeof match.position === 'number' && Number.isFinite(match.position)) {
+      return positionSet.has(match.position);
+    }
+
+    return false;
+  });
 }
 
 function buildErrorResult(
@@ -387,10 +456,10 @@ export function processHighlightMatches(params: HighlightMatchParams) {
     const userDomains: string[] = [];
 
     for (const urlToMatch of urlsToMatch) {
-      try {
-        const domain = new URL(urlToMatch).hostname.replace(/^www\./, '');
-        userDomains.push(domain);
-      } catch (error) {
+      const { domain: normalizedDomain, error } = extractNormalizedDomain(urlToMatch);
+      if (normalizedDomain) {
+        userDomains.push(normalizedDomain);
+      } else {
         console.warn('Invalid URL provided:', urlToMatch, error);
       }
     }
@@ -417,7 +486,7 @@ export function processHighlightMatches(params: HighlightMatchParams) {
         return false;
       }
       const resultSentiment = sentimentAnalyzer.analyze(textToAnalyze);
-      return resultSentiment.score < 0;
+      return resultSentiment.score <= NEGATIVE_SENTIMENT_THRESHOLD;
     });
 
     negativeMatches = [...negativeMatches, ...sentimentMatches];
@@ -436,10 +505,10 @@ export function processHighlightMatches(params: HighlightMatchParams) {
     const userDomains: string[] = [];
 
     for (const urlToMatch of positiveUrls) {
-      try {
-        const domain = new URL(urlToMatch).hostname.replace(/^www\./, '');
-        userDomains.push(domain);
-      } catch (error) {
+      const { domain: normalizedDomain, error } = extractNormalizedDomain(urlToMatch);
+      if (normalizedDomain) {
+        userDomains.push(normalizedDomain);
+      } else {
         console.warn('Invalid positive URL provided:', urlToMatch, error);
       }
     }
@@ -466,7 +535,7 @@ export function processHighlightMatches(params: HighlightMatchParams) {
         return false;
       }
       const resultSentiment = sentimentAnalyzer.analyze(textToAnalyze);
-      return resultSentiment.score > 0;
+      return resultSentiment.score >= POSITIVE_SENTIMENT_THRESHOLD;
     });
 
     positiveMatches = [...positiveMatches, ...sentimentMatches];
@@ -481,9 +550,9 @@ export function processHighlightMatches(params: HighlightMatchParams) {
     positiveMatches = [...positiveMatches, ...keywordMatches];
   }
 
-  const uniqueNegativeMatches = dedupeByPosition(negativeMatches);
-  const uniquePositiveMatches = dedupeByPosition(positiveMatches);
-  const allMatches = dedupeByPosition([...uniqueNegativeMatches, ...uniquePositiveMatches]);
+  const uniqueNegativeMatches = dedupeByLinkOrPosition(negativeMatches);
+  const uniquePositiveMatches = dedupeByLinkOrPosition(positiveMatches);
+  const allMatches = dedupeByLinkOrPosition([...uniqueNegativeMatches, ...uniquePositiveMatches]);
 
   return {
     uniqueNegativeMatches,
@@ -492,7 +561,52 @@ export function processHighlightMatches(params: HighlightMatchParams) {
   };
 }
 
-function dedupeByPosition(results: SerpApiResult[]): SerpApiResult[] {
-  return results.filter((result, index, array) => index === array.findIndex(r => r.position === result.position));
+function extractNormalizedDomain(urlLike: string | undefined): {
+  domain: string | null;
+  error?: Error;
+} {
+  if (!urlLike) {
+    return { domain: null };
+  }
+
+  const trimmed = urlLike.trim();
+  if (!trimmed) {
+    return { domain: null };
+  }
+
+  const hasProtocol = /^[a-zA-Z][a-zA-Z\d+.-]*:\/\//.test(trimmed);
+  const candidate = hasProtocol ? trimmed : `https://${trimmed}`;
+
+  try {
+    const hostname = new URL(candidate).hostname.replace(/^www\./, '');
+    if (hostname && hostname.includes('.')) {
+      return { domain: hostname };
+    }
+
+    return { domain: null, error: new TypeError('Invalid URL') };
+  } catch (error) {
+    return { domain: null, error: error as Error };
+  }
+}
+
+function dedupeByLinkOrPosition(results: SerpApiResult[]): SerpApiResult[] {
+  const seen = new Set<string>();
+
+  return results.filter(result => {
+    const linkKey = result.link ? `link:${result.link}` : null;
+    const positionKey =
+      typeof result.position === 'number' && Number.isFinite(result.position)
+        ? `position:${result.position}`
+        : null;
+    const fallbackKey = `title:${result.title ?? ''}|snippet:${result.snippet ?? ''}`;
+    const key = linkKey ?? positionKey ?? fallbackKey;
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
 }
 

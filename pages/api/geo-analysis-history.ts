@@ -1,5 +1,8 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import mysql from 'mysql2/promise';
+import jwt from 'jsonwebtoken';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-change-in-production';
 
 // Database configuration
 const dbConfig = {
@@ -9,23 +12,26 @@ const dbConfig = {
   database: process.env.DB_DATABASE,
 };
 
-// Get user ID and role from token
-const getUserFromToken = async (
-  userToken: string
-): Promise<{ id: number; name: string; role: string } | null> => {
-  const connection = await mysql.createConnection(dbConfig);
-
+// Authenticate user from JWT token
+const authenticateUser = async (req: NextApiRequest): Promise<{ id: number; name: string; email: string; role: string } | null> => {
   try {
-    const [rows] = await connection.execute(
-      'SELECT id, name, role FROM users WHERE user_token = ?',
-      [userToken]
-    );
-    const users = rows as any[];
-    return users.length > 0
-      ? { id: users[0].id, name: users[0].name, role: users[0].role || 'staff' }
-      : null;
-  } finally {
-    await connection.end();
+    const token = req.cookies.auth_token;
+    
+    if (!token) {
+      return null;
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    
+    return {
+      id: decoded.id,
+      name: decoded.name,
+      email: decoded.email,
+      role: decoded.role || 'staff'
+    };
+  } catch (error) {
+    console.error('JWT verification failed:', error);
+    return null;
   }
 };
 
@@ -44,17 +50,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       end_date,
       limit = '50',
       offset = '0',
-      userToken,
     } = req.query;
 
-    // Validate user token and get user info
-    if (!userToken || typeof userToken !== 'string') {
-      return res.status(401).json({ error: 'User token is required' });
-    }
-
-    const userInfo = await getUserFromToken(userToken);
+    // Authenticate user from JWT token
+    const userInfo = await authenticateUser(req);
     if (!userInfo) {
-      return res.status(401).json({ error: 'Invalid user token' });
+      return res.status(401).json({ error: 'Authentication required' });
     }
 
     // Build dynamic query - admins see all, regular users see only their own

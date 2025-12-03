@@ -1,5 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/router';
+import { GetServerSideProps } from 'next';
+import { requireServerAuth, AuthUser } from '../utils/serverAuth';
 import {
   TextField,
   RadioGroup,
@@ -41,6 +43,7 @@ import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
 import BookmarkAddIcon from '@mui/icons-material/BookmarkAdd';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import LocationTypeahead from '../components/LocationTypeahead';
 import EditIcon from '@mui/icons-material/Edit';
 import EditOffIcon from '@mui/icons-material/EditOff';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -90,16 +93,16 @@ import {
   Layers,
 } from 'lucide-react';
 import { IntercomLayout, ToastProvider, IntercomCard, IntercomButton } from '../components/ui';
-import UnauthorizedAccess from '../components/UnauthorizedAccess';
-import useValidateUserToken from '../hooks/useValidateUserToken';
 import ClientDropdown from '../components/ClientDropdown';
+import SearchCriteriaDisplay from '../components/SearchCriteriaDisplay';
 import Image from 'next/image';
 import googleDomainsData from '../google-domains.json';
 import html2canvas from 'html2canvas';
 import {
-  RESULT_CONTAINER_CLASS,
   EXCLUDED_CONTAINER_WRAPPER_CLASS,
-} from '../utils/stillbrook/highlighting';
+  getHighlightSelectors,
+} from '../utils/stillbrook/selectors';
+import { ArrowBack } from '@mui/icons-material';
 
 interface SerpApiResult {
   position: number;
@@ -145,9 +148,9 @@ const SEARCH_TYPES: SearchType[] = [
   { value: '', name: 'Web Search', description: 'Regular Google Search' },
   { value: 'isch', name: 'Images', description: 'Google Images API' },
   // { value: 'lcl', name: 'Local', description: 'Google Local API' },
-  { value: 'vid', name: 'Videos', description: 'Google Videos API' },
+  // { value: 'vid', name: 'Videos', description: 'Google Videos API' },
   { value: 'nws', name: 'News', description: 'Google News API' },
-  { value: 'shop', name: 'Shopping', description: 'Google Shopping API' },
+  // { value: 'shop', name: 'Shopping', description: 'Google Shopping API' },
 ];
 
 // Common Google search languages
@@ -405,8 +408,11 @@ function KeywordInputSection({
   );
 }
 
-function StillbrookContent() {
-  const { isValidUser, token } = useValidateUserToken();
+interface StillbrookProps {
+  user: AuthUser;
+}
+
+function StillbrookContent({ user }: StillbrookProps) {
   const router = useRouter();
   const [keyword, setKeyword] = useState('');
   const [url, setUrl] = useState('');
@@ -455,6 +461,10 @@ function StillbrookContent() {
   const [isUpdatingSearch, setIsUpdatingSearch] = useState(false);
   const [showUpdateOptions, setShowUpdateOptions] = useState(false);
   const [includePage2, setIncludePage2] = useState(false);
+
+  const highlightSelectors = useMemo(() => getHighlightSelectors(searchType || ''), [searchType]);
+  const containerClass = highlightSelectors.containerClass;
+  const excludedWrapperClass = EXCLUDED_CONTAINER_WRAPPER_CLASS;
 
   // Interactive highlighting state
   const [interactiveMode, setInteractiveMode] = useState(false);
@@ -513,17 +523,15 @@ function StillbrookContent() {
   useEffect(() => {
     const loadSearchId = router.query.loadSearch as string;
 
-    if (loadSearchId && token && !isLoadedSearch) {
+    if (loadSearchId && !isLoadedSearch) {
       loadSavedSearch(loadSearchId);
     }
-  }, [router.query, token, isLoadedSearch]);
+  }, [router.query, isLoadedSearch]);
 
   const loadSavedSearch = async (searchId: string) => {
     try {
       const response = await fetch('/api/saved-searches', {
-        headers: {
-          ...(token ? { 'x-auth-token': token } : {}),
-        },
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -765,8 +773,8 @@ function StillbrookContent() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { 'x-auth-token': token } : {}),
         },
+        credentials: 'include',
         body: JSON.stringify(formData),
         signal: controller.signal,
       });
@@ -1082,6 +1090,24 @@ function StillbrookContent() {
     // Wait for DOM to update
     await new Promise(resolve => setTimeout(resolve, 1000));
 
+    // Temporarily hide accessibility elements using CSS injection
+    const hideAccessibilityCSS = `
+      <style id="screenshot-hide-accessibility">
+        h1.bNg8Rb,
+        div.wYq63b,
+        .gyPpGe,
+        [jscontroller="EufiNb"] {
+          display: none !important;
+        }
+      </style>
+    `;
+
+    // Inject CSS to hide accessibility elements
+    const head = iframeDocument.head || iframeDocument.querySelector('head');
+    if (head) {
+      head.insertAdjacentHTML('beforeend', hideAccessibilityCSS);
+    }
+
     // Generate screenshot of the iframe content
     const canvas = await html2canvas(iframeBody, {
       allowTaint: false,
@@ -1092,6 +1118,12 @@ function StillbrookContent() {
       backgroundColor: '#ffffff',
       logging: false,
     });
+
+    // Remove the temporary CSS
+    const injectedStyle = iframeDocument.getElementById('screenshot-hide-accessibility');
+    if (injectedStyle) {
+      injectedStyle.remove();
+    }
 
     console.log(`✅ Canvas created for ${pageLabel || 'page'}: ${canvas.width}x${canvas.height}`);
     return canvas;
@@ -1145,6 +1177,68 @@ function StillbrookContent() {
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = `stillbrook-${pageType}-${keyword.replace(/[^a-zA-Z0-9]/g, '-')}.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  };
+
+  const handleDownloadMainHTML = () => {
+    if (!result?.htmlPreview) return;
+
+    // Try to get the actual iframe content that gets converted to PNG
+    const iframe = document.querySelector('#html-preview iframe') as HTMLIFrameElement;
+    let actualIframeHTML = '';
+
+    if (iframe && iframe.contentDocument) {
+      try {
+        const iframeDocument = iframe.contentDocument;
+        actualIframeHTML = iframeDocument.documentElement.outerHTML;
+        console.log('✅ Captured actual iframe HTML content');
+      } catch (error) {
+        console.warn('Could not access iframe content, using fallback:', error);
+        actualIframeHTML = result.htmlPreview;
+      }
+    } else {
+      console.warn('Iframe not found, using original HTML preview');
+      actualIframeHTML = result.htmlPreview;
+    }
+
+    // Download the actual content that gets converted to PNG
+    const htmlDocument = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Stillbrook PNG Debug - ${keyword}</title>
+        <meta charset="utf-8">
+        <style>
+          .debug-header { background: #e3f2fd; padding: 15px; margin-bottom: 20px; border-radius: 4px; border-left: 4px solid #1976d2; }
+          .debug-note { font-size: 14px; color: #555; margin-bottom: 10px; }
+        </style>
+      </head>
+      <body>
+        <div class="debug-header">
+          <h3 style="margin: 0 0 10px 0;">🔍 PNG Conversion Debug HTML</h3>
+          <div class="debug-note">
+            <strong>Purpose:</strong> This is the exact HTML content from the iframe that gets converted to PNG.
+          </div>
+          <div class="debug-note">
+            <strong>Search for:</strong> "Accessibility Links", "Skip to main content", or elements with unusual styling.
+          </div>
+          <div class="debug-note">
+            <strong>How to debug:</strong> Right-click → View Source or use DevTools to inspect the full HTML structure.
+          </div>
+        </div>
+        <hr>
+        ${actualIframeHTML}
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([htmlDocument], { type: 'text/html' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `stillbrook-png-debug-${keyword.replace(/[^a-zA-Z0-9]/g, '-')}.html`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1411,8 +1505,8 @@ function StillbrookContent() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { 'x-auth-token': token } : {}),
         },
+        credentials: 'include',
         body: JSON.stringify(searchData),
       });
 
@@ -1496,8 +1590,8 @@ function StillbrookContent() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { 'x-auth-token': token } : {}),
         },
+        credentials: 'include',
         body: JSON.stringify(searchData),
       });
 
@@ -1556,17 +1650,102 @@ function StillbrookContent() {
     const existingControls = doc.querySelectorAll('.stillbrook-controls');
     console.log(`🧹 Cleaning up ${existingControls.length} existing controls`);
     existingControls.forEach(control => control.remove());
-
-    const elements = Array.from(
-      doc.querySelectorAll(`div.${RESULT_CONTAINER_CLASS}`) as NodeListOf<HTMLElement>
-    ).filter(el => !el.closest(`.${EXCLUDED_CONTAINER_WRAPPER_CLASS}`));
-    console.log(
-      `🎯 Found ${elements.length} elements with class ${RESULT_CONTAINER_CLASS} eligible for interaction`
+    // Get elements by class, data attributes, and additional classes
+    const classCandidates = Array.from(
+      doc.querySelectorAll(`div.${containerClass}`) as NodeListOf<HTMLElement>
     );
+
+    const dataAttributeCandidates = highlightSelectors.dataAttributes
+      ? highlightSelectors.dataAttributes.flatMap(dataAttr => {
+          console.log(`🔍 Searching for elements with data attribute: ${dataAttr}`);
+          // First try divs, then try any element if no divs found
+          let elements = Array.from(
+            doc.querySelectorAll(`div[${dataAttr}]`) as NodeListOf<HTMLElement>
+          );
+          if (elements.length === 0) {
+            console.log(`📦 No divs with ${dataAttr}, trying any element...`);
+            elements = Array.from(doc.querySelectorAll(`[${dataAttr}]`) as NodeListOf<HTMLElement>);
+          }
+          console.log(`🎯 Found ${elements.length} elements with ${dataAttr}`);
+          return elements;
+        })
+      : [];
+
+    const additionalClassCandidates = highlightSelectors.additionalClasses
+      ? highlightSelectors.additionalClasses.flatMap(className => {
+          console.log(`🔍 Searching for elements with class: ${className}`);
+          // First try divs, then try any element if no divs found
+          let elements = Array.from(
+            doc.querySelectorAll(`div.${className}`) as NodeListOf<HTMLElement>
+          );
+          if (elements.length === 0) {
+            console.log(`📦 No divs with class ${className}, trying any element...`);
+            elements = Array.from(doc.querySelectorAll(`.${className}`) as NodeListOf<HTMLElement>);
+          }
+          console.log(`🎯 Found ${elements.length} elements with class ${className}`);
+          return elements;
+        })
+      : [];
+
+    // Apply exclusion filter only to classCandidates, not to data attributes or additional classes
+    const filteredClassCandidates = classCandidates.filter(
+      el => !el.closest(`.${excludedWrapperClass}`)
+    );
+
+    // Combine all candidates (only main class candidates are filtered by excluded wrapper)
+    const candidateElements = [
+      ...new Set([
+        ...filteredClassCandidates,
+        ...dataAttributeCandidates,
+        ...additionalClassCandidates,
+      ]),
+    ];
+
+    // Apply text content filter to all elements
+    const elements = candidateElements.filter(el => el.textContent?.trim());
+
+    console.log(
+      `🎯 Found ${elements.length} eligible elements (${classCandidates.length} by main class, ${dataAttributeCandidates.length} by data attributes, ${additionalClassCandidates.length} by additional classes, ${candidateElements.length} total after dedup)`
+    );
+
+    // Inspect elements matched via data attributes
+    highlightSelectors.dataAttributes?.forEach(dataAttr => {
+      console.log(`🔍 Checking all elements with ${dataAttr} in document:`);
+      const dataAttrElements = doc.querySelectorAll(`[${dataAttr}]`);
+      console.log(`📊 Total [${dataAttr}] elements in document: ${dataAttrElements.length}`);
+      Array.from(dataAttrElements).forEach((el, index) => {
+        console.log(`🗞️ ${dataAttr} element ${index}:`, {
+          tagName: el.tagName,
+          className: el.className,
+          id: el.id,
+          attributeValue: el.getAttribute(dataAttr),
+          textContent: el.textContent?.substring(0, 50) + '...',
+          hasContent: !!el.textContent?.trim(),
+          isInExcludedWrapper: !!el.closest(`.${excludedWrapperClass}`),
+        });
+      });
+    });
+
+    // Inspect elements matched via additional classes
+    highlightSelectors.additionalClasses?.forEach(className => {
+      console.log(`🔍 Checking all elements with ${className} class in document:`);
+      const classElements = doc.querySelectorAll(`.${className}`);
+      console.log(`📊 Total .${className} elements in document: ${classElements.length}`);
+      Array.from(classElements).forEach((el, index) => {
+        console.log(`🎯 ${className} element ${index}:`, {
+          tagName: el.tagName,
+          className: el.className,
+          id: el.id,
+          textContent: el.textContent?.substring(0, 50) + '...',
+          hasContent: !!el.textContent?.trim(),
+          isInExcludedWrapper: !!el.closest(`.${excludedWrapperClass}`),
+        });
+      });
+    });
 
     if (elements.length === 0) {
       console.log(
-        `⚠️ No elements with class ${RESULT_CONTAINER_CLASS} found! Checking for any divs...`
+        `⚠️ No eligible elements found (searched for ${containerClass} class, data attributes, and additional classes)! Checking for any divs...`
       );
       const allDivs = doc.querySelectorAll('div');
       console.log(`📦 Found ${allDivs.length} total div elements in iframe`);
@@ -1591,7 +1770,7 @@ function StillbrookContent() {
       console.log(`✨ Processing element ${index}:`, {
         tagName: el.tagName,
         className: el.className,
-        hasTargetClass: el.classList.contains(RESULT_CONTAINER_CLASS),
+        hasTargetClass: el.classList.contains(containerClass),
         innerHTML: el.innerHTML.substring(0, 100) + '...',
       });
 
@@ -1625,21 +1804,24 @@ function StillbrookContent() {
         gap: 8px;
         padding: 8px 12px;
         border-radius: 6px;
-        font-size: 12px;
+        font-size: 16px;
         font-family: Arial, sans-serif;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        background-color: #000000;
         pointer-events: auto;
       `;
 
       const hasNegativeHighlight = el.classList.contains('negative-result-highlight');
       const hasPositiveHighlight = el.classList.contains('positive-result-highlight');
+      const hasNeutralHighlight = el.classList.contains('neutral-result-highlight');
 
       console.log(`🏷️ Element ${index} highlight status:`, {
         hasNegativeHighlight,
         hasPositiveHighlight,
+        hasNeutralHighlight,
       });
 
-      if (hasNegativeHighlight || hasPositiveHighlight) {
+      if (hasNegativeHighlight || hasPositiveHighlight || hasNeutralHighlight) {
         // Show remove button
         const removeBtn = doc.createElement('button');
         removeBtn.textContent = '✕ Remove';
@@ -1650,7 +1832,7 @@ function StillbrookContent() {
           padding: 6px 12px;
           border-radius: 4px;
           cursor: pointer;
-          font-size: 12px;
+          font-size: 16px;
           font-weight: 500;
           pointer-events: auto;
         `;
@@ -1674,7 +1856,7 @@ function StillbrookContent() {
           padding: 6px 12px;
           border-radius: 4px;
           cursor: pointer;
-          font-size: 12px;
+          font-size: 16px;
           font-weight: 500;
           pointer-events: auto;
         `;
@@ -1695,7 +1877,7 @@ function StillbrookContent() {
           padding: 6px 12px;
           border-radius: 4px;
           cursor: pointer;
-          font-size: 12px;
+          font-size: 16px;
           font-weight: 500;
           pointer-events: auto;
         `;
@@ -1707,7 +1889,29 @@ function StillbrookContent() {
           setTimeout(() => setupInteractiveHighlighting(iframe), 100);
         };
 
+        const addNeutralBtn = doc.createElement('button');
+        addNeutralBtn.textContent = '+ Neutral';
+        addNeutralBtn.style.cssText = `
+          background: #f59e0b;
+          color: white;
+          border: none;
+          padding: 6px 12px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 16px;
+          font-weight: 500;
+          pointer-events: auto;
+        `;
+        addNeutralBtn.onclick = e => {
+          console.log(`🟡 Neutral button clicked for element ${index}`);
+          e.stopPropagation();
+          addHighlight(el, 'neutral');
+          // Refresh the controls
+          setTimeout(() => setupInteractiveHighlighting(iframe), 100);
+        };
+
         overlay.appendChild(addPositiveBtn);
+        overlay.appendChild(addNeutralBtn);
         overlay.appendChild(addNegativeBtn);
         console.log(`➕ Added positive/negative buttons to element ${index}`);
       }
@@ -1721,6 +1925,7 @@ function StillbrookContent() {
         if (!interactiveMode) return;
         el.style.boxShadow = 'inset 0 0 0 2px #2196f3';
         el.style.opacity = '0.8';
+        // el.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
         overlay.style.display = 'flex';
         overlay.style.opacity = '1';
         console.log(`👁️ Showing overlay for element ${index}`);
@@ -1730,14 +1935,7 @@ function StillbrookContent() {
         if (el.matches(':hover') || overlay.matches(':hover')) {
           return;
         }
-        const hasHighlight =
-          el.classList.contains('negative-result-highlight') ||
-          el.classList.contains('positive-result-highlight');
-        if (!hasHighlight) {
-          el.style.boxShadow = '';
-        } else {
-          el.style.boxShadow = el.style.boxShadow.replace('inset 0 0 0 2px #2196f3', '');
-        }
+        el.style.boxShadow = '';
         el.style.opacity = '';
         overlay.style.display = 'none';
         overlay.style.opacity = '0';
@@ -1767,22 +1965,43 @@ function StillbrookContent() {
     console.log('✨ Interactive highlighting setup complete!');
   };
 
-  const addHighlight = (element: HTMLElement, type: 'positive' | 'negative') => {
-    const target = element.closest<HTMLElement>(`div.${RESULT_CONTAINER_CLASS}`) ?? element;
+  const addHighlight = (element: HTMLElement, type: 'positive' | 'negative' | 'neutral') => {
     const className =
-      type === 'positive' ? 'positive-result-highlight' : 'negative-result-highlight';
+      type === 'positive'
+        ? 'positive-result-highlight'
+        : type === 'negative'
+          ? 'negative-result-highlight'
+          : 'neutral-result-highlight';
 
-    target.classList.remove(
-      type === 'positive' ? 'negative-result-highlight' : 'positive-result-highlight'
+    // Remove all other highlight classes
+    element.classList.remove(
+      'positive-result-highlight',
+      'negative-result-highlight',
+      'neutral-result-highlight'
     );
-    target.classList.add(className);
+    element.classList.add(className);
+
+    // Add the appropriate highlight styles
+    if (type === 'positive') {
+      element.style.border = '2px solid #22c55e';
+      element.style.boxShadow = 'inset 0 0 0 2px #22c55e';
+    } else if (type === 'negative') {
+      element.style.border = '2px solid #ef4444';
+      element.style.boxShadow = 'inset 0 0 0 2px #ef4444';
+    } else if (type === 'neutral') {
+      element.style.border = '2px solid #f59e0b';
+      element.style.boxShadow = 'inset 0 0 0 2px #f59e0b';
+    }
   };
 
-  const removeHighlight = (element: HTMLElement) => {
-    const target = element.closest<HTMLElement>(`div.${RESULT_CONTAINER_CLASS}`) ?? element;
-    target.classList.remove('positive-result-highlight', 'negative-result-highlight');
-    target.style.border = '';
-    target.style.boxShadow = ''; //inset 0 0 0 1px rgba(33, 150, 243, 0.3)';
+  const removeHighlight = (element: HTMLElement, doc?: Document) => {
+    element.classList.remove(
+      'positive-result-highlight',
+      'negative-result-highlight',
+      'neutral-result-highlight'
+    );
+    element.style.border = '';
+    element.style.boxShadow = ''; //inset 0 0 0 1px rgba(33, 150, 243, 0.3)';
   };
 
   const cleanupInteractiveMode = () => {
@@ -1793,13 +2012,31 @@ function StillbrookContent() {
     ) as NodeListOf<HTMLIFrameElement>;
     iframes.forEach(iframe => {
       if (iframe.contentDocument) {
-        const elements = Array.from(
-          iframe.contentDocument.querySelectorAll(
-            `div.${RESULT_CONTAINER_CLASS}`
-          ) as NodeListOf<HTMLElement>
-        ).filter(el => !el.closest(`.${EXCLUDED_CONTAINER_WRAPPER_CLASS}`));
-        console.log(`🧽 Cleaning ${elements.length} elements in iframe`);
-        elements.forEach(el => {
+        // Get cleanup elements by class, data attributes, and additional classes
+        const classElements = iframe.contentDocument.querySelectorAll(`div.${containerClass}`);
+
+        const dataAttributeElements = highlightSelectors.dataAttributes
+          ? highlightSelectors.dataAttributes.flatMap(dataAttr =>
+              Array.from(iframe.contentDocument!.querySelectorAll(`div[${dataAttr}]`))
+            )
+          : [];
+
+        const additionalClassElements = highlightSelectors.additionalClasses
+          ? highlightSelectors.additionalClasses.flatMap(className =>
+              Array.from(iframe.contentDocument!.querySelectorAll(`.${className}`))
+            )
+          : [];
+
+        const cleanupElements = [
+          ...new Set([
+            ...Array.from(classElements),
+            ...dataAttributeElements,
+            ...additionalClassElements,
+          ]),
+        ];
+        console.log(`🧽 Cleaning ${cleanupElements.length} elements in iframe`);
+        cleanupElements.forEach(element => {
+          const el = element as HTMLElement;
           // Remove interactive styles
           el.style.cursor = '';
 
@@ -1810,7 +2047,8 @@ function StillbrookContent() {
           // Reset box shadows and background for non-highlighted elements
           const hasHighlight =
             el.classList.contains('negative-result-highlight') ||
-            el.classList.contains('positive-result-highlight');
+            el.classList.contains('positive-result-highlight') ||
+            el.classList.contains('neutral-result-highlight');
           if (!hasHighlight) {
             el.style.boxShadow = '';
             el.style.backgroundColor = '';
@@ -1893,10 +2131,6 @@ function StillbrookContent() {
     setHasUnsavedChanges(false);
     handleOpenSaveModal();
   };
-
-  if (!isValidUser) {
-    return <UnauthorizedAccess />;
-  }
 
   // Logo animation overlay
   if (showLogoOverlay) {
@@ -2007,8 +2241,23 @@ function StillbrookContent() {
       title="Agentic Insight"
       breadcrumbs={[{ label: 'Advanced Tools' }, { label: 'Agentic Insight' }]}
     >
-      <IntercomCard>
-        <Box p={3}>
+      <IntercomCard sx={{ overflow: 'visible' }}>
+        <Box
+          p={3}
+          sx={{
+            animation: 'formFadeIn 1s ease-out',
+            '@keyframes formFadeIn': {
+              '0%': {
+                opacity: 0,
+                transform: 'translateY(30px)',
+              },
+              '100%': {
+                opacity: 1,
+                transform: 'translateY(0)',
+              },
+            },
+          }}
+        >
           <Stack spacing={3}>
             {/* Enhanced Logo Header Section */}
             <Box
@@ -2553,35 +2802,12 @@ function StillbrookContent() {
                       🗺️ Geographic Targeting
                     </Typography>
                   </Box>
-                  <TextField
-                    fullWidth
-                    label="Geographic Location (Optional)"
-                    type="text"
+                  <LocationTypeahead
                     value={location}
-                    onChange={e => setLocation(e.target.value)}
-                    placeholder="e.g. New York, NY or London, UK"
-                    variant="outlined"
-                    helperText="Examples: 'New York, NY', 'London, UK', 'Los Angeles, California'"
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Map size={18} color="#10b981" />
-                        </InputAdornment>
-                      ),
-                    }}
-                    sx={{
-                      '& .MuiOutlinedInput-root': {
-                        borderRadius: 2,
-                        bgcolor: 'white',
-                        '&:hover .MuiOutlinedInput-notchedOutline': {
-                          borderColor: alpha('#10b981', 0.5),
-                        },
-                        '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                          borderColor: '#10b981',
-                          borderWidth: 2,
-                        },
-                      },
-                    }}
+                    onChange={setLocation}
+                    label="Geographic Location (Optional)"
+                    placeholder="e.g. New York, NY or London, UK (will default to your current location)"
+                    helperText="Start typing to search for locations"
                   />
                 </Paper>
 
@@ -2807,17 +3033,40 @@ function StillbrookContent() {
                         : ''}
                     </Alert>
 
-                    {/* Download CTA Section - Above the fold */}
+                    {/* Search Criteria Display */}
                     <IntercomCard>
-                      <Stack spacing={2}>
-                        <Typography variant="h6" sx={{ fontWeight: 600, color: 'primary.main' }}>
-                          📸 Your Screenshot is Ready!
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Download your screenshot or HTML version below. The preview is read-only
-                          to ensure clean screenshots.
-                        </Typography>
+                      <Typography variant="h6" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                        📸 Your Screenshot is Ready!
+                      </Typography>
+                      <SearchCriteriaDisplay
+                        searchQuery={keyword}
+                        searchType={searchType}
+                        urls={urls}
+                        keywords={keywords}
+                        positiveUrls={positiveUrls}
+                        positiveKeywords={positiveKeywords}
+                        location={location}
+                        language={language}
+                        googleDomain={googleDomain}
+                        enableNegativeUrls={enableNegativeUrls}
+                        enableNegativeSentiment={enableNegativeSentiment}
+                        enableNegativeKeywords={enableNegativeKeywords}
+                        enablePositiveUrls={enablePositiveUrls}
+                        enablePositiveSentiment={enablePositiveSentiment}
+                        enablePositiveKeywords={enablePositiveKeywords}
+                      />
+                    </IntercomCard>
 
+                    {/* Download CTA Section - Sticky */}
+                    <IntercomCard
+                      sx={{
+                        position: 'sticky',
+                        top: 65,
+                        zIndex: 10,
+                        overflow: 'visible',
+                      }}
+                    >
+                      <Stack spacing={2}>
                         {/* Action Buttons */}
                         <Box
                           sx={{
@@ -2832,7 +3081,7 @@ function StillbrookContent() {
                           <Button
                             variant="outlined"
                             onClick={handleRunAnotherSearch}
-                            startIcon={<RefreshIcon />}
+                            startIcon={<ArrowBack />}
                             sx={{
                               borderRadius: 1,
                               textTransform: 'none',
@@ -2855,7 +3104,15 @@ function StillbrookContent() {
                           >
                             {interactiveMode ? 'Done' : 'Edit'}
                           </Button>
-
+                          {/* Download HTML */}
+                          <Button
+                            variant="outlined"
+                            onClick={handleDownloadMainHTML}
+                            disabled={isGeneratingImage}
+                            startIcon={<DownloadIcon />}
+                          >
+                            Download HTML
+                          </Button>
                           {/* Download PNG */}
                           <Button
                             variant="contained"
@@ -2877,20 +3134,6 @@ function StillbrookContent() {
                             {isGeneratingImage ? 'Generating...' : 'Download PNG'}
                           </Button>
 
-                          {/* Download HTML */}
-                          <Button
-                            variant="outlined"
-                            onClick={handleDownloadHTML}
-                            startIcon={<CodeIcon />}
-                            sx={{
-                              borderRadius: 1,
-                              textTransform: 'none',
-                              fontWeight: 500,
-                            }}
-                          >
-                            Download HTML
-                          </Button>
-
                           {/* Save Search */}
                           <Button
                             variant="outlined"
@@ -2904,23 +3147,12 @@ function StillbrookContent() {
                           >
                             Save Search
                           </Button>
-                        </Box>
-
-                        {/* Interactive Mode Status Message */}
-                        {interactiveMode && (
-                          <Box
-                            sx={{
-                              mb: 3,
-                              p: 1.5,
-                              // backgroundColor: '#fff3cd',
-                              border: '1px solid #ffeaa7',
-                              borderRadius: 1,
-                              textAlign: 'center',
-                            }}
-                          >
+                          {/* Interactive Mode Status Message */}
+                          {interactiveMode && (
                             <Typography
                               variant="body2"
                               sx={{
+                                marginTop: 1,
                                 fontWeight: 500,
                                 color: '#856404',
                               }}
@@ -2928,8 +3160,8 @@ function StillbrookContent() {
                               💡 <strong>Edit Mode Active:</strong> Hover over search results below
                               to add green (good) or red (bad) highlighting
                             </Typography>
-                          </Box>
-                        )}
+                          )}
+                        </Box>
                       </Stack>
                     </IntercomCard>
 
@@ -3232,10 +3464,14 @@ function StillbrookContent() {
   );
 }
 
-export default function StillbrookPage() {
+export default function StillbrookPage({ user }: StillbrookProps) {
   return (
     <ToastProvider>
-      <StillbrookContent />
+      <StillbrookContent user={user} />
     </ToastProvider>
   );
 }
+
+export const getServerSideProps: GetServerSideProps = async context => {
+  return await requireServerAuth(context);
+};

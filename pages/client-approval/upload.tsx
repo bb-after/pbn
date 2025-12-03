@@ -3,12 +3,12 @@ import { Typography, Box, CircularProgress } from '@mui/material';
 import { IntercomLayout, ThemeProvider, ToastProvider, IntercomCard } from '../../components/ui';
 import ClientApprovalRequestForm from '../../components/ClientApprovalRequestForm';
 import { useRouter } from 'next/router';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../../hooks/useAuth';
 import UnauthorizedAccess from '../../components/UnauthorizedAccess';
 
 function UploadApprovalRequestPageContent() {
   const router = useRouter();
-  const { isValidUser, isLoading } = useValidateUserToken();
+  const { isValidUser, isLoading } = useAuth('/login');
   const [googleToken, setGoogleToken] = useState<string | null>(null);
 
   const handleGoogleLoginSuccess = (credentialResponse: any) => {

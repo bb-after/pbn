@@ -1,4 +1,5 @@
 import puppeteer, { Page } from 'puppeteer';
+import { getHighlightSelectors } from './selectors';
 
 export interface HtmlRenderOptions {
   viewport?: {
@@ -13,6 +14,7 @@ export interface HtmlRenderOptions {
   scrollDelay?: number;
   waitForSelectors?: string[];
   waitForSelectorTimeout?: number;
+  searchType?: string; // e.g., 'nws', 'isch', 'vid' for news, images, video searches
 }
 
 const DEFAULT_OPTIONS: HtmlRenderOptions = {
@@ -78,7 +80,8 @@ export async function renderHtmlWithBrowser(
       page,
       rawHtmlUrl,
       config.waitForSelectors,
-      config.waitForSelectorTimeout
+      config.waitForSelectorTimeout,
+      config.searchType
     );
 
     // Wait for images to load if enabled
@@ -168,25 +171,102 @@ function isGoogleSearchResult(url: string): boolean {
   return /google\./i.test(url) || url.includes('serpapi.com/searches');
 }
 
-function getSelectorsToWaitFor(url: string, configuredSelectors?: string[]): string[] {
+function getSelectorsToWaitFor(url: string, configuredSelectors?: string[], explicitSearchType?: string): string[] {
   if (configuredSelectors && configuredSelectors.length > 0) {
     return configuredSelectors;
   }
 
   if (isGoogleSearchResult(url)) {
-    return ['[data-rpos]'];
+    // Prioritize explicit search type over URL detection
+    let searchType = explicitSearchType;
+    
+    // Fall back to URL detection if no explicit type provided
+    if (!searchType) {
+      searchType = extractSearchTypeFromUrl(url);
+    }
+    
+    const selectors = getHighlightSelectors(searchType);
+    
+    // Build selectors array from the highlight selectors configuration
+    const waitForSelectors: string[] = [];
+    
+    // Add data attribute selectors
+    if (selectors.dataAttributes && selectors.dataAttributes.length > 0) {
+      selectors.dataAttributes.forEach(attr => {
+        if (attr) { // Only add non-empty attributes
+          waitForSelectors.push(`[${attr}]`);
+        }
+      });
+    }
+    
+    // Add container class selector as fallback
+    if (selectors.containerClass) {
+      waitForSelectors.push(`.${selectors.containerClass}`);
+    }
+    
+    // Add link class selector as fallback
+    if (selectors.linkClass) {
+      waitForSelectors.push(`.${selectors.linkClass}`);
+    }
+    
+    console.log(`Search type: ${searchType}, waiting for selectors: ${waitForSelectors.join(', ')}`);
+    return waitForSelectors;
   }
 
   return [];
+}
+
+/**
+ * Extracts the search type (tbm parameter) from a Google search URL
+ */
+function extractSearchTypeFromUrl(url: string): string | undefined {
+  try {
+    const urlObj = new URL(url);
+    
+    // Check for standard Google tbm parameter
+    let tbmParam = urlObj.searchParams.get('tbm');
+    
+    // If no tbm, check for SerpAPI engine parameter
+    if (!tbmParam && url.includes('serpapi.com')) {
+      const engine = urlObj.searchParams.get('engine');
+      
+      // Map SerpAPI engine types to our search types
+      if (engine === 'google_news') {
+        tbmParam = 'nws';
+      } else if (engine === 'google_images') {
+        tbmParam = 'isch';
+      } else if (engine === 'google_videos') {
+        tbmParam = 'vid';
+      }
+    }
+    
+    return tbmParam || undefined;
+  } catch {
+    // If URL parsing fails, try regex fallback
+    const tbmMatch = url.match(/[?&]tbm=([^&]*)/);
+    const engineMatch = url.match(/[?&]engine=google_([^&]*)/);
+    
+    if (tbmMatch) {
+      return tbmMatch[1];
+    } else if (engineMatch) {
+      const engineType = engineMatch[1];
+      if (engineType === 'news') return 'nws';
+      if (engineType === 'images') return 'isch';
+      if (engineType === 'videos') return 'vid';
+    }
+    
+    return undefined;
+  }
 }
 
 async function waitForDynamicSelectorsIfNeeded(
   page: Page,
   url: string,
   configuredSelectors?: string[],
-  timeoutOverride?: number
+  timeoutOverride?: number,
+  explicitSearchType?: string
 ): Promise<void> {
-  const selectorsToCheck = getSelectorsToWaitFor(url, configuredSelectors);
+  const selectorsToCheck = getSelectorsToWaitFor(url, configuredSelectors, explicitSearchType);
   if (selectorsToCheck.length === 0) {
     return;
   }

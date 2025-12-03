@@ -33,8 +33,8 @@ import {
   Schedule as ScheduleIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/router';
-import useValidateUserToken from 'hooks/useValidateUserToken';
-import UnauthorizedAccess from 'components/UnauthorizedAccess';
+import { GetServerSideProps } from 'next';
+import { requireServerAuth, AuthUser } from '../utils/serverAuth';
 import {
   useToast,
   IntercomLayout,
@@ -65,9 +65,12 @@ interface RecentActivity {
   url?: string;
 }
 
-function DashboardContent() {
+interface DashboardProps {
+  user: AuthUser;
+}
+
+function DashboardContent({ user }: DashboardProps) {
   const router = useRouter();
-  const { isValidUser, isLoading, user } = useValidateUserToken();
   const { showError, showSuccess } = useToast();
 
   // Dashboard state
@@ -88,14 +91,12 @@ function DashboardContent() {
 
   // Load dashboard data
   useEffect(() => {
-    if (isValidUser && user) {
-      fetchDashboardData();
-    }
-  }, [isValidUser, user]);
+    fetchDashboardData();
+  }, []);
 
   // Auto-rotate recent activity pages
   useEffect(() => {
-    if (!isValidUser || loading) return;
+    if (loading) return;
 
     const rotationInterval = setInterval(() => {
       setCurrentPage(prevPage => {
@@ -106,14 +107,10 @@ function DashboardContent() {
     }, 15000); // Switch every 15 seconds
 
     return () => clearInterval(rotationInterval);
-  }, [isValidUser, loading]);
+  }, [loading]);
 
   const fetchRecentActivity = async (page: number = 1, withFade: boolean = false) => {
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('usertoken') : null;
-
-      if (!token) return;
-
       // Start fade out if requested
       if (withFade) {
         setActivityFading(true);
@@ -122,9 +119,7 @@ function DashboardContent() {
       }
 
       const activityResponse = await axios.get('/api/dashboard/recent-activity', {
-        headers: {
-          'x-auth-token': token,
-        },
+        withCredentials: true,
         params: {
           page,
           limit: 5,
@@ -152,18 +147,9 @@ function DashboardContent() {
     setError(null);
 
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('usertoken') : null;
-
-      if (!token) {
-        setError('No authentication token found');
-        return;
-      }
-
       // Fetch dashboard stats
       const statsResponse = await axios.get('/api/dashboard/stats', {
-        headers: {
-          'x-auth-token': token,
-        },
+        withCredentials: true,
       });
 
       setStats(statsResponse.data);
@@ -226,7 +212,7 @@ function DashboardContent() {
     return 'Good evening';
   };
 
-  if (isLoading || loading) {
+  if (loading) {
     return (
       <IntercomLayout title="Dashboard">
         <Box display="flex" justifyContent="center" alignItems="center" height="50vh">
@@ -234,10 +220,6 @@ function DashboardContent() {
         </Box>
       </IntercomLayout>
     );
-  }
-
-  if (!isValidUser) {
-    return <UnauthorizedAccess />;
   }
 
   if (error) {
@@ -255,7 +237,7 @@ function DashboardContent() {
       {/* Welcome Section */}
       <Box mb={4}>
         <Typography variant="h4" gutterBottom>
-          {getGreeting()}, {user?.username || 'User'}!
+          {getGreeting()}, {user?.name || 'User'}!
         </Typography>
         <Typography variant="body1" color="text.secondary">
           Here&apos;s what&apos;s happening with your projects today.
@@ -526,10 +508,14 @@ function DashboardContent() {
   );
 }
 
-export default function Dashboard() {
+export default function Dashboard({ user }: DashboardProps) {
   return (
     <ToastProvider>
-      <DashboardContent />
+      <DashboardContent user={user} />
     </ToastProvider>
   );
 }
+
+export const getServerSideProps: GetServerSideProps = async (context) => {
+  return await requireServerAuth(context);
+};

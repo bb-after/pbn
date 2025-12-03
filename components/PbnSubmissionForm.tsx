@@ -18,7 +18,7 @@ import {
 } from '@mui/material';
 import ClientDropdown from 'components/ClientDropdown';
 import CopyToClipboardButton from './CopyToClipboardButton';
-import useValidateUserToken from '../hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import { useTheme as useMuiTheme } from '@mui/material/styles';
 
 // Use the same editor as Superstar: ReactQuill
@@ -96,7 +96,7 @@ const PbnSubmissionForm: React.FC<PbnFormProps> = ({
       description: 'Upload HTML exports from Google Docs',
     },
   ];
-  const { token } = useValidateUserToken();
+  const { token } = useAuth('/login');
 
   // Handle category changes
   const handleCategoryChange = (event: SelectChangeEvent) => {

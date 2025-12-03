@@ -4,11 +4,11 @@ import { Typography, Box } from '@mui/material';
 import { IntercomLayout, ThemeProvider, ToastProvider, IntercomCard } from '../../components/ui';
 import ClientForm from '../../components/ClientForm';
 import UnauthorizedAccess from '../../components/UnauthorizedAccess';
-import useValidateUserToken from 'hooks/useValidateUserToken';
+import useAuth from '../../hooks/useAuth';
 
 function NewClientPageContent() {
   const router = useRouter();
-  const { isValidUser } = useValidateUserToken();
+  const { isValidUser } = useAuth('/login');
 
   const handleSave = () => {
     router.push('/clients');

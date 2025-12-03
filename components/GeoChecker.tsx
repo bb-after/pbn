@@ -36,12 +36,12 @@ import GeoPdfExport from './GeoPdfExport';
 import GeoAnalysisForm, { GeoAnalysisFormData } from './GeoAnalysisForm';
 import { exportToPDF } from '../utils/pdfExporter';
 import { formatSuperstarContent } from '../utils/formatSuperstarContent';
-import useValidateUserToken from '../hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import { GeoAnalysisResult, TagFrequency, SourceInfo } from '../utils/ai-engines';
 import axios from 'axios';
 
 export default function GeoChecker() {
-  const { token, user, isValidUser } = useValidateUserToken();
+  const { token, user, isValidUser } = useAuth('/login');
   const [formData, setFormData] = useState<GeoAnalysisFormData>({
     clientName: '',
     keyword: '',

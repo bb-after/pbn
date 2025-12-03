@@ -2,11 +2,11 @@ import React from 'react';
 import { Box, Typography, CircularProgress } from '@mui/material';
 import { IntercomLayout, ThemeProvider, ToastProvider, IntercomCard } from '../../components/ui';
 import ZoomBackgroundForm from '../../components/ZoomBackgroundForm';
-import useValidateUserToken from '../../hooks/useValidateUserToken';
+import useAuth from '../../hooks/useAuth';
 import UnauthorizedAccess from '../../components/UnauthorizedAccess';
 
 function ZoomPageContent() {
-  const { isValidUser, isLoading } = useValidateUserToken();
+  const { isValidUser, isLoading } = useAuth('/login');
 
   if (isLoading) {
     return (

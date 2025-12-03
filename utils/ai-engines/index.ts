@@ -201,6 +201,7 @@ export interface GeoAnalysisResult {
   clientName: string;
   results: AIEngineResult[];
   aggregatedInsights: {
+    ahrefsData: any;
     overallSentiment: 'positive' | 'negative' | 'neutral' | 'mixed';
     keyThemes: string[];
     commonInsights: string[];
@@ -298,6 +299,7 @@ function aggregateInsights(
 ): GeoAnalysisResult['aggregatedInsights'] {
   if (results.length === 0) {
     return {
+      ahrefsData: null,
       overallSentiment: 'neutral' as const,
       keyThemes: [],
       commonInsights: [],
@@ -339,6 +341,7 @@ function aggregateInsights(
   const mainSentimentHighlights = extractMainSentimentHighlights(results);
 
   return {
+    ahrefsData: null,
     overallSentiment,
     keyThemes,
     commonInsights: [

@@ -21,10 +21,10 @@ import ClientDropdown from 'components/ClientDropdown';
 import axios from 'axios';
 import dynamic from 'next/dynamic';
 import { colors } from '../utils/colors';
-import useValidateUserToken from 'hooks/useValidateUserToken';
 import { useRouter } from 'next/router';
-import UnauthorizedAccess from 'components/UnauthorizedAccess';
 import { IntercomLayout, ToastProvider, IntercomCard } from '../components/ui';
+import { GetServerSideProps } from 'next';
+import { requireServerAuth, AuthUser } from '../utils/serverAuth';
 
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
 import 'react-quill/dist/quill.snow.css';
@@ -40,7 +40,11 @@ interface SuperstarSite {
 
 const pageTitle = 'Create New Superstar Submission';
 
-const SuperstarFormPage: React.FC = () => {
+interface SuperstarFormProps {
+  user: AuthUser;
+}
+
+const SuperstarFormPage: React.FC<SuperstarFormProps> = ({ user }) => {
   const router = useRouter();
   const {
     blogId,
@@ -64,7 +68,6 @@ const SuperstarFormPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [contentMode, setContentMode] = useState<'generate' | 'paste'>('paste');
   const [generating, setGenerating] = useState(false);
-  const { token } = useValidateUserToken();
   const [authors, setAuthors] = useState<
     {
       id: number;
@@ -242,9 +245,7 @@ const SuperstarFormPage: React.FC = () => {
     }
   };
 
-  if (!token) {
-    return <UnauthorizedAccess />;
-  }
+
 
   return (
     <IntercomLayout
@@ -471,12 +472,16 @@ const SuperstarFormPage: React.FC = () => {
   );
 };
 
-const CreateNewSuperstarSubmission: React.FC = () => {
+const CreateNewSuperstarSubmission: React.FC<SuperstarFormProps> = ({ user }) => {
   return (
     <ToastProvider>
-      <SuperstarFormPage />
+      <SuperstarFormPage user={user} />
     </ToastProvider>
   );
 };
 
 export default CreateNewSuperstarSubmission;
+
+export const getServerSideProps: GetServerSideProps = async (context) => {
+  return await requireServerAuth(context);
+};

@@ -47,7 +47,7 @@ import {
   IntercomCard,
   IntercomButton,
 } from '../components/ui';
-import useValidateUserToken from '../hooks/useValidateUserToken';
+import useAuth from '../hooks/useAuth';
 import UnauthorizedAccess from '../components/UnauthorizedAccess';
 import { Link as LinkIcon, Create as CreateIcon } from '@mui/icons-material';
 
@@ -124,7 +124,7 @@ const STEPS = [
 
 function ContentCompassPage() {
   const router = useRouter();
-  const { isValidUser, isLoading: isAuthLoading } = useValidateUserToken();
+  const { isValidUser, isLoading: isAuthLoading } = useAuth('/login');
 
   // State for current step
   const [activeStep, setActiveStep] = useState(0);
@@ -1990,10 +1990,7 @@ function ContentCompassPage() {
   return (
     <IntercomLayout
       title="Content Compass"
-      breadcrumbs={[
-        { label: 'Clients', icon: Users },
-        { label: 'Content Compass', icon: Compass },
-      ]}
+      breadcrumbs={[{ label: 'Clients' }, { label: 'Content Compass' }]}
     >
       {/* Hero Section */}
       <Box
