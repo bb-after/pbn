@@ -106,10 +106,10 @@ const saveSubmissionToDatabase = async (userId: number, rowCount: number, reques
     // Start transaction
     await connection.beginTransaction();
 
-    // Insert submission record
+    // Insert submission record with request_id
     const [result] = await connection.execute(
-      'INSERT INTO user_partial_list_submissions (user_id, rows_submitted, list_type, created_at) VALUES (?, ?, ?, NOW())',
-      [userId, rowCount, 'company']
+      'INSERT INTO user_partial_list_submissions (user_id, rows_submitted, list_type, request_id, created_at) VALUES (?, ?, ?, ?, NOW())',
+      [userId, rowCount, 'company', requestId]
     );
 
     const submissionId = (result as any).insertId;
