@@ -32,40 +32,56 @@ interface ControlCenterMetrics {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const startTime = Date.now();
+  console.log(`[METRICS] Request started at ${new Date().toISOString()}`);
+  
   if (req.method !== 'GET') {
+    console.log(`[METRICS] Method not allowed: ${req.method}`);
     res.setHeader('Allow', ['GET']);
     return res.status(405).json({ error: `Method ${req.method} Not Allowed` });
   }
 
+  console.log('[METRICS] Validating user token...');
   const userInfo = await validateUserToken(req);
 
   if (!userInfo.isValid || !userInfo.user_id) {
+    console.log('[METRICS] Unauthorized request');
     return res.status(401).json({ error: 'Unauthorized' });
   }
+
+  console.log(`[METRICS] User validated: ${userInfo.username} (ID: ${userInfo.user_id})`);
 
   try {
     const products: ProductMetrics[] = [];
     
     // Helper function to safely execute queries and handle missing tables
-    const safeQuery = async (sql: string, params: any[] = []): Promise<any> => {
+    const safeQuery = async (sql: string, params: any[] = [], queryName: string = 'unknown'): Promise<any> => {
+      const queryStart = Date.now();
+      console.log(`[METRICS] Starting query: ${queryName}`);
       try {
         const [rows] = await query(sql, params);
+        const queryDuration = Date.now() - queryStart;
+        console.log(`[METRICS] Query ${queryName} completed in ${queryDuration}ms`);
+        
         // Ensure we always return an object with the expected structure
         if (!rows || !Array.isArray(rows) || rows.length === 0) {
+          console.log(`[METRICS] Query ${queryName} returned no results, using defaults`);
           return { count: 0, total: 0, daily: 0, weekly: 0, monthly: 0, last_activity: null, total_clients: 0, active_clients: 0 };
         }
+        console.log(`[METRICS] Query ${queryName} returned ${rows.length} rows`);
         return rows[0];
       } catch (error: any) {
-        // Log the error but don't fail the entire request
-        console.warn(`Query failed (table may not exist): ${error.message}`);
+        const queryDuration = Date.now() - queryStart;
+        console.error(`[METRICS] Query ${queryName} failed after ${queryDuration}ms: ${error.message}`);
         return { count: 0, total: 0, daily: 0, weekly: 0, monthly: 0, last_activity: null, total_clients: 0, active_clients: 0 };
       }
     };
 
     // Execute queries sequentially to reduce connection pool pressure
-    console.log('Fetching control center metrics...');
+    console.log('[METRICS] Starting sequential queries...');
 
     // PBN Metrics
+    console.log('[METRICS] Fetching PBN metrics...');
     const pbnStats = await safeQuery(`
       SELECT 
         COUNT(*) as total,
@@ -75,10 +91,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         MAX(created) as last_activity
       FROM pbn_site_submissions 
       WHERE deleted_at IS NULL
-    `);
+    `, [], 'PBN-stats');
 
-    const pbnSites = await safeQuery(`SELECT COUNT(*) as count FROM pbn_sites WHERE active = 1`);
+    const pbnSites = await safeQuery(`SELECT COUNT(*) as count FROM pbn_sites WHERE active = 1`, [], 'PBN-sites');
 
+    console.log('[METRICS] Building PBN product object...');
     products.push({
       name: 'PBN',
       status: pbnStats.daily > 0 ? 'healthy' : 'warning',
@@ -97,6 +114,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     // Superstar Metrics
+    console.log('[METRICS] Fetching Superstar metrics...');
     const superstarStats = await safeQuery(`
       SELECT 
         COUNT(*) as total,
@@ -106,10 +124,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         MAX(created) as last_activity
       FROM superstar_site_submissions 
       WHERE deleted_at IS NULL
-    `);
+    `, [], 'Superstar-stats');
 
-    const superstarSites = await safeQuery(`SELECT COUNT(*) as count FROM superstar_sites WHERE active = 1`);
+    const superstarSites = await safeQuery(`SELECT COUNT(*) as count FROM superstar_sites WHERE active = 1`, [], 'Superstar-sites');
 
+    console.log('[METRICS] Building Superstar product object...');
     products.push({
       name: 'Superstar',
       status: superstarStats.daily > 0 ? 'healthy' : 'warning',
@@ -128,6 +147,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     // Stillbrook Metrics
+    console.log('[METRICS] Fetching Stillbrook metrics...');
     const stillbrookStats = await safeQuery(`
       SELECT 
         COUNT(*) as total,
@@ -136,8 +156,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         COUNT(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 END) as monthly,
         MAX(created_at) as last_activity
       FROM stillbrook_submissions
-    `);
+    `, [], 'Stillbrook-stats');
 
+    console.log('[METRICS] Building Stillbrook product object...');
     products.push({
       name: 'Stillbrook',
       status: stillbrookStats.daily > 0 ? 'healthy' : 'warning',
@@ -156,6 +177,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     // Geo Analysis Metrics
+    console.log('[METRICS] Fetching Geo Analysis metrics...');
     const geoStats = await safeQuery(`
       SELECT 
         COUNT(*) as total,
@@ -164,10 +186,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         COUNT(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 END) as monthly,
         MAX(created_at) as last_activity
       FROM geo_check_results
-    `);
+    `, [], 'Geo-stats');
 
-    const geoSchedules = await safeQuery(`SELECT COUNT(*) as count FROM geo_scheduled_analyses WHERE is_active = 1`);
+    const geoSchedules = await safeQuery(`SELECT COUNT(*) as count FROM geo_scheduled_analyses WHERE is_active = 1`, [], 'Geo-schedules');
 
+    console.log('[METRICS] Building Geo Analysis product object...');
     products.push({
       name: 'Geo Analysis',
       status: geoStats.daily > 0 ? 'healthy' : 'warning',
@@ -186,6 +209,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     // Ramp Integration Metrics
+    console.log('[METRICS] Fetching Ramp Integration metrics...');
     const rampStats = await safeQuery(`
       SELECT 
         COUNT(*) as total,
@@ -194,8 +218,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         COUNT(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 END) as monthly,
         MAX(created_at) as last_activity
       FROM ramp_sync_logs
-    `);
+    `, [], 'Ramp-stats');
 
+    console.log('[METRICS] Building Ramp Integration product object...');
     products.push({
       name: 'Ramp Integration',
       status: rampStats.daily > 0 ? 'healthy' : 'warning',
@@ -214,6 +239,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     // Lead Enricher / Apollo Metrics (based on webhook submissions)
+    console.log('[METRICS] Fetching Lead Enricher metrics...');
     const apolloStats = await safeQuery(`
       SELECT 
         COUNT(*) as total,
@@ -222,8 +248,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         COUNT(CASE WHEN submitted_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 END) as monthly,
         MAX(submitted_at) as last_activity
       FROM webhook_submissions
-    `);
+    `, [], 'Apollo-stats');
 
+    console.log('[METRICS] Building Lead Enricher product object...');
     products.push({
       name: 'Lead Enricher',
       status: apolloStats.daily > 0 ? 'healthy' : 'warning',
@@ -242,6 +269,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     // Clients/General Business Metrics
+    console.log('[METRICS] Fetching Client Management metrics...');
     const clientStats = await safeQuery(`
       SELECT 
         COUNT(*) as total_clients,
@@ -251,8 +279,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         COUNT(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 END) as monthly,
         MAX(updated_at) as last_activity
       FROM clients
-    `);
+    `, [], 'Client-stats');
 
+    console.log('[METRICS] Building Client Management product object...');
     products.push({
       name: 'Client Management',
       status: 'healthy',
@@ -271,6 +300,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     // Content Compass (based on saved Stillbrook searches)
+    console.log('[METRICS] Fetching Content Compass metrics...');
     const compassStats = await safeQuery(`
       SELECT 
         COUNT(*) as total,
@@ -279,8 +309,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         COUNT(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 END) as monthly,
         MAX(updated_at) as last_activity
       FROM saved_stillbrook_searches
-    `);
+    `, [], 'Compass-stats');
 
+    console.log('[METRICS] Building Content Compass product object...');
     products.push({
       name: 'Content Compass',
       status: 'healthy',
@@ -299,6 +330,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     // Calculate overview stats
+    console.log('[METRICS] Calculating overview stats...');
     const overview = {
       totalProducts: products.length,
       healthyProducts: products.filter(p => p.status === 'healthy').length,
@@ -306,14 +338,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       errorProducts: products.filter(p => p.status === 'error').length
     };
 
+    console.log(`[METRICS] Overview: ${overview.totalProducts} total, ${overview.healthyProducts} healthy, ${overview.warningProducts} warning, ${overview.errorProducts} error`);
+
     const result: ControlCenterMetrics = {
       overview,
       products
     };
 
+    const totalDuration = Date.now() - startTime;
+    console.log(`[METRICS] Request completed successfully in ${totalDuration}ms`);
+    console.log(`[METRICS] Returning ${products.length} products`);
+
     return res.status(200).json(result);
   } catch (error) {
-    console.error('Error fetching control center metrics:', error);
+    const totalDuration = Date.now() - startTime;
+    console.error(`[METRICS] Error after ${totalDuration}ms:`, error);
     return res.status(500).json({ error: 'Failed to fetch control center metrics' });
   }
 }

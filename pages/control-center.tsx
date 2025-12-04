@@ -12,6 +12,12 @@ import {
   Paper,
   Stack,
   Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  IconButton,
 } from '@mui/material';
 import {
   CheckCircle,
@@ -21,11 +27,13 @@ import {
   Speed,
   DataUsage,
   AccessTime,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import { green, orange, red, blue } from '@mui/material/colors';
 import Head from 'next/head';
 import { IntercomLayout } from '../components/ui';
 import useAuth from '../hooks/useAuth';
+import { UserAnalyticsTable } from '../components/UserAnalyticsTable';
 
 interface ProductMetrics {
   name: string;
@@ -91,7 +99,7 @@ const StatusChip = ({ status }: { status: 'healthy' | 'warning' | 'error' }) => 
   );
 };
 
-const ProductCard = ({ product }: { product: ProductMetrics }) => {
+const ProductCard = ({ product, onClick }: { product: ProductMetrics; onClick: (product: ProductMetrics) => void }) => {
   const formatLastActivity = (lastActivity: string) => {
     if (lastActivity === 'Never') return 'Never';
     try {
@@ -101,8 +109,32 @@ const ProductCard = ({ product }: { product: ProductMetrics }) => {
     }
   };
 
+  const getAnalyticsEndpoint = (productName: string) => {
+    switch (productName) {
+      case 'PBN': return '/api/control-center/pbn-analytics';
+      case 'Superstar': return '/api/control-center/superstar-analytics';
+      case 'Stillbrook': return '/api/control-center/stillbrook-analytics';
+      case 'Lead Enricher': return '/api/control-center/lead-enricher-analytics';
+      default: return null;
+    }
+  };
+
+  const shouldBeClickable = getAnalyticsEndpoint(product.name) !== null;
+
   return (
-    <Card sx={{ height: '100%', position: 'relative' }}>
+    <Card 
+      sx={{ 
+        height: '100%', 
+        position: 'relative',
+        cursor: shouldBeClickable ? 'pointer' : 'default',
+        transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
+        '&:hover': shouldBeClickable ? {
+          transform: 'translateY(-2px)',
+          boxShadow: 3,
+        } : {}
+      }}
+      onClick={() => shouldBeClickable && onClick(product)}
+    >
       <CardContent>
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
           <Typography variant="h6" fontWeight={600}>
@@ -321,6 +353,8 @@ function ControlCenterContent() {
   const [metrics, setMetrics] = useState<ControlCenterMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<ProductMetrics | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
     if (isValidUser) {
@@ -347,6 +381,26 @@ function ControlCenterContent() {
     }
   };
 
+  const handleProductClick = (product: ProductMetrics) => {
+    setSelectedProduct(product);
+    setModalOpen(true);
+  };
+
+  const handleModalClose = () => {
+    setModalOpen(false);
+    setSelectedProduct(null);
+  };
+
+  const getAnalyticsEndpoint = (productName: string) => {
+    switch (productName) {
+      case 'PBN': return '/api/control-center/pbn-analytics';
+      case 'Superstar': return '/api/control-center/superstar-analytics';
+      case 'Stillbrook': return '/api/control-center/stillbrook-analytics';
+      case 'Lead Enricher': return '/api/control-center/lead-enricher-analytics';
+      default: return null;
+    }
+  };
+
   if (!isValidUser) {
     return null;
   }
@@ -357,7 +411,7 @@ function ControlCenterContent() {
         <title>Control Center - Tooling Dashboard</title>
       </Head>
 
-      <Box p={3}>
+      <Box p={3} minHeight="100vh">
         <Typography variant="h3" fontWeight={700} mb={1}>
           Control Center
         </Typography>
@@ -401,7 +455,7 @@ function ControlCenterContent() {
             <Grid container spacing={3}>
               {metrics.products.map(product => (
                 <Grid item xs={12} sm={6} md={4} lg={3} key={product.name}>
-                  <ProductCard product={product} />
+                  <ProductCard product={product} onClick={handleProductClick} />
                 </Grid>
               ))}
             </Grid>
@@ -413,6 +467,45 @@ function ControlCenterContent() {
             Last updated: {new Date().toLocaleString()} • Auto-refresh every 30 seconds
           </Typography>
         </Box>
+
+        {/* User Analytics Modal */}
+        <Dialog
+          open={modalOpen}
+          onClose={handleModalClose}
+          maxWidth="xl"
+          fullWidth
+          PaperProps={{
+            sx: {
+              minHeight: '80vh',
+              maxHeight: '90vh'
+            }
+          }}
+        >
+          <DialogTitle>
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <Typography variant="h5" fontWeight={600}>
+                {selectedProduct?.name} User Analytics
+              </Typography>
+              <IconButton onClick={handleModalClose} size="small">
+                <CloseIcon />
+              </IconButton>
+            </Box>
+          </DialogTitle>
+          <DialogContent sx={{ p: 3 }}>
+            {selectedProduct && getAnalyticsEndpoint(selectedProduct.name) && (
+              <UserAnalyticsTable
+                productName={selectedProduct.name}
+                apiEndpoint={getAnalyticsEndpoint(selectedProduct.name)!}
+                onClose={handleModalClose}
+              />
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleModalClose} variant="outlined">
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     </>
   );
