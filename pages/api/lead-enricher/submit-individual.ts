@@ -102,17 +102,37 @@ const getUserNamesByIds = async (userIds: number[]): Promise<{ [userId: number]:
   }
 };
 
-// Save submission to database with list_type
-const saveSubmissionToDatabase = async (userId: number, rowCount: number) => {
+// Save submission to database with list_type and request_id
+const saveSubmissionToDatabase = async (userId: number, rowCount: number, requestId: string) => {
   const connection = await pool.getConnection();
 
   try {
+    // Start transaction
+    await connection.beginTransaction();
+
+    // Insert submission record with request_id
     const [result] = await connection.execute(
-      'INSERT INTO user_partial_list_submissions (user_id, rows_submitted, list_type, created_at) VALUES (?, ?, ?, NOW())',
-      [userId, rowCount, 'individual']
+      'INSERT INTO user_partial_list_submissions (user_id, rows_submitted, list_type, request_id, created_at) VALUES (?, ?, ?, ?, NOW())',
+      [userId, rowCount, 'individual', requestId]
     );
 
-    return result;
+    const submissionId = (result as any).insertId;
+
+    // Create processing status record
+    await connection.execute(
+      `INSERT INTO lead_enricher_processing_status 
+       (request_id, submission_id, status, processed_count, total_count, created_at) 
+       VALUES (?, ?, 'pending', 0, ?, NOW())`,
+      [requestId, submissionId, rowCount]
+    );
+
+    // Commit transaction
+    await connection.commit();
+
+    return { submissionId, requestId };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
   } finally {
     connection.release();
   }
@@ -344,11 +364,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ message: 'Authentication required' });
     }
 
+    // Generate unique request ID for tracking
+    const requestId = uuidv4();
+    console.log(`Generated request ID: ${requestId}`);
+
     // Save submission to database
     console.log(
       `Saving individual partial list submission for user ${userInfo.id} with ${data.length} rows`
     );
-    await saveSubmissionToDatabase(userInfo.id, data.length);
+    const { submissionId } = await saveSubmissionToDatabase(userInfo.id, data.length, requestId);
 
     // Add data to Google Sheets (now uses per-row owners)
     console.log(
@@ -361,6 +385,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.status(200).json({
       message: 'Individual partial list data submitted successfully',
       rowsProcessed: data.length,
+      requestId: requestId,
+      submissionId: submissionId,
+      statusUrl: `/lead-enricher-status/${requestId}`
     });
   } catch (error: any) {
     console.error('Error in individual partial list submit:', error);
