@@ -29,6 +29,11 @@ export interface UserAnalyticsData {
   weekly_submissions: number;
   monthly_submissions: number;
   total_submissions: number;
+  // Lead Enricher specific fields
+  daily_leads?: number;
+  weekly_leads?: number;
+  monthly_leads?: number;
+  total_leads?: number;
   last_submission: string | null;
   avg_daily: number;
 }
@@ -54,6 +59,9 @@ export const UserAnalyticsTable: React.FC<UserAnalyticsTableProps> = ({
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('week');
   const [sortField, setSortField] = useState<SortField>('weekly_submissions');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+
+  // Check if this is Lead Enricher (has leads data)
+  const isLeadEnricher = productName === 'Lead Enricher' && data.some(user => user.total_leads !== undefined);
 
   useEffect(() => {
     fetchData();
@@ -140,9 +148,15 @@ export const UserAnalyticsTable: React.FC<UserAnalyticsTableProps> = ({
     try {
       const date = new Date(dateString);
       const now = new Date();
-      const diffInDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
       
-      if (diffInDays === 0) return 'Today';
+      // Use date-only comparison to avoid timezone and time-of-day issues
+      const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const nowOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
+      const diffInDays = Math.floor((nowOnly.getTime() - dateOnly.getTime()) / (1000 * 60 * 60 * 24));
+      
+      // Handle negative values (future dates or timezone issues)
+      if (diffInDays <= 0) return 'Today';
       if (diffInDays === 1) return 'Yesterday';
       if (diffInDays < 7) return `${diffInDays} days ago`;
       if (diffInDays < 30) return `${Math.floor(diffInDays / 7)} weeks ago`;
@@ -293,40 +307,116 @@ export const UserAnalyticsTable: React.FC<UserAnalyticsTableProps> = ({
                     </Stack>
                   </TableCell>
                   <TableCell align="center">
-                    <Typography 
-                      variant="body2" 
-                      fontWeight={timeFilter === 'day' ? 700 : 400}
-                      color={timeFilter === 'day' ? 'primary' : 'inherit'}
-                    >
-                      {user.daily_submissions}
-                    </Typography>
+                    {isLeadEnricher ? (
+                      <Box>
+                        <Typography 
+                          variant="body2" 
+                          fontWeight={timeFilter === 'day' ? 700 : 400}
+                          color={timeFilter === 'day' ? 'primary' : 'inherit'}
+                        >
+                          {user.daily_submissions} submissions
+                        </Typography>
+                        <Typography 
+                          variant="caption" 
+                          color="textSecondary"
+                          display="block"
+                        >
+                          {user.daily_leads || 0} leads
+                        </Typography>
+                      </Box>
+                    ) : (
+                      <Typography 
+                        variant="body2" 
+                        fontWeight={timeFilter === 'day' ? 700 : 400}
+                        color={timeFilter === 'day' ? 'primary' : 'inherit'}
+                      >
+                        {user.daily_submissions}
+                      </Typography>
+                    )}
                   </TableCell>
                   <TableCell align="center">
-                    <Typography 
-                      variant="body2" 
-                      fontWeight={timeFilter === 'week' ? 700 : 400}
-                      color={timeFilter === 'week' ? 'primary' : 'inherit'}
-                    >
-                      {user.weekly_submissions}
-                    </Typography>
+                    {isLeadEnricher ? (
+                      <Box>
+                        <Typography 
+                          variant="body2" 
+                          fontWeight={timeFilter === 'week' ? 700 : 400}
+                          color={timeFilter === 'week' ? 'primary' : 'inherit'}
+                        >
+                          {user.weekly_submissions} submissions
+                        </Typography>
+                        <Typography 
+                          variant="caption" 
+                          color="textSecondary"
+                          display="block"
+                        >
+                          {user.weekly_leads || 0} leads
+                        </Typography>
+                      </Box>
+                    ) : (
+                      <Typography 
+                        variant="body2" 
+                        fontWeight={timeFilter === 'week' ? 700 : 400}
+                        color={timeFilter === 'week' ? 'primary' : 'inherit'}
+                      >
+                        {user.weekly_submissions}
+                      </Typography>
+                    )}
                   </TableCell>
                   <TableCell align="center">
-                    <Typography 
-                      variant="body2" 
-                      fontWeight={timeFilter === 'month' ? 700 : 400}
-                      color={timeFilter === 'month' ? 'primary' : 'inherit'}
-                    >
-                      {user.monthly_submissions}
-                    </Typography>
+                    {isLeadEnricher ? (
+                      <Box>
+                        <Typography 
+                          variant="body2" 
+                          fontWeight={timeFilter === 'month' ? 700 : 400}
+                          color={timeFilter === 'month' ? 'primary' : 'inherit'}
+                        >
+                          {user.monthly_submissions} submissions
+                        </Typography>
+                        <Typography 
+                          variant="caption" 
+                          color="textSecondary"
+                          display="block"
+                        >
+                          {user.monthly_leads || 0} leads
+                        </Typography>
+                      </Box>
+                    ) : (
+                      <Typography 
+                        variant="body2" 
+                        fontWeight={timeFilter === 'month' ? 700 : 400}
+                        color={timeFilter === 'month' ? 'primary' : 'inherit'}
+                      >
+                        {user.monthly_submissions}
+                      </Typography>
+                    )}
                   </TableCell>
                   <TableCell align="center">
-                    <Typography 
-                      variant="body2" 
-                      fontWeight={timeFilter === 'all' ? 700 : 400}
-                      color={timeFilter === 'all' ? 'primary' : 'inherit'}
-                    >
-                      {user.total_submissions}
-                    </Typography>
+                    {isLeadEnricher ? (
+                      <Box>
+                        <Typography 
+                          variant="body2" 
+                          fontWeight={timeFilter === 'all' ? 700 : 400}
+                          color={timeFilter === 'all' ? 'primary' : 'inherit'}
+                        >
+                          {user.total_submissions} submissions
+                        </Typography>
+                        <Typography 
+                          variant="caption" 
+                          color="textSecondary"
+                          display="block"
+                        >
+                          {user.total_leads || 0} leads
+                        </Typography>
+                      </Box>
+                    ) : (
+                      <Typography 
+                        variant="body2" 
+                        fontWeight={timeFilter === 'all' ? 700 : 400}
+                        color={timeFilter === 'all' ? 'primary' : 'inherit'}
+                      >
+                        {user.total_submissions}
+                      </Typography>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2">

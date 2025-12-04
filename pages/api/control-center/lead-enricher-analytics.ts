@@ -24,6 +24,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         COUNT(CASE WHEN pls.created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) THEN 1 END) as weekly_submissions,
         COUNT(CASE WHEN pls.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) THEN 1 END) as monthly_submissions,
         COUNT(pls.id) as total_submissions,
+        SUM(CASE WHEN DATE(pls.created_at) = CURDATE() THEN pls.rows_submitted ELSE 0 END) as daily_leads,
+        SUM(CASE WHEN pls.created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) THEN pls.rows_submitted ELSE 0 END) as weekly_leads,
+        SUM(CASE WHEN pls.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) THEN pls.rows_submitted ELSE 0 END) as monthly_leads,
+        SUM(pls.rows_submitted) as total_leads,
         MAX(pls.created_at) as last_submission,
         ROUND(COUNT(pls.id) / GREATEST(DATEDIFF(NOW(), MIN(pls.created_at)), 1), 2) as avg_daily
       FROM users u
@@ -31,7 +35,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       WHERE u.is_active = 1
       GROUP BY u.id, u.name, u.email
       HAVING total_submissions > 0
-      ORDER BY total_submissions DESC
+      ORDER BY total_leads DESC
     `);
 
     return res.status(200).json({
