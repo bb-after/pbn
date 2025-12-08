@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import mysql from 'mysql2/promise';
 import { google } from 'googleapis';
 import jwt from 'jsonwebtoken';
+import { v4 as uuidv4 } from 'uuid';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-change-in-production';
 
@@ -97,25 +98,46 @@ const getUserNamesByIds = async (userIds: number[]): Promise<{ [userId: number]:
   }
 };
 
-// Save submission to database
-const saveSubmissionToDatabase = async (userId: number, rowCount: number) => {
+// Save submission to database and create processing status record
+const saveSubmissionToDatabase = async (userId: number, rowCount: number, requestId: string) => {
   const connection = await pool.getConnection();
 
   try {
+    // Start transaction
+    await connection.beginTransaction();
+
+    // Insert submission record with request_id
     const [result] = await connection.execute(
-      'INSERT INTO user_partial_list_submissions (user_id, rows_submitted, list_type, created_at) VALUES (?, ?, ?, NOW())',
-      [userId, rowCount, 'company']
+      'INSERT INTO user_partial_list_submissions (user_id, rows_submitted, list_type, request_id, created_at) VALUES (?, ?, ?, ?, NOW())',
+      [userId, rowCount, 'company', requestId]
     );
 
-    return result;
+    const submissionId = (result as any).insertId;
+
+    // Create processing status record
+    await connection.execute(
+      `INSERT INTO lead_enricher_processing_status 
+       (request_id, submission_id, status, processed_count, total_count, created_at) 
+       VALUES (?, ?, 'pending', 0, ?, NOW())`,
+      [requestId, submissionId, rowCount]
+    );
+
+    // Commit transaction
+    await connection.commit();
+
+    return { submissionId, requestId };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
   } finally {
     connection.release();
   }
 };
 
-// Add data to Google Sheets
-const addDataToGoogleSheets = async (data: CSVRowData[]) => {
+// Add data to Google Sheets with request tracking
+const addDataToGoogleSheets = async (data: CSVRowData[], requestId: string) => {
   const sheets = await getGoogleSheetsClient();
+  const callbackUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://your-domain.com'}/api/clay-callback`;
 
   // Get all unique user IDs from the data
   const uniqueUserIds = [...new Set(data.map(row => row.OwnerUserId))];
@@ -141,13 +163,13 @@ const addDataToGoogleSheets = async (data: CSVRowData[]) => {
 
   // If no headers exist, create the default structure
   if (existingHeaders.length === 0) {
-    // Default column order for company data
-    existingHeaders = ['Company', 'Keyword', 'URL', 'Owner', 'Upload Date'];
+    // Default column order for company data with Clay tracking
+    existingHeaders = ['Company', 'Keyword', 'URL', 'Owner', 'Upload Date', 'Request_ID', 'Callback_URL'];
     console.log('Adding headers to Google Sheet:', existingHeaders);
     try {
       await sheets.spreadsheets.values.update({
         spreadsheetId: SPREADSHEET_ID,
-        range: 'A1:E1',
+        range: 'A1:G1',
         valueInputOption: 'RAW',
         requestBody: {
           values: [existingHeaders],
@@ -186,6 +208,14 @@ const addDataToGoogleSheets = async (data: CSVRowData[]) => {
       case 'owner':
         fieldToColumnMap['userName'] = index;
         break;
+      case 'requestid':
+      case 'request_id':
+        fieldToColumnMap['requestId'] = index;
+        break;
+      case 'callbackurl':
+      case 'callback_url':
+        fieldToColumnMap['callbackUrl'] = index;
+        break;
     }
   });
 
@@ -209,6 +239,10 @@ const addDataToGoogleSheets = async (data: CSVRowData[]) => {
       rowData[fieldToColumnMap['timestamp']] = new Date().toISOString();
     if (fieldToColumnMap['userName'] !== undefined)
       rowData[fieldToColumnMap['userName']] = ownerName;
+    if (fieldToColumnMap['requestId'] !== undefined)
+      rowData[fieldToColumnMap['requestId']] = requestId;
+    if (fieldToColumnMap['callbackUrl'] !== undefined)
+      rowData[fieldToColumnMap['callbackUrl']] = callbackUrl;
 
     return rowData;
   });
@@ -292,19 +326,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ message: 'Authentication required' });
     }
 
-    // Save submission to database
-    console.log(`Saving submission for user ${userInfo.id} with ${data.length} rows`);
-    await saveSubmissionToDatabase(userInfo.id, data.length);
+    // Generate unique request ID for tracking
+    const requestId = uuidv4();
+    console.log(`Generated request ID: ${requestId}`);
 
-    // Add data to Google Sheets (now uses per-row owners)
-    console.log(`Adding ${data.length} rows to Google Sheets with individual owners`);
-    await addDataToGoogleSheets(data);
+    // Save submission to database with status tracking
+    console.log(`Saving submission for user ${userInfo.id} with ${data.length} rows`);
+    const { submissionId } = await saveSubmissionToDatabase(userInfo.id, data.length, requestId);
+
+    // Add data to Google Sheets with tracking info
+    console.log(`Adding ${data.length} rows to Google Sheets with request ID: ${requestId}`);
+    await addDataToGoogleSheets(data, requestId);
 
     console.log('Lead enricher submission completed successfully');
 
     res.status(200).json({
       message: 'Data submitted successfully',
       rowsProcessed: data.length,
+      requestId: requestId,
+      submissionId: submissionId,
+      statusUrl: `/lead-enricher-status/${requestId}`
     });
   } catch (error: any) {
     console.error('Error in lead enricher submit:', error);
