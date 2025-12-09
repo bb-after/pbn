@@ -62,56 +62,56 @@ type ViewMode = 'cards' | 'table';
 const mockReports: Report[] = [
   {
     id: 1,
-    title: 'January 2024 SEO Performance Report',
+    title: 'January 2025 SEO Performance Report',
     description:
       'Monthly SEO analysis including keyword rankings, organic traffic growth, and competitor insights.',
     type: 'SEO Report',
-    uploaded_at: '2024-01-28T10:00:00Z',
-    report_url: 'https://example.com/reports/seo-jan-2024.pdf',
+    uploaded_at: '2025-01-28T10:00:00Z',
+    report_url: 'https://example.com/reports/seo-jan-2025.pdf',
     file_size: '2.4 MB',
     uploaded_by: 'Sarah Johnson',
   },
   {
     id: 2,
-    title: 'Q4 2023 Social Media Analytics',
+    title: 'Q4 2024 Social Media Analytics',
     description:
       'Quarterly social media performance across all platforms with engagement metrics and ROI analysis.',
     type: 'Social Media Report',
-    uploaded_at: '2024-01-15T14:30:00Z',
-    report_url: 'https://example.com/reports/social-q4-2023.pdf',
+    uploaded_at: '2025-01-15T14:30:00Z',
+    report_url: 'https://example.com/reports/social-q4-2024.pdf',
     file_size: '1.8 MB',
     uploaded_by: 'Mike Chen',
   },
   {
     id: 3,
-    title: 'Website Analytics - December 2023',
+    title: 'Website Analytics - December 2024',
     description:
       'Comprehensive website performance report including traffic sources, user behavior, and conversion data.',
     type: 'Web Analytics',
-    uploaded_at: '2024-01-05T09:15:00Z',
-    report_url: 'https://example.com/reports/web-analytics-dec-2023.pdf',
+    uploaded_at: '2025-01-05T09:15:00Z',
+    report_url: 'https://example.com/reports/web-analytics-dec-2024.pdf',
     file_size: '3.1 MB',
     uploaded_by: 'Emily Rodriguez',
   },
   {
     id: 4,
-    title: 'Content Performance Summary - 2023',
+    title: 'Content Performance Summary - 2024',
     description:
       'Annual content marketing report showing top-performing articles, engagement metrics, and content strategy insights.',
     type: 'Content Report',
-    uploaded_at: '2024-01-02T16:45:00Z',
-    report_url: 'https://example.com/reports/content-2023-summary.pdf',
+    uploaded_at: '2025-01-02T16:45:00Z',
+    report_url: 'https://example.com/reports/content-2024-summary.pdf',
     file_size: '4.2 MB',
     uploaded_by: 'David Kim',
   },
   {
     id: 5,
-    title: 'PPC Campaign Results - December 2023',
+    title: 'PPC Campaign Results - December 2024',
     description:
       'Monthly PPC performance report including ad spend, conversions, and optimization recommendations.',
     type: 'PPC Report',
-    uploaded_at: '2023-12-31T11:20:00Z',
-    report_url: 'https://example.com/reports/ppc-dec-2023.pdf',
+    uploaded_at: '2024-12-31T11:20:00Z',
+    report_url: 'https://example.com/reports/ppc-dec-2024.pdf',
     file_size: '1.5 MB',
     uploaded_by: 'Jessica Lee',
   },
@@ -415,7 +415,7 @@ function ClientReportsContent() {
   return (
     <>
       <Head>
-        <title>Reports - Client Portal</title>
+        <title>Reports - Command Center</title>
       </Head>
       <ClientPortalLayout
         title="Reports"

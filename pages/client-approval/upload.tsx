@@ -36,10 +36,7 @@ function UploadApprovalRequestPageContent() {
   return (
     <IntercomLayout
       title="New Content Approval Request"
-      breadcrumbs={[
-        { label: 'Client Approval', href: '/client-approval' },
-        { label: 'New Request' },
-      ]}
+      breadcrumbs={[{ label: 'Approval Desk', href: '/client-approval' }, { label: 'New Request' }]}
     >
       <IntercomCard>
         <Box p={3}>

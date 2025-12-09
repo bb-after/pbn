@@ -65,7 +65,7 @@ const clientPortalNavigationItems: NavigationItem[] = [
   },
   {
     id: 'content-portal',
-    label: 'Content Requests',
+    label: 'Approval Desk',
     icon: <DocumentIcon />,
     href: '/client-portal',
   },
@@ -166,7 +166,7 @@ export const ClientPortalLayout: React.FC<ClientPortalLayoutProps> = ({
             fontSize: '1.25rem',
           }}
         >
-          Client Portal
+          Status Command Center
         </Typography>
       </Box>
 
@@ -295,7 +295,7 @@ export const ClientPortalLayout: React.FC<ClientPortalLayoutProps> = ({
                   sx={{ display: 'flex', alignItems: 'center' }}
                 >
                   <HomeIcon sx={{ mr: 0.5, fontSize: 16 }} />
-                  Portal
+                  Command Center
                 </Link>
                 {breadcrumbs.map((crumb, index) => (
                   <Link

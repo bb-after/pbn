@@ -107,7 +107,7 @@ const navigationItems: NavigationItem[] = [
       },
       {
         id: 'client-approval',
-        label: 'Client Approval',
+        label: 'Approval Desk',
         icon: <CheckCircleIcon />,
         href: '/client-approval',
       },
