@@ -117,7 +117,7 @@ function ClientApprovalPageContent() {
 
   // Page title reflecting the mode
   const pageTitle =
-    isAdminMode && isAdmin ? 'Admin: All Approval Requests' : 'Client Approval Requests';
+    isAdminMode && isAdmin ? 'Admin: All Approval Requests' : 'Approval Desk Requests';
 
   // Set error message and toast based on URL parameter
   useEffect(() => {
@@ -1006,7 +1006,7 @@ function ClientApprovalPageContent() {
     <IntercomLayout
       title={pageTitle}
       breadcrumbs={[
-        { label: 'Client Approval', href: '/client-approval' },
+        { label: 'Approval Desk', href: '/client-approval' },
         ...(isAdminMode && isAdmin ? [{ label: 'Admin View' }] : []),
       ]}
       actions={

@@ -31,6 +31,7 @@ interface ClientDropdownProps {
   onClientIdChange?: (clientId: number | null) => void;
   initialClientId?: number;
   enableCreate?: boolean;
+  sx?: TextFieldProps['sx'];
 }
 
 export default function ClientDropdown({
@@ -44,6 +45,7 @@ export default function ClientDropdown({
   onClientIdChange,
   initialClientId,
   enableCreate = true,
+  sx,
 }: ClientDropdownProps) {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,6 +132,7 @@ export default function ClientDropdown({
             fullWidth={fullWidth}
             margin={margin}
             required={required}
+            sx={sx}
             InputProps={{
               ...params.InputProps,
               endAdornment: (

@@ -198,7 +198,7 @@ const StyledHeader = () => {
           description: 'Navigate content placement for clients',
         },
         {
-          text: 'Client Approval',
+          text: 'Approval Desk',
           href: '/client-approval',
           description: 'Manage client content approval requests',
         },

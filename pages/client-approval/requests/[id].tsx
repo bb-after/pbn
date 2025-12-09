@@ -605,7 +605,7 @@ function ApprovalRequestDetailContent() {
       <IntercomLayout
         title={request?.title || 'Request Details'}
         breadcrumbs={[
-          { label: 'Client Approval', href: '/client-approval' },
+          { label: 'Approval Desk', href: '/client-approval' },
           { label: 'Request Details' },
         ]}
       >

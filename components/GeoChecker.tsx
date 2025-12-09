@@ -640,11 +640,7 @@ export default function GeoChecker() {
   };
 
   return (
-    <Container maxWidth="xl" sx={{ py: 3 }}>
-      <Typography variant="h4" component="h1" gutterBottom sx={{ textAlign: 'center', mb: 4 }}>
-        GEO Checker Tool
-      </Typography>
-
+    <Container maxWidth="xl">
       <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
         {steps.map(label => (
           <Step key={label}>
