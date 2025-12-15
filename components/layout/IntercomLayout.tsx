@@ -60,6 +60,7 @@ import {
   BookmarkAdd as BookmarkAddIcon,
   AdminPanelSettings as AdminIcon,
   SupervisorAccount as UserManagementIcon,
+  Cloud as CloudIcon,
 } from '@mui/icons-material';
 import { tokens } from '../../theme/intercom-theme';
 import { keyframes } from '@mui/system';
@@ -276,6 +277,12 @@ const navigationItems: NavigationItem[] = [
         label: 'Zoom Backdrop',
         icon: <WallpaperIcon />,
         href: '/zoom',
+      },
+      {
+        id: 'weather-monitor',
+        label: 'Weather Monitor',
+        icon: <CloudIcon />,
+        href: '/weather-monitor',
       },
     ],
   },

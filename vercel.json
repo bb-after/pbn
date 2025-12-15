@@ -11,6 +11,9 @@
     },
     "pages/api/cron/run-scheduled-analyses.ts": {
       "maxDuration": 300
+    },
+    "pages/api/weather/check-alerts.ts": {
+      "maxDuration": 180
     }
   },
   "crons": [
@@ -21,6 +24,10 @@
     {
       "path": "/api/cron/run-scheduled-analyses",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/weather/check-alerts",
+      "schedule": "0 * * * *"
     }
   ]
 }
