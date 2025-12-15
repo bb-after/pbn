@@ -209,6 +209,67 @@ const getAlertEmoji = (severity: string): string => {
   }
 };
 
+const sendHeartbeatIfNeeded = async (results: any) => {
+  // Only send heartbeat if WEATHER_HEARTBEAT_HOURS is set
+  const heartbeatHours = process.env.WEATHER_HEARTBEAT_HOURS;
+  if (!heartbeatHours) return;
+
+  const hours = parseInt(heartbeatHours);
+  if (isNaN(hours) || hours <= 0) return;
+
+  const connection = await pool.getConnection();
+  try {
+    // Check when we last sent a heartbeat
+    const [rows] = await connection.execute(
+      `SELECT MAX(sent_at) as last_heartbeat 
+       FROM weather_alerts_sent 
+       WHERE alert_id = 'HEARTBEAT' 
+       AND sent_at > DATE_SUB(NOW(), INTERVAL ? HOUR)`,
+      [hours]
+    );
+
+    const lastHeartbeat = (rows as any[])[0]?.last_heartbeat;
+    
+    // If no recent heartbeat, send one
+    if (!lastHeartbeat) {
+      const heartbeatMessage = `🤖 **Weather Monitor Heartbeat**
+
+System Status: ✅ Active
+Cities Monitored: ${results.citiesChecked}
+Last Check: ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' })} CT
+
+${results.alertsFound > 0 ? `🌨️ Found ${results.alertsFound} weather alerts, sent ${results.alertsSent} new notifications` : '☀️ No active winter weather alerts found'}
+
+${results.errors.length > 0 ? `⚠️ Errors encountered: ${results.errors.length}` : '✅ All cities checked successfully'}
+
+_This heartbeat confirms the weather monitoring system is running every ${hours} hour${hours > 1 ? 's' : ''}_`;
+
+      // Send to the first active city's channel (or could be configurable)
+      const [cityRows] = await connection.execute(
+        'SELECT slack_channel FROM weather_monitored_cities WHERE active = true LIMIT 1'
+      );
+      
+      if ((cityRows as any[]).length > 0) {
+        const channel = (cityRows as any[])[0].slack_channel;
+        await postToSlack(heartbeatMessage, channel);
+        
+        // Record the heartbeat in the database
+        await connection.execute(
+          `INSERT INTO weather_alerts_sent 
+           (city_id, alert_id, alert_type, alert_title, alert_description, severity, slack_channel)
+           SELECT id, 'HEARTBEAT', 'system', 'Weather Monitor Heartbeat', ?, 'minor', ?
+           FROM weather_monitored_cities WHERE active = true LIMIT 1`,
+          [heartbeatMessage, channel]
+        );
+        
+        console.log(`Sent weather monitor heartbeat to #${channel}`);
+      }
+    }
+  } finally {
+    connection.release();
+  }
+};
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -268,6 +329,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     
     console.log('Weather check completed:', results);
+    
+    // Send heartbeat message if configured and it's been a while since last heartbeat
+    await sendHeartbeatIfNeeded(results);
     
     return res.status(200).json({
       success: true,
