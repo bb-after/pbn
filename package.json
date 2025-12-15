@@ -75,7 +75,7 @@
     "mammoth": "^1.9.0",
     "material-icons": "^1.13.9",
     "mysql2": "^3.14.1",
-    "next": "^15.0.3",
+    "next": "15.0.7",
     "node-cron": "^3.0.3",
     "node-fetch": "^3.3.2",
     "nodemailer": "^6.10.0",
