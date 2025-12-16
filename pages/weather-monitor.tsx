@@ -116,9 +116,17 @@ export default function WeatherMonitor({ user }: Props) {
   const [editingCity, setEditingCity] = useState<MonitoredCity | null>(null);
   const [editingKeyword, setEditingKeyword] = useState<WeatherKeyword | null>(null);
   const [formData, setFormData] = useState<CityFormData>(initialFormData);
-  const [keywordFormData, setKeywordFormData] = useState({ keyword: '', description: '', active: true });
+  const [keywordFormData, setKeywordFormData] = useState({
+    keyword: '',
+    description: '',
+    active: true,
+  });
   const [submitting, setSubmitting] = useState(false);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success' as 'success' | 'error',
+  });
   const [checkingAlerts, setCheckingAlerts] = useState(false);
   const [alertsDialogOpen, setAlertsDialogOpen] = useState(false);
   const [selectedCityAlerts, setSelectedCityAlerts] = useState<WeatherAlert[]>([]);
@@ -182,7 +190,11 @@ export default function WeatherMonitor({ user }: Props) {
 
   const handleGeocode = async () => {
     if (!formData.city_name || !formData.state_code) {
-      setSnackbar({ open: true, message: 'Please enter city name and state code first', severity: 'error' });
+      setSnackbar({
+        open: true,
+        message: 'Please enter city name and state code first',
+        severity: 'error',
+      });
       return;
     }
 
@@ -190,7 +202,9 @@ export default function WeatherMonitor({ user }: Props) {
     try {
       // Use OpenStreetMap Nominatim API (free, no API key required)
       const query = encodeURIComponent(`${formData.city_name}, ${formData.state_code}, US`);
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1&countrycodes=us`);
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1&countrycodes=us`
+      );
       const data = await response.json();
 
       if (data && data.length > 0) {
@@ -202,7 +216,11 @@ export default function WeatherMonitor({ user }: Props) {
         });
         setSnackbar({ open: true, message: 'Coordinates found successfully', severity: 'success' });
       } else {
-        setSnackbar({ open: true, message: 'Location not found. Please check city name and state code.', severity: 'error' });
+        setSnackbar({
+          open: true,
+          message: 'Location not found. Please check city name and state code.',
+          severity: 'error',
+        });
       }
     } catch (error) {
       console.error('Geocoding error:', error);
@@ -214,7 +232,11 @@ export default function WeatherMonitor({ user }: Props) {
 
   const handleSubmit = async () => {
     if (!formData.latitude || !formData.longitude) {
-      setSnackbar({ open: true, message: 'Please get coordinates first by clicking "Get Coordinates"', severity: 'error' });
+      setSnackbar({
+        open: true,
+        message: 'Please get coordinates first by clicking "Get Coordinates"',
+        severity: 'error',
+      });
       return;
     }
 
@@ -239,10 +261,10 @@ export default function WeatherMonitor({ user }: Props) {
       handleCloseDialog();
     } catch (error: any) {
       console.error('Error saving city:', error);
-      setSnackbar({ 
-        open: true, 
-        message: error.response?.data?.error || 'Error saving city', 
-        severity: 'error' 
+      setSnackbar({
+        open: true,
+        message: error.response?.data?.error || 'Error saving city',
+        severity: 'error',
       });
     } finally {
       setSubmitting(false);
@@ -250,7 +272,11 @@ export default function WeatherMonitor({ user }: Props) {
   };
 
   const handleDelete = async (city: MonitoredCity) => {
-    if (!confirm(`Are you sure you want to delete monitoring for ${city.city_name}, ${city.state_code}?`)) {
+    if (
+      !confirm(
+        `Are you sure you want to delete monitoring for ${city.city_name}, ${city.state_code}?`
+      )
+    ) {
       return;
     }
 
@@ -269,10 +295,10 @@ export default function WeatherMonitor({ user }: Props) {
     try {
       const response = await axios.post('/api/weather/check-alerts');
       const { results } = response.data;
-      setSnackbar({ 
-        open: true, 
-        message: `Alert check completed. ${results.alertsSent} new alerts sent from ${results.alertsFound} total alerts found.`, 
-        severity: 'success' 
+      setSnackbar({
+        open: true,
+        message: `Alert check completed. ${results.alertsSent} new alerts sent from ${results.alertsFound} total alerts found.`,
+        severity: 'success',
       });
     } catch (error) {
       console.error('Error checking alerts:', error);
@@ -296,11 +322,16 @@ export default function WeatherMonitor({ user }: Props) {
 
   const getSeverityColor = (severity: string) => {
     switch (severity?.toLowerCase()) {
-      case 'extreme': return 'error';
-      case 'severe': return 'warning';
-      case 'moderate': return 'info';
-      case 'minor': return 'success';
-      default: return 'default';
+      case 'extreme':
+        return 'error';
+      case 'severe':
+        return 'warning';
+      case 'moderate':
+        return 'info';
+      case 'minor':
+        return 'success';
+      default:
+        return 'default';
     }
   };
 
@@ -336,10 +367,10 @@ export default function WeatherMonitor({ user }: Props) {
       setKeywordFormData({ keyword: '', description: '', active: true });
     } catch (error: any) {
       console.error('Error saving keyword:', error);
-      setSnackbar({ 
-        open: true, 
-        message: error.response?.data?.error || 'Error saving keyword', 
-        severity: 'error' 
+      setSnackbar({
+        open: true,
+        message: error.response?.data?.error || 'Error saving keyword',
+        severity: 'error',
       });
     } finally {
       setSubmitting(false);
@@ -362,12 +393,7 @@ export default function WeatherMonitor({ user }: Props) {
   };
 
   return (
-    <IntercomLayout
-      title="Weather Monitor"
-      breadcrumbs={[
-        { label: 'Weather Monitor' },
-      ]}
-    >
+    <IntercomLayout title="Weather Monitor" breadcrumbs={[{ label: 'Weather Monitor' }]}>
       <Container maxWidth="xl" sx={{ py: 3 }}>
         {/* Header */}
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
@@ -379,17 +405,15 @@ export default function WeatherMonitor({ user }: Props) {
             <Button
               variant="contained"
               color="secondary"
-              startIcon={checkingAlerts ? <CircularProgress size={16} color="inherit" /> : <PlayArrowIcon />}
+              startIcon={
+                checkingAlerts ? <CircularProgress size={16} color="inherit" /> : <PlayArrowIcon />
+              }
               onClick={handleCheckAlerts}
               disabled={checkingAlerts}
             >
               {checkingAlerts ? 'Checking...' : 'Check Alerts Now'}
             </Button>
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={() => handleOpenDialog()}
-            >
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenDialog()}>
               Add City
             </Button>
           </Stack>
@@ -407,130 +431,129 @@ export default function WeatherMonitor({ user }: Props) {
           <>
             {/* Summary Cards */}
             <Grid container spacing={3} mb={3}>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
-              <CardContent>
-                <Stack direction="row" alignItems="center" justifyContent="space-between">
-                  <Box>
-                    <Typography color="textSecondary" gutterBottom variant="body2">
-                      Total Cities
-                    </Typography>
-                    <Typography variant="h4">
-                      {cities.length}
-                    </Typography>
-                  </Box>
-                  <LocationOnIcon color="primary" sx={{ fontSize: 40 }} />
-                </Stack>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
-              <CardContent>
-                <Stack direction="row" alignItems="center" justifyContent="space-between">
-                  <Box>
-                    <Typography color="textSecondary" gutterBottom variant="body2">
-                      Active Cities
-                    </Typography>
-                    <Typography variant="h4">
-                      {cities.filter(c => c.active).length}
-                    </Typography>
-                  </Box>
-                  <NotificationsIcon color="success" sx={{ fontSize: 40 }} />
-                </Stack>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card>
+                  <CardContent>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between">
+                      <Box>
+                        <Typography color="textSecondary" gutterBottom variant="body2">
+                          Total Cities
+                        </Typography>
+                        <Typography variant="h4">{cities.length}</Typography>
+                      </Box>
+                      <LocationOnIcon color="primary" sx={{ fontSize: 40 }} />
+                    </Stack>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card>
+                  <CardContent>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between">
+                      <Box>
+                        <Typography color="textSecondary" gutterBottom variant="body2">
+                          Active Cities
+                        </Typography>
+                        <Typography variant="h4">{cities.filter(c => c.active).length}</Typography>
+                      </Box>
+                      <NotificationsIcon color="success" sx={{ fontSize: 40 }} />
+                    </Stack>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
 
-        {/* Cities Table */}
-        <Paper>
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>City</TableCell>
-                  <TableCell>Location</TableCell>
-                  <TableCell>Slack Channel</TableCell>
-                  <TableCell>Client ID</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Created</TableCell>
-                  <TableCell>Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={7} align="center">
-                      <CircularProgress />
-                    </TableCell>
-                  </TableRow>
-                ) : cities.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} align="center">
-                      No cities configured for monitoring
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  cities.map((city) => (
-                    <TableRow key={city.id} hover>
-                      <TableCell>
-                        <Typography variant="body2" fontWeight="bold">
-                          {city.city_name}, {city.state_code}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" color="textSecondary">
-                          {Number(city.latitude).toFixed(4)}, {Number(city.longitude).toFixed(4)}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                          #{city.slack_channel}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        {city.client_id || '—'}
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={city.active ? 'Active' : 'Inactive'}
-                          color={city.active ? 'success' : 'default'}
-                          size="small"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" color="textSecondary">
-                          {new Date(city.created_at).toLocaleDateString()}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Stack direction="row" spacing={1}>
-                          <Tooltip title="View Recent Alerts">
-                            <IconButton size="small" onClick={() => handleViewAlerts(city)}>
-                              <NotificationsIcon />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Edit City">
-                            <IconButton size="small" onClick={() => handleOpenDialog(city)}>
-                              <EditIcon />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Delete City">
-                            <IconButton size="small" color="error" onClick={() => handleDelete(city)}>
-                              <DeleteIcon />
-                            </IconButton>
-                          </Tooltip>
-                        </Stack>
-                      </TableCell>
+            {/* Cities Table */}
+            <Paper>
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>City</TableCell>
+                      <TableCell>Location</TableCell>
+                      <TableCell>Slack Channel</TableCell>
+                      <TableCell>Client ID</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Created</TableCell>
+                      <TableCell>Actions</TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Paper>
-        </>
+                  </TableHead>
+                  <TableBody>
+                    {loading ? (
+                      <TableRow>
+                        <TableCell colSpan={7} align="center">
+                          <CircularProgress />
+                        </TableCell>
+                      </TableRow>
+                    ) : cities.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} align="center">
+                          No cities configured for monitoring
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      cities.map(city => (
+                        <TableRow key={city.id} hover>
+                          <TableCell>
+                            <Typography variant="body2" fontWeight="bold">
+                              {city.city_name}, {city.state_code}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" color="textSecondary">
+                              {Number(city.latitude).toFixed(4)},{' '}
+                              {Number(city.longitude).toFixed(4)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                              #{city.slack_channel}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>{city.client_id || '—'}</TableCell>
+                          <TableCell>
+                            <Chip
+                              label={city.active ? 'Active' : 'Inactive'}
+                              color={city.active ? 'success' : 'default'}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" color="textSecondary">
+                              {new Date(city.created_at).toLocaleDateString()}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Stack direction="row" spacing={1}>
+                              <Tooltip title="View Recent Alerts">
+                                <IconButton size="small" onClick={() => handleViewAlerts(city)}>
+                                  <NotificationsIcon />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Edit City">
+                                <IconButton size="small" onClick={() => handleOpenDialog(city)}>
+                                  <EditIcon />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Delete City">
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  onClick={() => handleDelete(city)}
+                                >
+                                  <DeleteIcon />
+                                </IconButton>
+                              </Tooltip>
+                            </Stack>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+          </>
         )}
 
         {currentTab === 1 && (
@@ -577,11 +600,15 @@ export default function WeatherMonitor({ user }: Props) {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      keywords.map((keyword) => (
+                      keywords.map(keyword => (
                         <TableRow key={keyword.id} hover>
                           <TableCell>
-                            <Typography variant="body2" fontWeight="bold" sx={{ fontFamily: 'monospace' }}>
-                              "{keyword.keyword}"
+                            <Typography
+                              variant="body2"
+                              fontWeight="bold"
+                              sx={{ fontFamily: 'monospace' }}
+                            >
+                              &quot;{keyword.keyword}&quot;
                             </Typography>
                           </TableCell>
                           <TableCell>
@@ -604,12 +631,19 @@ export default function WeatherMonitor({ user }: Props) {
                           <TableCell>
                             <Stack direction="row" spacing={1}>
                               <Tooltip title="Edit Keyword">
-                                <IconButton size="small" onClick={() => handleOpenKeywordDialog(keyword)}>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleOpenKeywordDialog(keyword)}
+                                >
                                   <EditIcon />
                                 </IconButton>
                               </Tooltip>
                               <Tooltip title="Delete Keyword">
-                                <IconButton size="small" color="error" onClick={() => handleDeleteKeyword(keyword)}>
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  onClick={() => handleDeleteKeyword(keyword)}
+                                >
                                   <DeleteIcon />
                                 </IconButton>
                               </Tooltip>
@@ -627,9 +661,7 @@ export default function WeatherMonitor({ user }: Props) {
 
         {/* Add/Edit City Dialog */}
         <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-          <DialogTitle>
-            {editingCity ? 'Edit City' : 'Add New City'}
-          </DialogTitle>
+          <DialogTitle>{editingCity ? 'Edit City' : 'Add New City'}</DialogTitle>
           <DialogContent>
             <Grid container spacing={2} sx={{ mt: 1 }}>
               <Grid item xs={12} sm={8}>
@@ -637,7 +669,7 @@ export default function WeatherMonitor({ user }: Props) {
                   label="City Name"
                   fullWidth
                   value={formData.city_name}
-                  onChange={(e) => setFormData({ ...formData, city_name: e.target.value })}
+                  onChange={e => setFormData({ ...formData, city_name: e.target.value })}
                   required
                 />
               </Grid>
@@ -646,7 +678,9 @@ export default function WeatherMonitor({ user }: Props) {
                   label="State Code"
                   fullWidth
                   value={formData.state_code}
-                  onChange={(e) => setFormData({ ...formData, state_code: e.target.value.toUpperCase() })}
+                  onChange={e =>
+                    setFormData({ ...formData, state_code: e.target.value.toUpperCase() })
+                  }
                   inputProps={{ maxLength: 2 }}
                   placeholder="MN"
                   required
@@ -665,7 +699,8 @@ export default function WeatherMonitor({ user }: Props) {
                 </Button>
                 {formData.latitude && formData.longitude && (
                   <Typography variant="body2" color="textSecondary" textAlign="center">
-                    Coordinates: {Number(formData.latitude).toFixed(4)}, {Number(formData.longitude).toFixed(4)}
+                    Coordinates: {Number(formData.latitude).toFixed(4)},{' '}
+                    {Number(formData.longitude).toFixed(4)}
                   </Typography>
                 )}
               </Grid>
@@ -674,7 +709,9 @@ export default function WeatherMonitor({ user }: Props) {
                   label="Slack Channel"
                   fullWidth
                   value={formData.slack_channel}
-                  onChange={(e) => setFormData({ ...formData, slack_channel: e.target.value.replace('#', '') })}
+                  onChange={e =>
+                    setFormData({ ...formData, slack_channel: e.target.value.replace('#', '') })
+                  }
                   required
                   helperText="Channel name without the # symbol"
                 />
@@ -685,7 +722,7 @@ export default function WeatherMonitor({ user }: Props) {
                   fullWidth
                   type="number"
                   value={formData.client_id}
-                  onChange={(e) => setFormData({ ...formData, client_id: e.target.value })}
+                  onChange={e => setFormData({ ...formData, client_id: e.target.value })}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -693,7 +730,7 @@ export default function WeatherMonitor({ user }: Props) {
                   control={
                     <Switch
                       checked={formData.active}
-                      onChange={(e) => setFormData({ ...formData, active: e.target.checked })}
+                      onChange={e => setFormData({ ...formData, active: e.target.checked })}
                     />
                   }
                   label="Active"
@@ -706,7 +743,14 @@ export default function WeatherMonitor({ user }: Props) {
             <Button
               onClick={handleSubmit}
               variant="contained"
-              disabled={submitting || !formData.city_name || !formData.state_code || !formData.slack_channel || !formData.latitude || !formData.longitude}
+              disabled={
+                submitting ||
+                !formData.city_name ||
+                !formData.state_code ||
+                !formData.slack_channel ||
+                !formData.latitude ||
+                !formData.longitude
+              }
             >
               {submitting ? <CircularProgress size={20} /> : editingCity ? 'Update' : 'Add'}
             </Button>
@@ -714,10 +758,13 @@ export default function WeatherMonitor({ user }: Props) {
         </Dialog>
 
         {/* Recent Alerts Dialog */}
-        <Dialog open={alertsDialogOpen} onClose={() => setAlertsDialogOpen(false)} maxWidth="md" fullWidth>
-          <DialogTitle>
-            Recent Alerts for {selectedCityName}
-          </DialogTitle>
+        <Dialog
+          open={alertsDialogOpen}
+          onClose={() => setAlertsDialogOpen(false)}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle>Recent Alerts for {selectedCityName}</DialogTitle>
           <DialogContent>
             {selectedCityAlerts.length === 0 ? (
               <Alert severity="info">No recent alerts found for this city.</Alert>
@@ -745,9 +792,7 @@ export default function WeatherMonitor({ user }: Props) {
                       <Typography variant="body2" color="textSecondary">
                         Type: {alert.alert_type}
                       </Typography>
-                      <Typography variant="body2">
-                        {alert.alert_description}
-                      </Typography>
+                      <Typography variant="body2">{alert.alert_description}</Typography>
                       <Divider />
                       <Typography variant="caption" color="textSecondary">
                         Sent to #{alert.slack_channel} • Alert ID: {alert.alert_id}
@@ -764,10 +809,13 @@ export default function WeatherMonitor({ user }: Props) {
         </Dialog>
 
         {/* Add/Edit Keyword Dialog */}
-        <Dialog open={keywordDialogOpen} onClose={() => setKeywordDialogOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>
-            {editingKeyword ? 'Edit Keyword' : 'Add New Keyword'}
-          </DialogTitle>
+        <Dialog
+          open={keywordDialogOpen}
+          onClose={() => setKeywordDialogOpen(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>{editingKeyword ? 'Edit Keyword' : 'Add New Keyword'}</DialogTitle>
           <DialogContent>
             <Grid container spacing={2} sx={{ mt: 1 }}>
               <Grid item xs={12}>
@@ -775,7 +823,9 @@ export default function WeatherMonitor({ user }: Props) {
                   label="Keyword"
                   fullWidth
                   value={keywordFormData.keyword}
-                  onChange={(e) => setKeywordFormData({ ...keywordFormData, keyword: e.target.value })}
+                  onChange={e =>
+                    setKeywordFormData({ ...keywordFormData, keyword: e.target.value })
+                  }
                   required
                   placeholder="winter storm"
                   helperText="Enter the keyword to search for in weather alerts"
@@ -786,7 +836,9 @@ export default function WeatherMonitor({ user }: Props) {
                   label="Description (Optional)"
                   fullWidth
                   value={keywordFormData.description}
-                  onChange={(e) => setKeywordFormData({ ...keywordFormData, description: e.target.value })}
+                  onChange={e =>
+                    setKeywordFormData({ ...keywordFormData, description: e.target.value })
+                  }
                   placeholder="Describe when this keyword should trigger alerts"
                   multiline
                   rows={2}
@@ -797,7 +849,9 @@ export default function WeatherMonitor({ user }: Props) {
                   control={
                     <Switch
                       checked={keywordFormData.active}
-                      onChange={(e) => setKeywordFormData({ ...keywordFormData, active: e.target.checked })}
+                      onChange={e =>
+                        setKeywordFormData({ ...keywordFormData, active: e.target.checked })
+                      }
                     />
                   }
                   label="Active"
@@ -823,7 +877,10 @@ export default function WeatherMonitor({ user }: Props) {
           autoHideDuration={6000}
           onClose={() => setSnackbar({ ...snackbar, open: false })}
         >
-          <Alert severity={snackbar.severity} onClose={() => setSnackbar({ ...snackbar, open: false })}>
+          <Alert
+            severity={snackbar.severity}
+            onClose={() => setSnackbar({ ...snackbar, open: false })}
+          >
             {snackbar.message}
           </Alert>
         </Snackbar>
@@ -832,7 +889,7 @@ export default function WeatherMonitor({ user }: Props) {
   );
 }
 
-export const getServerSideProps: GetServerSideProps = async (context) => {
+export const getServerSideProps: GetServerSideProps = async context => {
   const authResult = await requireServerAuth(context);
   if ('redirect' in authResult) {
     return authResult;
