@@ -58,19 +58,33 @@ interface MonitoredCity {
   client_id?: number;
 }
 
-const WINTER_STORM_KEYWORDS = [
-  'winter storm',
-  'blizzard',
-  'ice storm',
-  'freezing rain',
-  'heavy snow',
-  'snow squall',
-  'winter weather',
-  'frost',
-  'freeze',
-  'wind chill',
-  'wind',
-];
+const getActiveKeywords = async (): Promise<string[]> => {
+  const connection = await pool.getConnection();
+  try {
+    const [rows] = await connection.execute(
+      'SELECT keyword FROM weather_alert_keywords WHERE active = true ORDER BY keyword ASC'
+    );
+    return (rows as any[]).map(row => row.keyword);
+  } catch (error) {
+    console.warn('Failed to load keywords from database, using defaults:', error);
+    // Fallback to hardcoded keywords if database query fails
+    return [
+      'winter storm',
+      'blizzard',
+      'ice storm',
+      'freezing rain',
+      'heavy snow',
+      'snow squall',
+      'winter weather',
+      'frost',
+      'freeze',
+      'wind chill',
+      'wind',
+    ];
+  } finally {
+    connection.release();
+  }
+};
 
 const getSeverityFromPriority = (priority: number): string => {
   // XWeather priority scale: lower numbers = higher severity
@@ -80,9 +94,9 @@ const getSeverityFromPriority = (priority: number): string => {
   return 'minor';
 };
 
-const isWinterStormAlert = (alert: WeatherAlert): boolean => {
+const isWinterStormAlert = (alert: WeatherAlert, keywords: string[]): boolean => {
   const searchText = `${alert.type} ${alert.title} ${alert.description}`.toLowerCase();
-  return WINTER_STORM_KEYWORDS.some(keyword => searchText.includes(keyword));
+  return keywords.some(keyword => searchText.includes(keyword.toLowerCase()));
 };
 
 const getMonitoredCities = async (): Promise<MonitoredCity[]> => {
@@ -279,7 +293,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   
   try {
     const cities = await getMonitoredCities();
+    const keywords = await getActiveKeywords();
+    
     console.log(`Found ${cities.length} cities to monitor`);
+    console.log(`Using ${keywords.length} alert keywords: ${keywords.join(', ')}`);
     
     const results = {
       citiesChecked: 0,
@@ -293,7 +310,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         results.citiesChecked++;
         
         const alerts = await fetchWeatherAlerts(city);
-        const winterStormAlerts = alerts.filter(isWinterStormAlert);
+        const winterStormAlerts = alerts.filter(alert => isWinterStormAlert(alert, keywords));
         
         results.alertsFound += winterStormAlerts.length;
         

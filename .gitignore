@@ -47,3 +47,7 @@ scripts/fix-code.sh
 .prettierrc
 .husky/pre-commit
 .eslintrc
+
+.vscode
+.cursorrules
+.lintstagedrc.js
