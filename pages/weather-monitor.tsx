@@ -29,6 +29,8 @@ import {
   CardContent,
   Divider,
   Tooltip,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -37,6 +39,7 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import CloudIcon from '@mui/icons-material/Cloud';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import NotificationsIcon from '@mui/icons-material/Notifications';
+import FilterListIcon from '@mui/icons-material/FilterList';
 import axios from 'axios';
 import { IntercomLayout } from '../components/ui';
 import { GetServerSideProps } from 'next';
@@ -67,6 +70,15 @@ interface WeatherAlert {
   slack_channel: string;
 }
 
+interface WeatherKeyword {
+  id: number;
+  keyword: string;
+  description?: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 interface CityFormData {
   city_name: string;
   state_code: string;
@@ -95,10 +107,16 @@ interface Props {
 
 export default function WeatherMonitor({ user }: Props) {
   const [cities, setCities] = useState<MonitoredCity[]>([]);
+  const [keywords, setKeywords] = useState<WeatherKeyword[]>([]);
   const [loading, setLoading] = useState(true);
+  const [keywordsLoading, setKeywordsLoading] = useState(true);
+  const [currentTab, setCurrentTab] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [keywordDialogOpen, setKeywordDialogOpen] = useState(false);
   const [editingCity, setEditingCity] = useState<MonitoredCity | null>(null);
+  const [editingKeyword, setEditingKeyword] = useState<WeatherKeyword | null>(null);
   const [formData, setFormData] = useState<CityFormData>(initialFormData);
+  const [keywordFormData, setKeywordFormData] = useState({ keyword: '', description: '', active: true });
   const [submitting, setSubmitting] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
   const [checkingAlerts, setCheckingAlerts] = useState(false);
@@ -109,6 +127,7 @@ export default function WeatherMonitor({ user }: Props) {
 
   useEffect(() => {
     fetchCities();
+    fetchKeywords();
   }, []);
 
   const fetchCities = async () => {
@@ -120,6 +139,18 @@ export default function WeatherMonitor({ user }: Props) {
       setSnackbar({ open: true, message: 'Error fetching cities', severity: 'error' });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchKeywords = async () => {
+    try {
+      const response = await axios.get('/api/weather/keywords');
+      setKeywords(response.data.keywords);
+    } catch (error) {
+      console.error('Error fetching keywords:', error);
+      setSnackbar({ open: true, message: 'Error fetching keywords', severity: 'error' });
+    } finally {
+      setKeywordsLoading(false);
     }
   };
 
@@ -273,6 +304,63 @@ export default function WeatherMonitor({ user }: Props) {
     }
   };
 
+  const handleOpenKeywordDialog = (keyword?: WeatherKeyword) => {
+    if (keyword) {
+      setEditingKeyword(keyword);
+      setKeywordFormData({
+        keyword: keyword.keyword,
+        description: keyword.description || '',
+        active: keyword.active,
+      });
+    } else {
+      setEditingKeyword(null);
+      setKeywordFormData({ keyword: '', description: '', active: true });
+    }
+    setKeywordDialogOpen(true);
+  };
+
+  const handleKeywordSubmit = async () => {
+    setSubmitting(true);
+    try {
+      if (editingKeyword) {
+        await axios.put(`/api/weather/keywords?id=${editingKeyword.id}`, keywordFormData);
+        setSnackbar({ open: true, message: 'Keyword updated successfully', severity: 'success' });
+      } else {
+        await axios.post('/api/weather/keywords', keywordFormData);
+        setSnackbar({ open: true, message: 'Keyword added successfully', severity: 'success' });
+      }
+
+      fetchKeywords();
+      setKeywordDialogOpen(false);
+      setEditingKeyword(null);
+      setKeywordFormData({ keyword: '', description: '', active: true });
+    } catch (error: any) {
+      console.error('Error saving keyword:', error);
+      setSnackbar({ 
+        open: true, 
+        message: error.response?.data?.error || 'Error saving keyword', 
+        severity: 'error' 
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteKeyword = async (keyword: WeatherKeyword) => {
+    if (!confirm(`Are you sure you want to delete the keyword "${keyword.keyword}"?`)) {
+      return;
+    }
+
+    try {
+      await axios.delete(`/api/weather/keywords?id=${keyword.id}`);
+      setSnackbar({ open: true, message: 'Keyword deleted successfully', severity: 'success' });
+      fetchKeywords();
+    } catch (error) {
+      console.error('Error deleting keyword:', error);
+      setSnackbar({ open: true, message: 'Error deleting keyword', severity: 'error' });
+    }
+  };
+
   return (
     <IntercomLayout
       title="Weather Monitor"
@@ -307,8 +395,18 @@ export default function WeatherMonitor({ user }: Props) {
           </Stack>
         </Box>
 
-        {/* Summary Cards */}
-        <Grid container spacing={3} mb={3}>
+        {/* Tabs */}
+        <Paper sx={{ mb: 3 }}>
+          <Tabs value={currentTab} onChange={(e, value) => setCurrentTab(value)}>
+            <Tab label="Cities" />
+            <Tab label="Alert Keywords" />
+          </Tabs>
+        </Paper>
+
+        {currentTab === 0 && (
+          <>
+            {/* Summary Cards */}
+            <Grid container spacing={3} mb={3}>
           <Grid item xs={12} sm={6} md={3}>
             <Card>
               <CardContent>
@@ -432,6 +530,100 @@ export default function WeatherMonitor({ user }: Props) {
             </Table>
           </TableContainer>
         </Paper>
+        </>
+        )}
+
+        {currentTab === 1 && (
+          <>
+            {/* Keywords Header */}
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+              <Typography variant="h5" component="h2">
+                <FilterListIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                Alert Keywords
+              </Typography>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={() => setKeywordDialogOpen(true)}
+              >
+                Add Keyword
+              </Button>
+            </Box>
+
+            {/* Keywords Table */}
+            <Paper>
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Keyword</TableCell>
+                      <TableCell>Description</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Created</TableCell>
+                      <TableCell>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {keywordsLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={5} align="center">
+                          <CircularProgress />
+                        </TableCell>
+                      </TableRow>
+                    ) : keywords.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} align="center">
+                          No keywords configured
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      keywords.map((keyword) => (
+                        <TableRow key={keyword.id} hover>
+                          <TableCell>
+                            <Typography variant="body2" fontWeight="bold" sx={{ fontFamily: 'monospace' }}>
+                              "{keyword.keyword}"
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" color="textSecondary">
+                              {keyword.description || '—'}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={keyword.active ? 'Active' : 'Inactive'}
+                              color={keyword.active ? 'success' : 'default'}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" color="textSecondary">
+                              {new Date(keyword.created_at).toLocaleDateString()}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Stack direction="row" spacing={1}>
+                              <Tooltip title="Edit Keyword">
+                                <IconButton size="small" onClick={() => handleOpenKeywordDialog(keyword)}>
+                                  <EditIcon />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Delete Keyword">
+                                <IconButton size="small" color="error" onClick={() => handleDeleteKeyword(keyword)}>
+                                  <DeleteIcon />
+                                </IconButton>
+                              </Tooltip>
+                            </Stack>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+          </>
+        )}
 
         {/* Add/Edit City Dialog */}
         <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
@@ -568,6 +760,60 @@ export default function WeatherMonitor({ user }: Props) {
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setAlertsDialogOpen(false)}>Close</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Add/Edit Keyword Dialog */}
+        <Dialog open={keywordDialogOpen} onClose={() => setKeywordDialogOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>
+            {editingKeyword ? 'Edit Keyword' : 'Add New Keyword'}
+          </DialogTitle>
+          <DialogContent>
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid item xs={12}>
+                <TextField
+                  label="Keyword"
+                  fullWidth
+                  value={keywordFormData.keyword}
+                  onChange={(e) => setKeywordFormData({ ...keywordFormData, keyword: e.target.value })}
+                  required
+                  placeholder="winter storm"
+                  helperText="Enter the keyword to search for in weather alerts"
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  label="Description (Optional)"
+                  fullWidth
+                  value={keywordFormData.description}
+                  onChange={(e) => setKeywordFormData({ ...keywordFormData, description: e.target.value })}
+                  placeholder="Describe when this keyword should trigger alerts"
+                  multiline
+                  rows={2}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={keywordFormData.active}
+                      onChange={(e) => setKeywordFormData({ ...keywordFormData, active: e.target.checked })}
+                    />
+                  }
+                  label="Active"
+                />
+              </Grid>
+            </Grid>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setKeywordDialogOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleKeywordSubmit}
+              variant="contained"
+              disabled={submitting || !keywordFormData.keyword.trim()}
+            >
+              {submitting ? <CircularProgress size={20} /> : editingKeyword ? 'Update' : 'Add'}
+            </Button>
           </DialogActions>
         </Dialog>
 
